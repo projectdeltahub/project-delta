@@ -1,7 +1,7 @@
 --[[
 	Miko Hub - Project Delta
 	Obsidian UI
-	Build: 2026-08-17bn (credits Made by Vp4q)
+	Build: 2026-08-17bn (credits Made by Yuki)
 ]]
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -6438,7 +6438,7 @@ WorldBox:AddToggle("CrateESP", {
 
 WorldBox:AddToggle("CrateNameESP", {
 	Text = "Crate Name ESP",
-	Default = true,
+	Default = false,
 	Callback = function(value)
 		WorldESP.CrateName = value
 		LastCrateScan = 0
@@ -6453,7 +6453,7 @@ WorldBox:AddToggle("CrateNameESP", {
 
 WorldBox:AddToggle("CrateDistanceESP", {
 	Text = "Crate Distance ESP",
-	Default = true,
+	Default = false,
 	Callback = function(value)
 		WorldESP.CrateDistance = value
 		LastCrateScan = 0
@@ -6588,6 +6588,1790 @@ WorldBox:AddSlider("ExtractionMaxDistance", {
 	end,
 })
 
+end)();
+
+----------------------------------------------------------------
+-- ESP dead v3 — Project Delta (กล่องนิ่ง + Chams แยกอิสระจาก Box)
+----------------------------------------------------------------
+(function()
+local CorpseESP = {
+    Enabled = false,
+    Box = false,
+    hams = false,
+    Name = false,
+    Distance = false,
+    MaxDistance = 1500,
+    BoxColor = Color3.fromRGB(170, 170, 170),
+    ChamsColor = Color3.fromRGB(255, 170, 0),
+    NameColor = Color3.fromRGB(230, 230, 230),
+    DistanceColor = Color3.fromRGB(180, 180, 180),
+}
+
+local DRAW_INTERVAL = 0.1
+local SCAN_FAST_INTERVAL = 1.5
+local SCAN_MAP_INTERVAL = 8
+local MAX_DRAW = 40
+local SCAN_CHUNK = 2000
+
+local CorpseCache = {}
+local FastCorpses = {}
+local MapCorpses = {}
+local LastFastScan = 0
+local LastMapScan = 0
+local LastDraw = 0
+local MapScanActive = false
+local UserIdNameCache = {}
+
+local CorpseKeywords = { "corpse", "dead", "ragdoll", "carcass", "remain", "body" }
+
+local function NameLooksLikeCorpse(name)
+    name = tostring(name or ""):lower()
+    for _, keyword in CorpseKeywords do
+        if name:find(keyword, 1, true) then
+            return true
+        end
+    end
+    return false
+end
+
+local function ResolveCorpseName(model)
+    local raw = tostring(model.Name or "")
+    local userId = raw:match("roblox_user_(%d+)")
+    if userId then
+        local id = tonumber(userId)
+        local cached = UserIdNameCache[id]
+        if cached == nil then
+            UserIdNameCache[id] = false
+            task.spawn(function()
+                local ok, name = pcall(function()
+                    return Players:GetNameFromUserIdAsync(id)
+                end)
+                UserIdNameCache[id] = (ok and typeof(name) == "string" and name) or raw
+            end)
+            return "Corpse"
+        elseif cached == false then
+            return "Corpse"
+        end
+        return cached .. " (Dead)"
+    end
+    return raw:gsub("_", " ")
+end
+
+local function IsAlivePlayerCharacter(model)
+    if model == LocalPlayer.Character then
+        return true
+    end
+    return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function FastScanCorpses()
+    local found = {}
+    local droppedNames = {}
+
+    -- 1) ศพใน Workspace.DroppedItems — จับก่อน
+    local dropped = workspace:FindFirstChild("DroppedItems")
+    if dropped then
+        for _, obj in dropped:GetChildren() do
+            if obj:IsA("Model") then
+                droppedNames[tostring(obj.Name):lower()] = true
+
+                local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                local alive = humanoid and humanoid.Health > 0
+                if not alive and not IsAlivePlayerCharacter(obj) then
+                    local isCorpse = obj:FindFirstChild("Render") ~= nil
+                        or NameLooksLikeCorpse(obj.Name)
+                        or obj.Name:match("^roblox_user_%d+$") ~= nil
+                    if isCorpse then
+                        found[obj] = ResolveCorpseName(obj)
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2) ตัวผู้เล่นที่ตาย — ข้ามถ้าเกมโยนศพลง DroppedItems แล้ว (กันกล่องซ้อน 2 ใบ)
+    for _, player in Players:GetPlayers() do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character and character:IsDescendantOf(workspace) and not found[character] then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                if humanoid and humanoid.Health <= 0 then
+                    local corpseDropped = droppedNames[tostring("roblox_user_" .. player.UserId):lower()]
+                        or droppedNames[player.Name:lower()]
+                        or droppedNames[player.DisplayName:lower()]
+                    if not corpseDropped then
+                        found[character] = player.DisplayName .. " (Dead)"
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3) AI ตายใน AiZones
+    local aiZones = workspace:FindFirstChild("AiZones")
+    if aiZones then
+        for _, zone in aiZones:GetChildren() do
+            for _, character in zone:GetChildren() do
+                if character:IsA("Model") and not found[character] then
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    if humanoid and humanoid.Health <= 0 then
+                        found[character] = character.Name:gsub("_", " ") .. " (Dead)"
+                    end
+                end
+            end
+        end
+    end
+
+    return found
+end
+
+local function StartMapScan()
+    if MapScanActive then
+        return
+    end
+    MapScanActive = true
+    task.spawn(function()
+        pcall(function()
+            local descendants = workspace:GetDescendants()
+            for i = 1, #descendants do
+                local obj = descendants[i]
+                if obj.Parent and obj:IsA("Model")
+                    and not FastCorpses[obj] and not MapCorpses[obj]
+                then
+                    local hit = NameLooksLikeCorpse(obj.Name)
+                        or obj.Name:match("^roblox_user_%d+$") ~= nil
+
+                    if not hit and obj:FindFirstChild("Render") ~= nil then
+                        local current = obj.Parent
+                        while current and current ~= workspace do
+                            if current.Name == "DroppedItems" then
+                                hit = true
+                                break
+                            end
+                            current = current.Parent
+                        end
+                    end
+
+                    if hit and not IsAlivePlayerCharacter(obj) then
+                        local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                        if not humanoid or humanoid.Health <= 0 then
+                            MapCorpses[obj] = ResolveCorpseName(obj)
+                        end
+                    end
+                end
+                if i % SCAN_CHUNK == 0 then
+                    task.wait()
+                end
+            end
+        end)
+        MapScanActive = false
+    end)
+end
+
+local function CreateCorpseData()
+    local data = {
+        BoxLines = {},
+        NameLabel = NewTextLabel(),
+        DistanceLabel = NewTextLabel(),
+        Highlight = nil,
+    }
+    for i = 1, 8 do
+        data.BoxLines[i] = NewGuiLine()
+    end
+    return data
+end
+
+local function EnsureCorpseData(model)
+    local data = CorpseCache[model]
+    if not data then
+        data = CreateCorpseData()
+        CorpseCache[model] = data
+    end
+    return data
+end
+
+-- ซ่อนเฉพาะของวาด 2D (ไม่แตะ Chams)
+local function HideCorpse2D(data)
+    for _, line in data.BoxLines do
+        line.Visible = false
+    end
+    data.NameLabel.Visible = false
+    data.DistanceLabel.Visible = false
+end
+
+-- ซ่อนทั้งหมด (ใช้ตอนศพหลุดเงื่อนไข เช่นเกินระยะ)
+local function HideCorpseAll(data)
+    HideCorpse2D(data)
+    if data.Highlight then
+        data.Highlight.Enabled = false
+    end
+end
+
+local function ClearCorpse(model)
+    local data = CorpseCache[model]
+    if not data then
+        return
+    end
+    for _, line in data.BoxLines do
+        line:Destroy()
+    end
+    data.NameLabel:Destroy()
+    data.DistanceLabel:Destroy()
+    if data.Highlight then
+        data.Highlight:Destroy()
+    end
+    CorpseCache[model] = nil
+end
+
+local function GetCorpseBounds(model)
+    if model:IsA("Model") then
+        local ok, cf, size = pcall(model.GetBoundingBox, model)
+        if ok and cf and size then
+            return cf, size
+        end
+    end
+    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+    if part then
+        return part.CFrame, part.Size
+    end
+    return nil, nil
+end
+
+local function DrawCorpse(model, displayName, data)
+    -- ★ Chams ทำงานอิสระ — ปิด Box แล้ว Chams ไม่หาย
+    if CorpseESP.Chams then
+        if not data.Highlight or not data.Highlight.Parent then
+            if data.Highlight then
+                data.Highlight:Destroy()
+            end
+            local highlight = Instance.new("Highlight")
+            highlight.Name = "WallhackCorpseCham"
+            highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+            highlight.FillTransparency = 0.55
+            highlight.OutlineTransparency = 0
+            highlight.Parent = model
+            data.Highlight = highlight
+        end
+        data.Highlight.Adornee = model
+        data.Highlight.FillColor = CorpseESP.ChamsColor
+        data.Highlight.OutlineColor = CorpseESP.ChamsColor
+        data.Highlight.Enabled = true
+    elseif data.Highlight then
+        data.Highlight.Enabled = false
+    end
+
+    -- ถ้าไม่ต้องวาดอะไร 2D ซ่อนเฉพาะ 2D (เก็บ Chams ไว้)
+    if not CorpseESP.Box and not CorpseESP.Name and not CorpseESP.Distance then
+        HideCorpse2D(data)
+        return
+    end
+
+    local cf, size = GetCorpseBounds(model)
+    if not cf then
+        HideCorpse2D(data)
+        return
+    end
+
+    local v = Camera:WorldToViewportPoint(cf.Position)
+    if v.Z <= 0 then
+        HideCorpse2D(data)
+        return
+    end
+
+    -- ★ กล่องตั้งฉากนิ่ง ๆ — ไม่หมุน/บิดตามกล้อง ขนาดแปรตามระยะอย่างเดียว
+    local boxWidth = math.max(size.X, size.Z, 1)
+    local boxHeight = math.max(size.Y, boxWidth * 0.45)
+    local pixelsPerStud = (Camera.ViewportSize.Y / 2)
+        / math.tan(math.rad(Camera.FieldOfView / 2))
+        / v.Z
+
+    local vp = Camera.ViewportSize
+    local w = math.clamp(boxWidth * pixelsPerStud, 8, vp.X)
+    local h = math.clamp(boxHeight * pixelsPerStud, 6, vp.Y)
+    local cx, cy = v.X, v.Y
+
+    if CorpseESP.Box then
+        local tl = Vector2.new(cx - w / 2, cy - h / 2)
+        local tr = Vector2.new(cx + w / 2, cy - h / 2)
+        local bl = Vector2.new(cx - w / 2, cy + h / 2)
+        local br = Vector2.new(cx + w / 2, cy + h / 2)
+        SetGuiLine(data.BoxLines[1], tl, tr, CorpseESP.BoxColor, 2)
+        SetGuiLine(data.BoxLines[2], tr, br, CorpseESP.BoxColor, 2)
+        SetGuiLine(data.BoxLines[3], br, bl, CorpseESP.BoxColor, 2)
+        SetGuiLine(data.BoxLines[4], bl, tl, CorpseESP.BoxColor, 2)
+        for i = 5, 8 do
+            data.BoxLines[i].Visible = false
+        end
+    else
+        for i = 1, 8 do
+            data.BoxLines[i].Visible = false
+        end
+    end
+
+    if CorpseESP.Name then
+        data.NameLabel.Text = displayName
+        data.NameLabel.TextColor3 = CorpseESP.NameColor
+        data.NameLabel.AnchorPoint = Vector2.new(0.5, 1)
+        data.NameLabel.Position = UDim2.fromOffset(cx, cy - h / 2 - 4)
+        data.NameLabel.Visible = true
+    else
+        data.NameLabel.Visible = false
+    end
+
+    if CorpseESP.Distance then
+        local localRoot = GetLocalRoot()
+        if localRoot then
+            local dist = math.floor((localRoot.Position - cf.Position).Magnitude)
+            data.DistanceLabel.Text = dist .. "m"
+            data.DistanceLabel.TextColor3 = CorpseESP.DistanceColor
+            data.DistanceLabel.AnchorPoint = Vector2.new(0.5, 0)
+            data.DistanceLabel.Position = UDim2.fromOffset(cx, cy + h / 2 + 4)
+            data.DistanceLabel.Visible = true
+        else
+            data.DistanceLabel.Visible = false
+        end
+    else
+        data.DistanceLabel.Visible = false
+    end
+end
+
+local function GetCorpseAnchor(model)
+    local root = GetCharacterRoot(model)
+    if root then
+        return root.Position
+    end
+    local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+    return part and part.Position or nil
+end
+
+local function SyncCorpseESPFromUI()
+    local function toggle(name, key)
+        local t = Toggles[name]
+        if t then
+            CorpseESP[key] = t.Value
+        end
+    end
+
+    local function option(name, key)
+        local o = Options[name]
+        if o then
+            CorpseESP[key] = o.Value
+        end
+    end
+
+    toggle("CorpseESPEnabled", "Enabled")
+    toggle("CorpseBoxESP", "Box")
+    toggle("CorpseChamsESP", "Chams")
+    toggle("CorpseNameESP", "Name")
+    toggle("CorpseDistanceESP", "Distance")
+
+    option("CorpseMaxDistance", "MaxDistance")
+    option("CorpseBoxColor", "BoxColor")
+    option("CorpseChamsColor", "ChamsColor")
+    option("CorpseNameColor", "NameColor")
+    option("CorpseDistanceColor", "DistanceColor")
+end
+
+local function DrawTick(now)
+    SyncCorpseESPFromUI()
+
+    if not CorpseESP.Enabled then
+        for corpse in pairs(CorpseCache) do
+            ClearCorpse(corpse)
+        end
+        table.clear(FastCorpses)
+        table.clear(MapCorpses)
+        return
+    end
+
+    if not Camera or not EnsureESPGuiAttached() then
+        return
+    end
+
+    if now - LastFastScan >= SCAN_FAST_INTERVAL then
+        LastFastScan = now
+        local ok, result = pcall(FastScanCorpses)
+        if ok and type(result) == "table" then
+            FastCorpses = result
+        end
+    end
+
+    if now - LastMapScan >= SCAN_MAP_INTERVAL then
+        LastMapScan = now
+        StartMapScan()
+    end
+
+    for corpse in pairs(FastCorpses) do
+        if not corpse.Parent then
+            FastCorpses[corpse] = nil
+        end
+    end
+    for corpse in pairs(MapCorpses) do
+        if not corpse.Parent or FastCorpses[corpse] then
+            MapCorpses[corpse] = nil
+        end
+    end
+    for corpse in pairs(CorpseCache) do
+        if not corpse.Parent or (not FastCorpses[corpse] and not MapCorpses[corpse]) then
+            ClearCorpse(corpse)
+        end
+    end
+
+    local localRoot = GetLocalRoot()
+    local localPos = localRoot and localRoot.Position
+    local count = 0
+
+    local function tryDraw(corpse, name)
+        local data = CorpseCache[corpse]
+        if count >= MAX_DRAW then
+            if data then
+                HideCorpseAll(data)
+            end
+            return
+        end
+        local anchor = GetCorpseAnchor(corpse)
+        local dist = (anchor and localPos) and (localPos - anchor).Magnitude or 0
+        if not anchor or dist > CorpseESP.MaxDistance then
+            if data then
+                HideCorpseAll(data)
+            end
+            return
+        end
+        count += 1
+        local ok, err = pcall(DrawCorpse, corpse, name, EnsureCorpseData(corpse))
+        if not ok then
+            warn("[Wallhack.gg CorpseESP]", err)
+        end
+    end
+
+    for corpse, name in pairs(FastCorpses) do
+        tryDraw(corpse, name)
+    end
+    for corpse, name in pairs(MapCorpses) do
+        tryDraw(corpse, name)
+    end
+end
+
+local CorpseGroup = Tabs.Visuals:AddRightGroupbox("ESP dead")
+
+CorpseGroup:AddToggle("CorpseESPEnabled", {
+    Text = "ESP dead",
+    Default = false,
+})
+
+CorpseGroup:AddDivider()
+
+CorpseGroup:AddToggle("CorpseBoxESP", {
+    Text = "Box",
+    Default = false,
+}):AddColorPicker("CorpseBoxColor", {
+    Default = Color3.fromRGB(170, 170, 170),
+    Title = "Corpse Box Color",
+})
+
+CorpseGroup:AddToggle("CorpseChamsESP", {
+    Text = "Chams",
+    Default = false,
+}):AddColorPicker("CorpseChamsColor", {
+    Default = Color3.fromRGB(255, 170, 0),
+    Title = "Corpse Chams Color",
+})
+
+CorpseGroup:AddToggle("CorpseNameESP", {
+    Text = "Name",
+    Default = false,
+}):AddColorPicker("CorpseNameColor", {
+    Default = Color3.fromRGB(230, 230, 230),
+    Title = "Corpse Name Color",
+})
+
+CorpseGroup:AddToggle("CorpseDistanceESP", {
+    Text = "Distance",
+    Default = false,
+}):AddColorPicker("CorpseDistanceColor", {
+    Default = Color3.fromRGB(180, 180, 180),
+    Title = "Corpse Distance Color",
+})
+
+CorpseGroup:AddSlider("CorpseMaxDistance", {
+    Text = "Max Distance",
+    Default = 1500,
+    Min = 100,
+    Max = 5000,
+    Rounding = 0,
+    Suffix = "m",
+})
+
+local renderConn
+renderConn = RunService.RenderStepped:Connect(function()
+    local now = tick()
+    if now - LastDraw < DRAW_INTERVAL then
+        return
+    end
+    LastDraw = now
+    local ok, err = pcall(DrawTick, now)
+    if not ok then
+        warn("[Wallhack.gg]", "CorpseESP", err)
+    end
+end)
+
+ESPGui.Destroying:Connect(function()
+    if renderConn then
+        renderConn:Disconnect()
+    end
+    for corpse in pairs(CorpseCache) do
+        ClearCorpse(corpse)
+    end
+    table.clear(CorpseCache)
+    table.clear(FastCorpses)
+    table.clear(MapCorpses)
+end)
+end)();
+
+----------------------------------------------------------------
+-- Item X-Ray v9 — ตัวละคร + Inventory จริง (อ่านเฉพาะลูกตรงของ RS/Players/<ชื่อ>)
+----------------------------------------------------------------
+(function()
+local XRay = {
+    Enabled = false,
+    IncludeCorpses = true,
+    ReadInventory = true,
+    Debug = false,
+    Radius = 300,
+    Width = 220,
+    TextSize = 13,
+}
+
+local SCAN_INTERVAL = 0.2
+local MAX_LINES = 34
+local DEBUG_MAX = 44
+
+local Panel, PanelTitle, PanelBody, ResizeHandle
+local NameCache = {}
+local LastScan = 0
+local Resizing = false
+local ResizeStartX = 0
+local ResizeStartWidth = 0
+
+local KnownItems = {}
+local WeaponSet = {}
+local KnownBuilt = false
+
+local GearMark = {
+    Altyn = true, ["6B27"] = true, ["6B47"] = true, SSH68 = true, FastMT = true,
+    MotorcycleHelmet = true, ScavKingHelmet = true, UNOHelmet = true, ZSh = true,
+    GP5 = true, GP7 = true, Lynx = true,
+    ["6B43"] = true, ["6B2"] = true, ["6B5"] = true, ["6B23"] = true,
+    JPC = true, IOTV4 = true, Smersh = true, Attak5 = true, ScavKingVest = true,
+    UNOVest = true, Pantsir3 = true, HSPV = true, DozerArmor = true,
+    ConcealedVest = true, TORS = true, LegArmor = true,
+}
+
+local NameMap = {
+    LegArmor = "KneePads",
+}
+
+local FilterPrefixes = {
+    "Front", "Stock", "Handle", "Tactical", "Impr", "FlashHider",
+    "MuzzleBrake", "MuzzleGrip", "Default", "Polymer", "Mag", "PMAG",
+    "AmmoBox", "20rnd", "30rnd",
+}
+local FilterSuffixes = { "Visor" }
+local FilterExact = { PBS1 = true }
+
+local function IsAttachmentName(n)
+    if FilterExact[n] then
+        return true
+    end
+    local lower = n:lower()
+    if lower:find("mag", 1, true) or lower:find("suppressor", 1, true) then
+        return true
+    end
+    for _, p in FilterPrefixes do
+        if n:sub(1, #p) == p then
+            return true
+        end
+    end
+    for _, s in FilterSuffixes do
+        if #n >= #s and n:sub(-#s) == s then
+            return true
+        end
+    end
+    return false
+end
+
+local function BuildKnownSets()
+    if KnownBuilt then
+        return true
+    end
+
+    local list = ReplicatedStorage:FindFirstChild("ItemsList")
+    if not list then
+        return false
+    end
+
+    for _, v in list:GetChildren() do
+        if v:IsA("StringValue") then
+            KnownItems[v.Name] = true
+        end
+    end
+
+    for _, folderName in { "ItemsListModels", "ThirdPersonModels", "RealClothing" } do
+        local f = ReplicatedStorage:FindFirstChild(folderName)
+        if f then
+            for _, v in f:GetChildren() do
+                KnownItems[v.Name] = true
+            end
+        end
+    end
+
+    local rw = ReplicatedStorage:FindFirstChild("RangedWeapons")
+    if rw then
+        for _, v in rw:GetChildren() do
+            WeaponSet[v.Name] = true
+            KnownItems[v.Name] = true
+        end
+    end
+
+    local ammo = ReplicatedStorage:FindFirstChild("AmmoTypes")
+    if ammo then
+        for _, v in ammo:GetChildren() do
+            KnownItems[v.Name] = true
+        end
+    end
+
+    KnownBuilt = next(KnownItems) ~= nil
+    return KnownBuilt
+end
+
+local function AddName(set, raw)
+    local n = tostring(raw or "")
+    if n == "" or not KnownItems[n] then
+        return
+    end
+    if IsAttachmentName(n) then
+        return
+    end
+    set[n] = true
+end
+
+local function EscapeText(text)
+    return tostring(text)
+        :gsub("&", "&amp;")
+        :gsub("<", "&lt;")
+        :gsub(">", "&gt;")
+end
+
+local function GetPlayerDataFolder(player)
+    local pf = ReplicatedStorage:FindFirstChild("Players")
+    if not pf then
+        return nil
+    end
+    return pf:FindFirstChild(player.Name)
+        or pf:FindFirstChild(tostring(player.UserId))
+        or pf:FindFirstChild(player.DisplayName)
+end
+
+-- ★ อ่านเฉพาะลูกตรง (top-level) = ช่อง inventory จริง
+-- ไม่ลงลึกโฟลเดอร์อื่น (สกิน/สถิติ) กันข้อมูลปลอม
+local InventoryFolderKeywords = {
+    "inventory", "items", "gear", "equip", "backpack", "pocket", "carry", "loadout",
+}
+
+local function ScanPlayerFolder(folder, found, depth)
+    if depth > 1 then
+        return
+    end
+    for _, child in folder:GetChildren() do
+        if child:IsA("Folder") or child:IsA("Configuration") then
+            local lower = child.Name:lower()
+            for _, keyword in InventoryFolderKeywords do
+                if lower:find(keyword, 1, true) then
+                    ScanPlayerFolder(child, found, depth + 1)
+                    break
+                end
+            end
+        elseif child:IsA("StringValue") then
+            if child.Value ~= "" then
+                AddName(found, child.Value)
+            end
+            AddName(found, child.Name)
+        elseif child:IsA("ObjectValue") then
+            if child.Value then
+                AddName(found, child.Value.Name)
+            end
+        else
+            AddName(found, child.Name)
+        end
+    end
+end
+
+local function CollectItems(model, player)
+    BuildKnownSets()
+    local found = {}
+
+    -- 1) ของที่ render บนตัว (ปืนที่ถือ เสื้อ หมวก เกราะ)
+    for _, desc in model:GetDescendants() do
+        AddName(found, desc.Name)
+    end
+
+    -- 2) ★ ของใน inventory ทั้งหมด (รวมของในกระเป๋า) จาก RS/Players/<ชื่อ>
+    if player and XRay.ReadInventory then
+        pcall(function()
+            local folder = GetPlayerDataFolder(player)
+            if folder then
+                ScanPlayerFolder(folder, found, 0)
+            end
+        end)
+    end
+
+    local normal, combat = {}, {}
+    for n in found do
+        local display = NameMap[n] or n
+        if WeaponSet[n] or GearMark[n] then
+            combat[#combat + 1] = display
+        else
+            normal[#normal + 1] = display
+        end
+    end
+    table.sort(normal)
+    table.sort(combat)
+    return normal, combat
+end
+
+-- Debug: ดิมพ์ลูกตรงของ RS/Players/<ชื่อ> พร้อมคลาส (ใช้ตรวจถ้ายังขาด)
+local function GetDebugLines(player)
+    local lines = {}
+    local folder = player and GetPlayerDataFolder(player)
+    if not folder then
+        lines[#lines + 1] = { Text = "-- no data folder --" }
+        return lines
+    end
+    lines[#lines + 1] = { Text = "-- RS/Players/" .. player.Name .. " --" }
+    for _, child in folder:GetChildren() do
+        local txt = child.Name .. " [" .. child.ClassName .. "]"
+        if child:IsA("StringValue") then
+            txt ..= " = " .. child.Value
+        end
+        lines[#lines + 1] = { Text = txt }
+        if child:IsA("Folder") then
+            for _, g in child:GetChildren() do
+                local t2 = "  > " .. g.Name .. " [" .. g.ClassName .. "]"
+                if g:IsA("StringValue") then
+                    t2 ..= " = " .. g.Value
+                end
+                lines[#lines + 1] = { Text = t2 }
+            end
+        end
+    end
+    return lines
+end
+
+local function ResolveName(model)
+    local raw = tostring(model.Name or "")
+    local userId = raw:match("roblox_user_(%d+)")
+    if userId then
+        local id = tonumber(userId)
+        local cached = NameCache[id]
+        if cached == nil then
+            NameCache[id] = false
+            task.spawn(function()
+                local ok, name = pcall(function()
+                    return Players:GetNameFromUserIdAsync(id)
+                end)
+                NameCache[id] = (ok and typeof(name) == "string" and name) or raw
+            end)
+            return raw
+        elseif cached == false then
+            return raw
+        end
+        return cached
+    end
+    return raw:gsub("_", " ")
+end
+
+local function GetCorpses()
+    local out = {}
+    local dropped = workspace:FindFirstChild("DroppedItems")
+    if dropped then
+        for _, obj in dropped:GetChildren() do
+            if obj:IsA("Model") then
+                local humanoid = obj:FindFirstChildOfClass("Humanoid")
+                local alive = humanoid and humanoid.Health > 0
+                if not alive and not Players:GetPlayerFromCharacter(obj) then
+                    if obj:FindFirstChild("Render")
+                        or obj.Name:match("^roblox_user_%d+$")
+                    then
+                        out[#out + 1] = obj
+                    end
+                end
+            end
+        end
+    end
+    return out
+end
+
+local function PickTarget()
+    if not Camera then
+        return nil
+    end
+
+    local vp = Camera.ViewportSize
+    local center = Vector2.new(vp.X / 2, vp.Y / 2)
+    local best, bestDist = nil, XRay.Radius
+
+    for _, player in Players:GetPlayers() do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if root then
+                local humanoid = character:FindFirstChildOfClass("Humanoid")
+                local v = Camera:WorldToViewportPoint(root.Position)
+                if v.Z > 0 then
+                    local d = (Vector2.new(v.X, v.Y) - center).Magnitude
+                    if d < bestDist then
+                        bestDist = d
+                        best = {
+                            Model = character,
+                            Player = player,
+                            Name = player.DisplayName,
+                            Dead = humanoid and humanoid.Health <= 0,
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    if XRay.IncludeCorpses then
+        for _, corpse in GetCorpses() do
+            local anchor = corpse.PrimaryPart or corpse:FindFirstChildWhichIsA("BasePart", true)
+            if anchor then
+                local v = Camera:WorldToViewportPoint(anchor.Position)
+                if v.Z > 0 then
+                    local d = (Vector2.new(v.X, v.Y) - center).Magnitude
+                    if d < bestDist then
+                        bestDist = d
+                        best = { Model = corpse, Player = nil, Name = ResolveName(corpse), Dead = true }
+                    end
+                end
+            end
+        end
+    end
+
+    return best
+end
+
+local function SyncFromUI()
+    local t = Toggles.XRayEnabled
+    if t then
+        XRay.Enabled = t.Value
+    end
+    t = Toggles.XRayIncludeCorpses
+    if t then
+        XRay.IncludeCorpses = t.Value
+    end
+    t = Toggles.XRayReadInventory
+    if t then
+        XRay.ReadInventory = t.Value
+    end
+    t = Toggles.XRayDebug
+    if t then
+        XRay.Debug = t.Value
+    end
+    local o = Options.XRayRadius
+    if o and typeof(o.Value) == "number" then
+        XRay.Radius = o.Value
+    end
+    o = Options.XRayWidth
+    if o and typeof(o.Value) == "number" then
+        XRay.Width = o.Value
+    end
+    o = Options.XRayTextSize
+    if o and typeof(o.Value) == "number" then
+        XRay.TextSize = o.Value
+    end
+end
+
+local function ApplyAppearance()
+    if not Panel then
+        return
+    end
+    Panel.Size = UDim2.fromOffset(XRay.Width, 0)
+    PanelTitle.TextSize = XRay.TextSize + 1
+    PanelBody.TextSize = XRay.TextSize
+end
+
+local function EnsurePanel()
+    if Panel and Panel.Parent then
+        return
+    end
+
+    Panel = Instance.new("Frame")
+    Panel.Name = "WallhackXRay"
+    Panel.AnchorPoint = Vector2.new(1, 0)
+    Panel.Position = UDim2.new(1, -12, 0, 12)
+    Panel.Size = UDim2.fromOffset(XRay.Width, 0)
+    Panel.AutomaticSize = Enum.AutomaticSize.Y
+    Panel.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    Panel.BackgroundTransparency = 0.25
+    Panel.BorderSizePixel = 0
+    Panel.Visible = false
+    Panel.ZIndex = 30
+    Panel.Parent = ESPGui
+    Instance.new("UICorner", Panel).CornerRadius = UDim.new(0, 4)
+
+    PanelTitle = Instance.new("TextLabel")
+    PanelTitle.BackgroundTransparency = 1
+    PanelTitle.Size = UDim2.new(1, -12, 0, 20)
+    PanelTitle.Position = UDim2.fromOffset(8, 4)
+    PanelTitle.Font = Enum.Font.Code
+    PanelTitle.TextSize = XRay.TextSize + 1
+    PanelTitle.TextXAlignment = Enum.TextXAlignment.Left
+    PanelTitle.TextColor3 = Color3.fromRGB(235, 235, 235)
+    PanelTitle.TextStrokeTransparency = 0.5
+    PanelTitle.ZIndex = 31
+    PanelTitle.Parent = Panel
+
+    PanelBody = Instance.new("TextLabel")
+    PanelBody.BackgroundTransparency = 1
+    PanelBody.Size = UDim2.new(1, -12, 0, 0)
+    PanelBody.AutomaticSize = Enum.AutomaticSize.Y
+    PanelBody.Position = UDim2.fromOffset(8, 24)
+    PanelBody.Font = Enum.Font.Code
+    PanelBody.TextSize = XRay.TextSize
+    PanelBody.TextXAlignment = Enum.TextXAlignment.Left
+    PanelBody.TextYAlignment = Enum.TextYAlignment.Top
+    PanelBody.TextColor3 = Color3.fromRGB(225, 225, 225)
+    PanelBody.TextStrokeTransparency = 0.5
+    PanelBody.RichText = true
+    PanelBody.TextWrapped = true
+    PanelBody.ZIndex = 31
+    PanelBody.Parent = Panel
+
+    ResizeHandle = Instance.new("Frame")
+    ResizeHandle.Name = "ResizeGrip"
+    ResizeHandle.AnchorPoint = Vector2.new(0, 0.5)
+    ResizeHandle.Position = UDim2.new(0, 0, 0.5, 0)
+    ResizeHandle.Size = UDim2.new(0, 6, 1, -8)
+    ResizeHandle.BackgroundColor3 = Color3.fromRGB(120, 120, 160)
+    ResizeHandle.BackgroundTransparency = 0.6
+    ResizeHandle.BorderSizePixel = 0
+    ResizeHandle.ZIndex = 32
+    ResizeHandle.Parent = Panel
+    Instance.new("UICorner", ResizeHandle).CornerRadius = UDim.new(1, 0)
+
+    ResizeHandle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            Resizing = true
+            ResizeStartX = input.Position.X
+            ResizeStartWidth = Panel.Size.X.Offset
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    Resizing = false
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if not Resizing then
+            return
+        end
+        if input.UserInputType == Enum.UserInputType.MouseMovement
+            or input.UserInputType == Enum.UserInputType.Touch
+        then
+            local delta = input.Position.X - ResizeStartX
+            local newWidth = math.clamp(ResizeStartWidth - delta, 160, 800)
+            XRay.Width = newWidth
+            Panel.Size = UDim2.fromOffset(newWidth, 0)
+        end
+    end)
+
+    ApplyAppearance()
+end
+
+local function UpdatePanel()
+    SyncFromUI()
+
+    if not XRay.Enabled or not Camera then
+        if Panel then
+            Panel.Visible = false
+        end
+        return
+    end
+
+    if not BuildKnownSets() then
+        return
+    end
+
+    local target = PickTarget()
+    if not target then
+        if Panel then
+            Panel.Visible = false
+        end
+        return
+    end
+
+    EnsurePanel()
+    ApplyAppearance()
+
+    local body = {}
+    body[#body + 1] = "----------------"
+    local shown = 0
+
+    if XRay.Debug then
+        local lines = GetDebugLines(target.Player)
+        for _, line in lines do
+            if shown >= DEBUG_MAX then
+                body[#body + 1] = "... more"
+                break
+            end
+            shown += 1
+            body[#body + 1] = EscapeText(line.Text)
+        end
+    else
+        local normal, combat = CollectItems(target.Model, target.Player)
+        local truncated = false
+
+        for _, n in normal do
+            if shown >= MAX_LINES then
+                truncated = true
+                break
+            end
+            shown += 1
+            body[#body + 1] = "- " .. EscapeText(n)
+        end
+
+        for _, n in combat do
+            if shown >= MAX_LINES then
+                truncated = true
+                break
+            end
+            shown += 1
+            body[#body + 1] = '<font color="#ffd24a">[W]</font> ' .. EscapeText(n)
+        end
+
+        if truncated then
+            body[#body + 1] = "... more"
+        end
+
+        if shown == 0 then
+            body[#body + 1] = "- (no items)"
+        end
+    end
+
+    PanelTitle.Text = (XRay.Debug and "[X-RAY][DEBUG]: " or "[X-RAY]: ") .. target.Name
+    PanelBody.Text = table.concat(body, "\n")
+    Panel.Visible = true
+end
+
+local XRayGroup = Tabs.Visuals:AddRightGroupbox("Item X-Ray")
+
+XRayGroup:AddToggle("XRayEnabled", {
+    Text = "Item X-Ray",
+    Default = false,
+})
+
+XRayGroup:AddToggle("XRayIncludeCorpses", {
+    Text = "Include Corpses",
+    Default = false,
+})
+
+XRayGroup:AddToggle("XRayReadInventory", {
+    Text = "Read Inventory",
+    Default = false,
+})
+
+XRayGroup:AddToggle("XRayDebug", {
+    Text = "Debug Mode",
+    Default = false,
+})
+
+XRayGroup:AddSlider("XRayRadius", {
+    Text = "Target Radius",
+    Default = 300,
+    Min = 50,
+    Max = 800,
+    Rounding = 0,
+    Suffix = "px",
+    Callback = function(value)
+        XRay.Radius = value
+    end,
+})
+
+XRayGroup:AddSlider("XRayWidth", {
+    Text = "Panel Width",
+    Default = 220,
+    Min = 160,
+    Max = 800,
+    Rounding = 0,
+    Suffix = "px",
+    Callback = function(value)
+        XRay.Width = value
+        ApplyAppearance()
+    end,
+})
+
+XRayGroup:AddSlider("XRayTextSize", {
+    Text = "Text Size",
+    Default = 13,
+    Min = 10,
+    Max = 20,
+    Rounding = 0,
+    Callback = function(value)
+        XRay.TextSize = value
+        ApplyAppearance()
+    end,
+})
+
+RunService.RenderStepped:Connect(function()
+    local now = tick()
+    if now - LastScan < SCAN_INTERVAL then
+        return
+    end
+    LastScan = now
+    local ok, err = pcall(UpdatePanel)
+    if not ok then
+        warn("[Wallhack.gg]", "XRay", err)
+    end
+end)
+end)(); 
+
+----------------------------------------------------------------
+-- Item Finder v7 — cache + staggered scan (FPS friendly)
+----------------------------------------------------------------
+(function()
+local Finder = {
+    Enabled = false,
+    Rainbow = false,
+    Color = Color3.fromRGB(170, 0, 255),
+    IncludeCorpses = false,
+}
+
+local SCAN_INTERVAL = 0.5      -- รอบสแกนหลัก
+local CACHE_TTL = 2.0          -- ผลสแกนเก็บไว้ 2 วิ
+local CORPSE_TTL = 3.0         -- ศพสแกนถี่น้อยกว่า
+local PLAYERS_PER_TICK = 2     -- สแกนทีละ 2 เป้า
+local MAX_NODES = 1500
+
+local SelectedTargets = {}
+local SelectedOrder = {}
+local HighlightCache = {}
+local LastScan = 0
+
+local KnownItems = {}
+local AttachMatchers = {}
+local NameHitCache = {}
+local KnownBuilt = false
+local StatusLabel
+
+local ItemCache = {}           -- [model] = { Items=set, Time, Version }
+local PlayerQueue = {}
+local QueueIndex = 1
+
+local AttachmentKeywords = {
+    "scope", "sight", "suppressor", "visor", "grip", "laser", "nvg",
+    "flashlight", "peq", "mount", "hider", "brake", "bipod", "opt",
+}
+local ManualAttachments = {
+    "ACOG", "ELCAN", "SRO", "OKP7", "PSO1", "LPVO", "PN6K5",
+    "AFG", "RK2", "RK6", "PBS1", "HoloSight", "T1Sight", "T12W",
+    "HeadMount", "QuadNVG", "FastVisor", "LowCutVisor", "Kulon",
+}
+
+local function NormKey(s)
+    return tostring(s or ""):lower():gsub("[^%w]", "")
+end
+
+local function BuildKnownItems()
+    if KnownBuilt then
+        return true
+    end
+    local list = ReplicatedStorage:FindFirstChild("ItemsList")
+    if list then
+        for _, v in list:GetChildren() do
+            if v:IsA("StringValue") then
+                KnownItems[v.Name] = true
+            end
+        end
+    end
+    for _, folderName in { "ItemsListModels", "ThirdPersonModels", "RealClothing", "RangedWeapons", "AmmoTypes" } do
+        local f = ReplicatedStorage:FindFirstChild(folderName)
+        if f then
+            for _, v in f:GetChildren() do
+                KnownItems[v.Name] = true
+            end
+        end
+    end
+    local function tryAddMatcher(name)
+        local key = NormKey(name)
+        if #key >= 3 and not AttachMatchers[key] then
+            AttachMatchers[key] = name
+        end
+    end
+    for name in KnownItems do
+        local lower = name:lower()
+        for _, kw in AttachmentKeywords do
+            if lower:find(kw, 1, true) then
+                tryAddMatcher(name)
+                break
+            end
+        end
+    end
+    for _, name in ManualAttachments do
+        if KnownItems[name] then
+            tryAddMatcher(name)
+        end
+    end
+    KnownBuilt = next(KnownItems) ~= nil
+    if StatusLabel then
+        pcall(function()
+            StatusLabel:SetText("DB: " .. (KnownBuilt and "OK" or "EMPTY"))
+        end)
+    end
+    return KnownBuilt
+end
+
+local function MarkItem(items, raw)
+    local n = tostring(raw or "")
+    if n ~= "" and KnownItems[n] then
+        items[n] = true
+    end
+end
+
+local function MatchAttachmentName(n)
+    local key = NormKey(n)
+    if key == "" or #key < 3 then
+        return nil
+    end
+    local cached = NameHitCache[key]
+    if cached ~= nil then
+        return cached or nil
+    end
+    local hit = nil
+    for akey, aname in pairs(AttachMatchers) do
+        if key:find(akey, 1, true) then
+            hit = aname
+            break
+        end
+    end
+    NameHitCache[key] = hit
+    return hit
+end
+
+local InventoryFolderKeywords = {
+    "inventory", "items", "gear", "equip", "backpack", "pocket", "carry", "loadout", "attach", "weapon",
+}
+local SkipFolderKeywords = {
+    "skin", "case", "gift", "trade", "history", "quest", "stat", "craft", "kill", "report",
+}
+
+local function CollectFromCharacter(character, items)
+    local count = 0
+    for _, desc in character:GetDescendants() do
+        count += 1
+        if count > MAX_NODES then
+            break
+        end
+        local n = desc.Name
+        if KnownItems[n] then
+            items[n] = true
+        else
+            local hit = MatchAttachmentName(n)
+            if hit then
+                items[hit] = true
+            end
+        end
+        if desc:IsA("Tool") or desc:IsA("Model") then
+            pcall(function()
+                for k, v in desc:GetAttributes() do
+                    MarkItem(items, k)
+                    if typeof(v) == "string" then
+                        MarkItem(items, v)
+                    end
+                end
+            end)
+        end
+    end
+end
+
+local function ScanPlayerFolder(folder, items, depth)
+    if depth > 2 then
+        return
+    end
+    local count = 0
+    for _, child in folder:GetChildren() do
+        count += 1
+        if count > MAX_NODES then
+            return
+        end
+        local cls = child.ClassName
+        if cls == "Folder" or cls == "Configuration" then
+            local lower = child.Name:lower()
+            local skip = false
+            for _, kw in SkipFolderKeywords do
+                if lower:find(kw, 1, true) then
+                    skip = true
+                    break
+                end
+            end
+            if not skip then
+                local descend = false
+                for _, kw in InventoryFolderKeywords do
+                    if lower:find(kw, 1, true) then
+                        descend = true
+                        break
+                    end
+                end
+                if not descend and KnownItems[child.Name] then
+                    descend = true
+                end
+                if descend then
+                    ScanPlayerFolder(child, items, depth + 1)
+                end
+            end
+        elseif cls == "StringValue" then
+            local name = child.Name
+            local val = child.Value
+            if KnownItems[name] then
+                local num = tonumber(val)
+                if num then
+                    if num > 0 then
+                        items[name] = true
+                    end
+                elseif depth <= 1 then
+                    items[name] = true
+                elseif val ~= "" and KnownItems[val] then
+                    items[name] = true
+                end
+            end
+            if val ~= "" and KnownItems[val] then
+                items[val] = true
+            end
+        elseif cls == "ObjectValue" then
+            if child.Value then
+                MarkItem(items, child.Value.Name)
+            end
+        elseif cls == "NumberValue" or cls == "IntValue" then
+            local num = tonumber(child.Value)
+            if num and num > 0 and KnownItems[child.Name] then
+                items[child.Name] = true
+            end
+        elseif cls == "Tool" or cls == "Model" then
+            MarkItem(items, child.Name)
+        end
+    end
+end
+
+local function ScanPlayerData(player, items)
+    local pf = ReplicatedStorage:FindFirstChild("Players")
+    if not pf then
+        return
+    end
+    local folder = pf:FindFirstChild(player.Name)
+        or pf:FindFirstChild(tostring(player.UserId))
+        or pf:FindFirstChild(player.DisplayName)
+    if folder then
+        ScanPlayerFolder(folder, items, 0)
+    end
+end
+
+-- ★ มี cache: เรียกบ่อยแค่ไหนก็สแกนจริงแค่ทุก TTL
+local function GetItemsCached(model, player, ttl)
+    local now = tick()
+    local entry = ItemCache[model]
+    local version = model and model:GetAttribute("WallhackVer") or 0
+    if entry and (now - entry.Time) < ttl and entry.Version == version then
+        return entry.Items
+    end
+    BuildKnownItems()
+    local items = {}
+    CollectFromCharacter(model, items)
+    if player then
+        pcall(function()
+            ScanPlayerData(player, items)
+        end)
+    end
+    ItemCache[model] = { Items = items, Time = now, Version = version }
+    return items
+end
+
+local function GetCorpseModels()
+    local out = {}
+    local dropped = workspace:FindFirstChild("DroppedItems")
+    if dropped then
+        for _, obj in dropped:GetChildren() do
+            if obj:IsA("Model")
+                and (obj:FindFirstChild("Render") or obj.Name:match("^roblox_user_%d+$"))
+            then
+                out[#out + 1] = obj
+            end
+        end
+    end
+    return out
+end
+
+local function EnsureHighlight(model)
+    local hl = HighlightCache[model]
+    if hl and hl.Parent then
+        return hl
+    end
+    if hl then
+        hl:Destroy()
+    end
+    hl = Instance.new("Highlight")
+    hl.Name = "WallhackItemFinder"
+    hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    hl.FillTransparency = 0.35
+    hl.OutlineTransparency = 0
+    hl.Parent = model
+    HighlightCache[model] = hl
+    return hl
+end
+
+local function RemoveHighlight(model)
+    local hl = HighlightCache[model]
+    if hl then
+        hl:Destroy()
+        HighlightCache[model] = nil
+    end
+end
+
+local function ClearAll()
+    for model in pairs(HighlightCache) do
+        RemoveHighlight(model)
+    end
+    table.clear(HighlightCache)
+    table.clear(ItemCache)
+end
+
+local FoundLabel
+local TargetsLabel
+
+local function UpdateTargetsLabel()
+    if not TargetsLabel then
+        return
+    end
+    local text
+    if #SelectedOrder == 0 then
+        text = "Targets (0): -"
+    else
+        text = "Targets (" .. #SelectedOrder .. "): " .. table.concat(SelectedOrder, ", ")
+    end
+    pcall(function()
+        TargetsLabel:SetText(text)
+    end)
+end
+
+local function RebuildSelectionFromValue(value)
+    SelectedTargets = {}
+    SelectedOrder = {}
+    if typeof(value) == "table" then
+        for k, v in value do
+            local name
+            if v == true then
+                name = tostring(k)
+            elseif typeof(v) == "string" then
+                name = v
+            end
+            if name and name ~= "" and not SelectedTargets[name] then
+                SelectedTargets[name] = true
+                SelectedOrder[#SelectedOrder + 1] = name
+            end
+        end
+    elseif typeof(value) == "string" and value ~= "" then
+        SelectedTargets[value] = true
+        SelectedOrder[1] = value
+    end
+    UpdateTargetsLabel()
+end
+
+local function UpdateDropdownValues(dd, query)
+    BuildKnownItems()
+    local knownList = {}
+    for name in KnownItems do
+        knownList[#knownList + 1] = name
+    end
+    table.sort(knownList)
+    local q = tostring(query or ""):lower()
+    local values = {}
+    local seen = {}
+    for _, name in SelectedOrder do
+        values[#values + 1] = name
+        seen[name] = true
+    end
+    if q ~= "" then
+        for _, name in knownList do
+            if #values >= 80 then
+                break
+            end
+            if not seen[name] and name:lower():find(q, 1, true) then
+                values[#values + 1] = name
+                seen[name] = true
+            end
+        end
+    elseif #values == 0 then
+        for i = 1, math.min(40, #knownList) do
+            values[#values + 1] = knownList[i]
+        end
+    end
+    pcall(function()
+        dd:SetValues(values)
+    end)
+    if #SelectedOrder > 0 then
+        pcall(function()
+            dd:SetValue(SelectedOrder)
+        end)
+    end
+end
+
+local FinderGroup = Tabs.Misc:AddRightGroupbox("Item Finder")
+
+FinderGroup:AddToggle("ItemFinderEnabled", {
+    Text = "Item Finder (Auto-Scan)",
+    Default = false,
+    Callback = function(value)
+        Finder.Enabled = value
+        if not value then
+            ClearAll()
+            pcall(function()
+                FoundLabel:SetText("Targets Found: 0")
+            end)
+        end
+    end,
+}):AddColorPicker("ItemFinderColor", {
+    Default = Color3.fromRGB(170, 0, 255),
+    Title = "Finder Color",
+    Callback = function(value)
+        Finder.Color = value
+    end,
+})
+
+FinderGroup:AddToggle("ItemFinderRainbow", {
+    Text = "Rainbow Charms",
+    Default = false,
+    Callback = function(value)
+        Finder.Rainbow = value
+    end,
+})
+
+FinderGroup:AddToggle("ItemFinderCorpses", {
+    Text = "Include Corpses",
+    Default = false,
+    Callback = function(value)
+        Finder.IncludeCorpses = value
+        if not value then
+            for model in pairs(HighlightCache) do
+                if not Players:GetPlayerFromCharacter(model) then
+                    RemoveHighlight(model)
+                end
+            end
+        end
+    end,
+})
+
+FinderGroup:AddInput("ItemFinderSearch", {
+    Default = "",
+    Numeric = false,
+    Finished = false,
+    Text = "Search Item",
+    Placeholder = "type item name (e.g. ACOG, Altyn)",
+    Callback = function(value)
+        local dd = Options.ItemFinderItems
+        if dd then
+            UpdateDropdownValues(dd, value)
+        end
+    end,
+})
+
+FinderGroup:AddDropdown("ItemFinderItems", {
+    Values = {},
+    Multi = true,
+    Text = "Target Items)",
+    Callback = function(value)
+        RebuildSelectionFromValue(value)
+    end,
+})
+
+TargetsLabel = FinderGroup:AddLabel("Targets (0): -")
+FoundLabel = FinderGroup:AddLabel("Targets Found: 0")
+StatusLabel = FinderGroup:AddLabel("DB: ...")
+
+FinderGroup:AddButton("Clear All Targets", function()
+    SelectedTargets = {}
+    SelectedOrder = {}
+    local dd = Options.ItemFinderItems
+    if dd then
+        pcall(function()
+            dd:SetValue({})
+        end)
+    end
+    UpdateTargetsLabel()
+end)
+
+RunService.RenderStepped:Connect(function()
+    local now = tick()
+    if now - LastScan < SCAN_INTERVAL then
+        return
+    end
+    LastScan = now
+
+    local ok, err = pcall(function()
+        if not Finder.Enabled or #SelectedOrder == 0 then
+            ClearAll()
+            pcall(function()
+                FoundLabel:SetText("Targets Found: 0")
+            end)
+            return
+        end
+
+        local foundCount = 0
+        local foundNames = {}
+
+        -- ★ staggered: สแกนทีละ 2 คนต่อรอบ หมุนเวียน
+        local players = Players:GetPlayers()
+        PlayerQueue = players
+
+        for i = 1, PLAYERS_PER_TICK do
+            QueueIndex += 1
+            if QueueIndex > #PlayerQueue then
+                QueueIndex = 1
+            end
+            local player = PlayerQueue[QueueIndex]
+            if player and player ~= LocalPlayer then
+                local character = player.Character
+                local hl = HighlightCache[character]
+                if not character then
+                    if hl then
+                        RemoveHighlight(character)
+                    end
+                else
+                    local humanoid = character:FindFirstChildOfClass("Humanoid")
+                    local alive = not humanoid or humanoid.Health > 0
+                    if alive then
+                        local items = GetItemsCached(character, player, CACHE_TTL)
+                        local matched = nil
+                        for _, target in SelectedOrder do
+                            if items[target] then
+                                matched = target
+                                break
+                            end
+                        end
+                        if matched then
+                            foundCount += 1
+                            foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
+                            local h = EnsureHighlight(character)
+                            if not Finder.Rainbow then
+                                h.FillColor = Finder.Color
+                                h.OutlineColor = Finder.Color
+                            end
+                        else
+                            RemoveHighlight(character)
+                        end
+                    else
+                        RemoveHighlight(character)
+                    end
+                end
+            end
+        end
+
+        -- นับผลรวมจาก cache ทั้งหมด (ไม่สแกนเพิ่ม) เพื่อโชว์ตัวเลขถูกต้อง
+        for _, player in Players:GetPlayers() do
+            if player ~= LocalPlayer and player ~= PlayerQueue[QueueIndex] then
+                local character = player.Character
+                if character then
+                    local entry = ItemCache[character]
+                    if entry and (tick() - entry.Time) < CACHE_TTL then
+                        local matched = nil
+                        for _, target in SelectedOrder do
+                            if entry.Items[target] then
+                                matched = target
+                                break
+                            end
+                        end
+                        if matched then
+                            foundCount += 1
+                            foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
+                            local h = EnsureHighlight(character)
+                            if not Finder.Rainbow then
+                                h.FillColor = Finder.Color
+                                h.OutlineColor = Finder.Color
+                            end
+                        else
+                            RemoveHighlight(character)
+                        end
+                    end
+                end
+            end
+        end
+
+        if Finder.IncludeCorpses then
+            for _, corpse in GetCorpseModels() do
+                local items = GetItemsCached(corpse, nil, CORPSE_TTL)
+                local matched = nil
+                for _, target in SelectedOrder do
+                    if items[target] then
+                        matched = target
+                        break
+                    end
+                end
+                if matched then
+                    foundCount += 1
+                    foundNames[#foundNames + 1] = corpse.Name .. " (" .. matched .. ")"
+                    local h = EnsureHighlight(corpse)
+                    if not Finder.Rainbow then
+                        h.FillColor = Finder.Color
+                        h.OutlineColor = Finder.Color
+                    end
+                else
+                    RemoveHighlight(corpse)
+                end
+            end
+        else
+            for model in pairs(HighlightCache) do
+                if not Players:GetPlayerFromCharacter(model) then
+                    RemoveHighlight(model)
+                end
+            end
+        end
+
+        for model in pairs(HighlightCache) do
+            if not model.Parent then
+                HighlightCache[model] = nil
+                ItemCache[model] = nil
+            end
+        end
+
+        local text = "Targets Found: " .. foundCount
+        if #foundNames > 0 then
+            text ..= "  |  " .. table.concat(foundNames, ", ")
+        end
+        pcall(function()
+            FoundLabel:SetText(text)
+        end)
+    end)
+    if not ok then
+        warn("[Wallhack.gg]", "ItemFinder", err)
+    end
+end)
+
+RunService.RenderStepped:Connect(function()
+    if not Finder.Rainbow then
+        return
+    end
+    local c = Color3.fromHSV((tick() % 4) / 4, 1, 1)
+    for _, hl in pairs(HighlightCache) do
+        if hl and hl.Parent then
+            hl.FillColor = c
+            hl.OutlineColor = c
+        end
+    end
+end)
+
+BuildKnownItems()
 end)();
 
 ----------------------------------------------------------------
@@ -8078,7 +9862,7 @@ MenuGroup:AddToggle("KeybindMenuOpen", {
 
 MenuGroup:AddToggle("ShowCustomCursor", {
 	Text = "Custom Cursor",
-	Default = true,
+	Default = false,
 	Callback = function(value)
 		Library.ShowCustomCursor = value
 	end,
@@ -8197,14 +9981,14 @@ local function CopyDiscordInvite()
 end
 
 local CreditsMade = Tabs.Credits:AddLeftGroupbox("Made by")
-CreditsMade:AddLabel("Made by Vp4q")
-CreditsMade:AddLabel("If you paid for this script, you got scammed.")
-CreditsMade:AddLabel("This is a long project — it took 6 days of full work.")
+CreditsMade:AddLabel("Made by Yuki")
+CreditsMade:AddLabel("")
+CreditsMade:AddLabel("")
 
 local CreditsThanks = Tabs.Credits:AddLeftGroupbox("Special thanks")
-CreditsThanks:AddLabel("Thanks to 224 aka (224lolv2)")
-CreditsThanks:AddLabel("for the ideas, helping decide what to add,")
-CreditsThanks:AddLabel("and testing the script out for me.")
+CreditsThanks:AddLabel("")
+CreditsThanks:AddLabel("")
+CreditsThanks:AddLabel("")
 
 local CreditsJoin = Tabs.Credits:AddRightGroupbox("Join us")
 CreditsJoin:AddLabel("Discord server")
