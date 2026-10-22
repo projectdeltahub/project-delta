@@ -344,6 +344,11 @@ local Aimbot = {
 	FOVColor = Color3.fromRGB(255, 255, 255),
 	FilledFOVColor = Color3.fromRGB(255, 80, 80),
 	Holding = false,
+
+	-- Target In FOV alert
+	TargetAlert = false,
+	TargetAlertColor = Color3.fromRGB(0, 255, 80),
+	TargetInFOV = false,
 }
 
 local SilentAim = {
@@ -397,7 +402,7 @@ local function ResolveAimbotMethod(value)
 	return "Mouse Aim"
 end
 
-local UpdateTriggerBot, SyncTriggerBotFromUI, SyncAimbotFromUI, AimMouse, AimCamera, GetClosestTarget, UpdateFOV, UpdateAimbot
+local UpdateTriggerBot, SyncTriggerBotFromUI, SyncAimbotFromUI, AimMouse, AimCamera, GetClosestTarget, UpdateFOV, UpdateAimbot, UpdateTargetAlert
 
 (function()
 local TriggerRayParams = RaycastParams.new()
@@ -478,6 +483,21 @@ local SilentFOVStroke = Instance.new("UIStroke")
 SilentFOVStroke.Thickness = 2
 SilentFOVStroke.Color = Color3.fromRGB(160, 80, 255)
 SilentFOVStroke.Parent = SilentFOVFrame
+
+local TargetAlertLabel = Instance.new("TextLabel")
+TargetAlertLabel.Name = "TargetAlertLabel"
+TargetAlertLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+TargetAlertLabel.BackgroundTransparency = 1
+TargetAlertLabel.Size = UDim2.fromOffset(520, 26)
+TargetAlertLabel.Font = Enum.Font.SourceSansBold
+TargetAlertLabel.TextSize = 20
+TargetAlertLabel.TextColor3 = Color3.fromRGB(0, 255, 80)
+TargetAlertLabel.TextStrokeTransparency = 0.4
+TargetAlertLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+TargetAlertLabel.Text = "TARGET IN FOV"
+TargetAlertLabel.Visible = false
+TargetAlertLabel.ZIndex = 4
+TargetAlertLabel.Parent = FOVGui
 
 local function GetAimPart(character)
 	return character:FindFirstChild("Head", true)
@@ -747,10 +767,135 @@ UpdateFOV = function()
 	SilentFOVFrame.Visible = SilentAim.Enabled and SilentAim.ShowFOV
 end
 
+local function GetLocalRootForDistance()
+	local char = LocalPlayer.Character
+	if not char then
+		return nil
+	end
+	return char:FindFirstChild("HumanoidRootPart", true)
+		or char:FindFirstChild("RootPart", true)
+		or char:FindFirstChild("UpperTorso", true)
+		or char:FindFirstChild("Torso", true)
+end
+
+local function GetPlayersInFOV()
+	local found = {}
+	if not Camera then
+		return found
+	end
+
+	local center = GetScreenCenter()
+	local maxFov = math.max(Aimbot.FOV, 1)
+	local localRoot = GetLocalRootForDistance()
+
+	for _, player in Players:GetPlayers() do
+		if player ~= LocalPlayer then
+			local character = player.Character
+			if character then
+				local humanoid = character:FindFirstChildOfClass("Humanoid")
+				if humanoid and humanoid.Health > 0 then
+					local part = GetAimPart(character)
+					if part then
+						local screenPos, onScreen = Camera:WorldToViewportPoint(part.Position)
+						if screenPos.Z > 0 and onScreen then
+							local screenDistance = (Vector2.new(screenPos.X, screenPos.Y) - center).Magnitude
+							if screenDistance <= maxFov then
+								local worldDistance = nil
+								if localRoot then
+									worldDistance = (part.Position - localRoot.Position).Magnitude
+								end
+								found[#found + 1] = {
+									Player = player,
+									Humanoid = humanoid,
+									Distance = worldDistance,
+								}
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return found
+end
+
+-- Target In FOV alert: turns the circle to the alert color and shows a
+-- label under the circle while someone is standing inside the FOV.
+UpdateTargetAlert = function()
+	local alertToggle = Toggles.TargetAlert
+	if alertToggle then
+		Aimbot.TargetAlert = alertToggle.Value
+	end
+
+	local alertColorOption = Options.TargetAlertColor
+	if alertColorOption then
+		Aimbot.TargetAlertColor = alertColorOption.Value
+	end
+
+	local detected = false
+	local labelText = nil
+
+	if Aimbot.TargetAlert then
+		local targets = GetPlayersInFOV()
+		if #targets > 0 then
+			detected = true
+
+			local closest = targets[1]
+			for _, entry in targets do
+				if entry.Distance and closest.Distance and entry.Distance < closest.Distance then
+					closest = entry
+				end
+			end
+
+			local name = closest.Player.DisplayName or closest.Player.Name
+			labelText = "TARGET: " .. name
+
+			if #targets > 1 then
+				labelText = labelText .. " +" .. (#targets - 1)
+			end
+
+			if closest.Distance then
+				labelText = labelText .. string.format(" [%dm]", math.floor(closest.Distance + 0.5))
+			end
+		end
+	end
+
+	Aimbot.TargetInFOV = detected
+
+	if Aimbot.ShowFOV then
+		if detected then
+			OutlineStroke.Color = Aimbot.TargetAlertColor
+		else
+			OutlineStroke.Color = Aimbot.FOVColor
+		end
+	end
+
+	if detected and Camera then
+		local center = GetScreenCenter()
+		local yPos = center.Y + Aimbot.FOV + 24
+		local maxY = Camera.ViewportSize.Y - 24
+		if yPos > maxY then
+			yPos = maxY
+		end
+		TargetAlertLabel.Position = UDim2.fromOffset(center.X, yPos)
+		TargetAlertLabel.Text = labelText
+		TargetAlertLabel.TextColor3 = Aimbot.TargetAlertColor
+		TargetAlertLabel.Visible = true
+	else
+		TargetAlertLabel.Visible = false
+	end
+end
+
 RunService:BindToRenderStep("WallhackAimbot", Enum.RenderPriority.Last.Value, function()
 	local ok, err = pcall(UpdateAimbot)
 	if not ok then
 		warn("[Wallhack.gg] Aimbot", err)
+	end
+
+	local okAlert, errAlert = pcall(UpdateTargetAlert)
+	if not okAlert then
+		warn("[Wallhack.gg] TargetAlert", errAlert)
 	end
 end)
 
@@ -1295,6 +1440,23 @@ AimbotBox:AddSlider("AimbotFOVSize", {
 	Callback = function(value)
 		Aimbot.FOV = value
 		UpdateFOV()
+	end,
+})
+
+AimbotBox:AddToggle("TargetAlert", {
+	Text = "Alert when someone in FOV",
+	Default = false,
+	Callback = function(value)
+		Aimbot.TargetAlert = value
+		if UpdateTargetAlert then
+			UpdateTargetAlert()
+		end
+	end,
+}):AddColorPicker("TargetAlertColor", {
+	Default = Color3.fromRGB(0, 255, 80),
+	Title = "Alert Color",
+	Callback = function(value)
+		Aimbot.TargetAlertColor = value
 	end,
 })
 
@@ -7136,6 +7298,7 @@ local XRay = {
     Enabled = false,
     IncludeCorpses = true,
     ReadInventory = true,
+    FovTrigger = true,
     Debug = false,
     Radius = 300,
     Width = 220,
@@ -7411,14 +7574,13 @@ local function GetCorpses()
     return out
 end
 
-local function PickTarget()
+local function PickTarget(centerX, centerY, radius)
     if not Camera then
         return nil
     end
 
-    local vp = Camera.ViewportSize
-    local center = Vector2.new(vp.X / 2, vp.Y / 2)
-    local best, bestDist = nil, XRay.Radius
+    local center = Vector2.new(centerX, centerY)
+    local best, bestDist = nil, radius
 
     for _, player in Players:GetPlayers() do
         if player ~= LocalPlayer then
@@ -7474,6 +7636,10 @@ local function SyncFromUI()
     t = Toggles.XRayReadInventory
     if t then
         XRay.ReadInventory = t.Value
+    end
+    t = Toggles.XRayFovTrigger
+    if t then
+        XRay.FovTrigger = t.Value
     end
     t = Toggles.XRayDebug
     if t then
@@ -7607,9 +7773,23 @@ local function UpdatePanel()
         return
     end
 
-    local target = PickTarget()
+    local target = nil
+    if XRay.FovTrigger then
+        EnsurePanel()
+        ApplyAppearance()
+        local mousePos = UserInputService:GetMouseLocation()
+        target = PickTarget(mousePos.X, mousePos.Y, math.max(SilentAim.FOV, 1))
+    else
+        local vp = Camera.ViewportSize
+        target = PickTarget(vp.X / 2, vp.Y / 2, XRay.Radius)
+    end
+
     if not target then
-        if Panel then
+        if XRay.FovTrigger and Panel then
+            PanelTitle.Text = (XRay.Debug and "[X-RAY][DEBUG]: " or "[X-RAY]: ") .. "NONE"
+            PanelBody.Text = ""
+            Panel.Visible = true
+        elseif Panel then
             Panel.Visible = false
         end
         return
@@ -7620,6 +7800,23 @@ local function UpdatePanel()
 
     local body = {}
     body[#body + 1] = "----------------"
+
+    local humanoid = target.Model:FindFirstChildOfClass("Humanoid")
+    local status = "ALIVE"
+    if target.Dead or (humanoid and humanoid.Health <= 0) then
+        status = "DEAD"
+    end
+    local infoLine = "[STATUS] " .. status
+    local targetRoot = target.Model:FindFirstChild("HumanoidRootPart")
+        or target.Model.PrimaryPart
+        or target.Model:FindFirstChildWhichIsA("BasePart", true)
+    local localChar = LocalPlayer.Character
+    local localRoot = localChar and localChar:FindFirstChild("HumanoidRootPart")
+    if localRoot and targetRoot then
+        infoLine = infoLine .. string.format(" | [DIST] %.1f", (localRoot.Position - targetRoot.Position).Magnitude)
+    end
+    body[#body + 1] = infoLine
+
     local shown = 0
 
     if XRay.Debug then
@@ -7674,6 +7871,13 @@ XRayGroup:AddToggle("XRayEnabled", {
     Text = "Item X-Ray",
     Default = false,
 })
+
+XRayGroup:AddToggle("XRayFovTrigger", {
+    Text = "FOV Trigger (Silent Aim)",
+    Default = true,
+})
+
+XRayGroup:AddLabel("FOV Trigger: uses Silent Aim FOV circle")
 
 XRayGroup:AddToggle("XRayIncludeCorpses", {
     Text = "Include Corpses",
@@ -7747,6 +7951,7 @@ end)();
 local Finder = {
     Enabled = false,
     Rainbow = false,
+    IncludeCharms = false,
     Color = Color3.fromRGB(170, 0, 255),
     IncludeCorpses = false,
 }
@@ -7764,6 +7969,7 @@ local LastScan = 0
 
 local KnownItems = {}
 local AttachMatchers = {}
+local CharmItems = {}
 local NameHitCache = {}
 local KnownBuilt = false
 local StatusLabel
@@ -7806,6 +8012,15 @@ local function BuildKnownItems()
             end
         end
     end
+    for _, folderName in { "Charms", "Charm", "CharmList", "WeaponCharms" } do
+        local f = ReplicatedStorage:FindFirstChild(folderName)
+        if f then
+            for _, v in f:GetChildren() do
+                KnownItems[v.Name] = true
+                CharmItems[v.Name] = true
+            end
+        end
+    end
     local function tryAddMatcher(name)
         local key = NormKey(name)
         if #key >= 3 and not AttachMatchers[key] then
@@ -7824,6 +8039,12 @@ local function BuildKnownItems()
     for _, name in ManualAttachments do
         if KnownItems[name] then
             tryAddMatcher(name)
+        end
+    end
+    for name in KnownItems do
+        local lower = name:lower()
+        if lower:find("charm", 1, true) then
+            CharmItems[name] = true
         end
     end
     KnownBuilt = next(KnownItems) ~= nil
@@ -7863,7 +8084,7 @@ local function MatchAttachmentName(n)
 end
 
 local InventoryFolderKeywords = {
-    "inventory", "items", "gear", "equip", "backpack", "pocket", "carry", "loadout", "attach", "weapon",
+    "inventory", "items", "gear", "equip", "backpack", "pocket", "carry", "loadout", "attach", "weapon", "charm",
 }
 local SkipFolderKeywords = {
     "skin", "case", "gift", "trade", "history", "quest", "stat", "craft", "kill", "report",
@@ -7883,6 +8104,8 @@ local function CollectFromCharacter(character, items)
             local hit = MatchAttachmentName(n)
             if hit then
                 items[hit] = true
+            elseif n:lower():find("charm", 1, true) then
+                items[n] = true
             end
         end
         if desc:IsA("Tool") or desc:IsA("Model") then
@@ -8066,6 +8289,25 @@ local function UpdateTargetsLabel()
     end)
 end
 
+local function MatchTargets(items)
+    local matched = nil
+    for _, target in SelectedOrder do
+        if items[target] then
+            matched = target
+            break
+        end
+    end
+    if not matched and Finder.IncludeCharms then
+        for name in pairs(items) do
+            if CharmItems[name] or tostring(name):lower():find("charm", 1, true) then
+                matched = name
+                break
+            end
+        end
+    end
+    return matched
+end
+
 local function RebuildSelectionFromValue(value)
     SelectedTargets = {}
     SelectedOrder = {}
@@ -8157,6 +8399,16 @@ FinderGroup:AddToggle("ItemFinderRainbow", {
         Finder.Rainbow = value
     end,
 })
+
+FinderGroup:AddToggle("ItemFinderCharms", {
+    Text = "Include Charms (Auto-Target)",
+    Default = false,
+    Callback = function(value)
+        Finder.IncludeCharms = value
+    end,
+})
+
+FinderGroup:AddLabel("Charms: every item with 'Charm' in its name")
 
 FinderGroup:AddToggle("ItemFinderCorpses", {
     Text = "Include Corpses",
@@ -8253,13 +8505,7 @@ RunService.RenderStepped:Connect(function()
                     local alive = not humanoid or humanoid.Health > 0
                     if alive then
                         local items = GetItemsCached(character, player, CACHE_TTL)
-                        local matched = nil
-                        for _, target in SelectedOrder do
-                            if items[target] then
-                                matched = target
-                                break
-                            end
-                        end
+                        local matched = MatchTargets(items)
                         if matched then
                             foundCount += 1
                             foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
@@ -8285,13 +8531,7 @@ RunService.RenderStepped:Connect(function()
                 if character then
                     local entry = ItemCache[character]
                     if entry and (tick() - entry.Time) < CACHE_TTL then
-                        local matched = nil
-                        for _, target in SelectedOrder do
-                            if entry.Items[target] then
-                                matched = target
-                                break
-                            end
-                        end
+                        local matched = MatchTargets(entry.Items)
                         if matched then
                             foundCount += 1
                             foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
@@ -8311,13 +8551,7 @@ RunService.RenderStepped:Connect(function()
         if Finder.IncludeCorpses then
             for _, corpse in GetCorpseModels() do
                 local items = GetItemsCached(corpse, nil, CORPSE_TTL)
-                local matched = nil
-                for _, target in SelectedOrder do
-                    if items[target] then
-                        matched = target
-                        break
-                    end
-                end
+                local matched = MatchTargets(items)
                 if matched then
                     foundCount += 1
                     foundNames[#foundNames + 1] = corpse.Name .. " (" .. matched .. ")"
