@@ -10196,7 +10196,158 @@ SaveManager:SetIgnoreIndexes({ "MenuKeybind" })
 ThemeManager:SetFolder("Wallhack.gg")
 SaveManager:SetFolder("Wallhack.gg/ProjectDelta")
 SaveManager:BuildConfigSection(Tabs.Settings)
-ThemeManager:ApplyToTab(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings);
+
+----------------------------------------------------------------
+-- Category Off Keys — one key press turns off every toggle in a category
+-- (each category tab now has its own off bind, styled like the Menu bind row)
+----------------------------------------------------------------
+(function()
+local CategoryOffLists = {
+	{
+		Key = "PanicKeyAimbot",
+		Default = "J",
+		Label = "Aimbot",
+		Tab = Tabs.Aimbot,
+		Column = "Left",
+		Toggles = {
+			"AimbotEnabled", "ShowFOV", "FilledFOV", "TargetAlert",
+			"TriggerBotEnabled", "SilentAimEnabled", "SilentAimShowFOV", "SilentAimPrediction",
+		},
+	},
+	{
+		Key = "PanicKeyVisuals",
+		Default = "H",
+		Label = "Visuals",
+		Tab = Tabs.Visuals,
+		Column = "Left",
+		Toggles = {
+			"SelfESP", "BoneESP", "VisibilityCheck", "BoxESP", "TracerESP", "ChamsESP",
+			"NameESP", "DistanceESP", "HealthESP", "HealthBarTextESP", "HeadDotESP",
+			"ChineseHatESP", "BulletTracerESP", "GunChamESP",
+			"NpcESPEnabled", "NpcBoneESP", "NpcBoxESP", "NpcTracerESP", "NpcChamsESP",
+			"NpcNameESP", "NpcDistanceESP", "NpcHealthESP", "NpcHealthBarTextESP",
+			"NpcHeadDotESP", "NpcChineseHatESP",
+			"CorpseESPEnabled", "CorpseBoxESP", "CorpseChamsESP", "CorpseNameESP", "CorpseDistanceESP",
+			"XRayEnabled", "XRayFovTrigger", "XRayIncludeCorpses", "XRayReadInventory", "XRayDebug",
+		},
+	},
+	{
+		Key = "PanicKeyWorldESP",
+		Default = "B",
+		Label = "World ESP",
+		Tab = Tabs.WorldESP,
+		Column = "Right",
+		Toggles = {
+			"CrateESP", "CrateNameESP", "CrateDistanceESP", "PurpleSky", "LandmineESP", "ExtractionESP",
+		},
+	},
+	{
+		Key = "PanicKeyMisc",
+		Default = "N",
+		Label = "Misc",
+		Tab = Tabs.Misc,
+		Column = "Left",
+		Toggles = {
+			"ItemFinderEnabled", "ItemFinderRainbow", "ItemFinderCharms", "ItemFinderCorpses",
+			"Spinbot", "ThirdPerson", "WalkOnWater", "WallPenetration", "NoRecoil", "NoSpread",
+			"FastWalk", "FreeCam", "FullBright", "FOVChanger",
+		},
+	},
+}
+
+local LastStates = {}
+local SavedStates = {} -- [key] = { [toggleName] = true } remembered while turned off
+
+-- 1st press: remember which toggles are on, then turn every toggle off.
+-- Next press: turn back on exactly the toggles that were on before.
+local function PanicCategory(cat)
+	local saved = SavedStates[cat.Key]
+	if saved then
+		for _, name in ipairs(cat.Toggles) do
+			if saved[name] then
+				local toggle = Toggles[name]
+				if toggle then
+					pcall(function()
+						toggle:SetValue(true)
+					end)
+				end
+			end
+		end
+		SavedStates[cat.Key] = nil
+	else
+		local snapshot = {}
+		for _, name in ipairs(cat.Toggles) do
+			local toggle = Toggles[name]
+			if toggle then
+				if toggle.Value == true then
+					snapshot[name] = true
+				end
+				pcall(function()
+					toggle:SetValue(false)
+				end)
+			end
+		end
+		SavedStates[cat.Key] = snapshot
+	end
+end
+
+for _, cat in ipairs(CategoryOffLists) do
+	local group
+	if cat.Column == "Right" then
+		group = cat.Tab:AddRightGroupbox("Turn Off All Functions")
+	else
+		group = cat.Tab:AddLeftGroupbox("Turn Off All Functions")
+	end
+	group:AddLabel("Press key = off all, press again = restore")
+	group:AddLabel(cat.Label .. " off bind"):AddKeyPicker(cat.Key, {
+		Default = cat.Default,
+		Mode = "Hold",
+		Text = "Off All: " .. cat.Label,
+		SyncToggleState = false,
+	})
+	group:AddButton("Turn Off / Restore (This Category)", function()
+		PanicCategory(cat)
+	end)
+	LastStates[cat.Key] = false
+end
+
+local OffKeysGroup = Tabs.Settings:AddRightGroupbox("Turn Off All Functions")
+OffKeysGroup:AddLabel("Each category tab has its own off bind")
+OffKeysGroup:AddButton("Turn Off All / Restore (Every Category)", function()
+	local hasSnapshot = false
+	for _, cat in ipairs(CategoryOffLists) do
+		if SavedStates[cat.Key] then
+			hasSnapshot = true
+			break
+		end
+	end
+	for _, cat in ipairs(CategoryOffLists) do
+		if hasSnapshot then
+			if SavedStates[cat.Key] then
+				PanicCategory(cat)
+			end
+		else
+			PanicCategory(cat)
+		end
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	for _, cat in ipairs(CategoryOffLists) do
+		local opt = Options[cat.Key]
+		if opt and typeof(opt.GetState) == "function" then
+			local ok, state = pcall(opt.GetState, opt)
+			if ok then
+				if state and not LastStates[cat.Key] then
+					PanicCategory(cat)
+				end
+				LastStates[cat.Key] = state
+			end
+		end
+	end
+end)
+end)();
 
 ----------------------------------------------------------------
 -- Credits
