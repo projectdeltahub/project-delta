@@ -3895,6 +3895,13 @@ end)();
 
 local UpdateESP, UpdateNpcESP, UpdateCrateESP, UpdateLandmineESP, UpdateExtractionESP, EnsureExtractionDescendantHook
 local DrawCharacterESP
+local ScanNPCs -- forward decl: NPC ESP, TP target list and radar map share one scan
+local MapESPStatusLabel -- forward decl: the label is created in the
+-- World ESP UI section (different IIFE) and used by the Map ESP
+-- engine at the bottom, so it must live at chunk scope like ScanNPCs
+local EspMapFullOpen, EspMapFullClose -- forward decl: the ESP Map UI toggle (another IIFE) calls these engine functions
+local EspMapFullSyncing -- re-entrancy guard: the Misc mirror toggle and the World ESP original sync each other, must live at chunk scope
+local EspMapMiscStatusLabel -- forward decl: mirror status label created in the Misc UI section (another IIFE), updated by EspMapFullSetStatus
 local GetInstanceWorldPosition, PromptMatchesExtraction
 local ExtractionTags, ExtractionKeywords, ExtractionFolderNames, ExtractionAttributeNames
 local HasExtractionAttribute, NameMatchesExtraction, HasExtractionTag, TextMatchesExtraction
@@ -4620,7 +4627,7 @@ local function NpcNeedsESP()
                 or NpcESP.HealthText
 end
 
-local function ScanNPCs()
+ScanNPCs = function()
         local found = {}
         local aiZones = workspace:FindFirstChild("AiZones")
 
@@ -6577,6 +6584,89 @@ VisualsRight:AddToggle("NpcChineseHatESP", {
 -- World ESP
 ----------------------------------------------------------------
 local WorldBox = Tabs.WorldESP:AddLeftGroupbox("In World ESP")
+
+local EspMapBox = Tabs.WorldESP:AddRightGroupbox("ESP Map (Radar)")
+
+EspMapBox:AddToggle("EspMap", {
+	Text = "ESP Map (radar overlay)",
+	Default = false,
+	Callback = function(value)
+		Misc.EspMap = value
+	end,
+})
+
+EspMapBox:AddSlider("EspMapRange", {
+	Text = "Map Range",
+	Default = 300,
+	Min = 50,
+	Max = 2000,
+	Rounding = 0,
+	Suffix = "m",
+	Callback = function(value)
+		if typeof(value) == "number" then
+			Misc.EspMapRange = value
+		end
+	end,
+})
+
+EspMapBox:AddToggle("EspMapPlayers", {
+	Text = "Map: Show Players",
+	Default = true,
+	Callback = function(value)
+		Misc.EspMapPlayers = value
+	end,
+})
+
+EspMapBox:AddToggle("EspMapNpcs", {
+	Text = "Map: Show NPCs / Scavs",
+	Default = true,
+	Callback = function(value)
+		Misc.EspMapNpcs = value
+	end,
+})
+
+local MapESPBox = Tabs.WorldESP:AddRightGroupbox("ESP Map (Full Map)")
+
+MapESPBox:AddToggle("EspMapFull", {
+	Text = "ESP Map (open full map)",
+	Default = false,
+	Callback = function(value)
+		Misc.EspMapFull = value
+		if not EspMapFullSyncing then
+			EspMapFullSyncing = true
+			if typeof(Toggles.EspMapFullMisc) == "table" and typeof(Toggles.EspMapFullMisc.SetValue) == "function" then
+				pcall(Toggles.EspMapFullMisc.SetValue, Toggles.EspMapFullMisc, value)
+			end
+			EspMapFullSyncing = false
+		end
+		if value then
+			if typeof(EspMapFullOpen) == "function" then
+				EspMapFullOpen()
+			end
+		else
+			if typeof(EspMapFullClose) == "function" then
+				EspMapFullClose()
+			end
+		end
+	end,
+}):AddKeyPicker("EspMapFullKeybind", {
+	Default = "KeypadSeven",
+	Mode = "Toggle",
+	Text = "ESP Map",
+	SyncToggleState = true,
+})
+
+MapESPBox:AddToggle("EspMapFullNpcs", {
+	Text = "ESP Map: Show NPCs / Scavs (orange dots)",
+	Default = false,
+	Callback = function(value)
+		Misc.EspMapFullNpcs = value
+	end,
+})
+
+MapESPBox:AddLabel("Opens the game's own full map with a live marker for every player (red + name) and ME (you). Pick any key you want above to open/close it.")
+
+MapESPStatusLabel = MapESPBox:AddLabel("ESP Map: press your key to open the full map")
 
 WorldBox:AddToggle("CrateESP", {
         Text = "Crate ESP",
@@ -8637,6 +8727,13 @@ Misc = {
         FastWalk = false,
         FreeCam = false,
         FreeCamSpeed = 60,
+	FreeCamFollow = false,
+	EspMap = false,
+	EspMapRange = 300,
+	EspMapPlayers = true,
+	EspMapNpcs = true,
+	EspMapFull = false,
+	EspMapFullNpcs = false,
 }
 
 task.defer(function()
@@ -8682,9 +8779,16 @@ SyncMiscFromUI = function()
         toggle("NoSpread", "NoSpread")
         toggle("FastWalk", "FastWalk")
         toggle("FreeCam", "FreeCam")
+	toggle("FreeCamFollow", "FreeCamFollow")
+	toggle("EspMap", "EspMap")
+	toggle("EspMapPlayers", "EspMapPlayers")
+	toggle("EspMapNpcs", "EspMapNpcs")
+	toggle("EspMapFull", "EspMapFull")
+	toggle("EspMapFullNpcs", "EspMapFullNpcs")
         option("SpinSpeed", "SpinSpeed")
         option("CameraFOV", "CameraFOV")
         option("FreeCamSpeed", "FreeCamSpeed")
+	option("EspMapRange", "EspMapRange")
 end
 
 local GunModsInstalled = false
@@ -9201,7 +9305,23 @@ local FreeCamSaved = {
         Pitch = 0,
         Root = nil,
         RootAnchored = false,
+	FollowLastPos = nil, -- Bring Character: last camera pos while the body follows
 }
+
+-- Hide/show our own character on this client only. Bring Character follow mode
+-- would otherwise put the body right in front of the free camera. Uses
+-- LocalTransparencyModifier so nothing replicates to other players.
+local function SetCharacterLocalInvisible(character, hidden)
+	if not character then
+		return
+	end
+	local alpha = hidden and 1 or 0
+	for _, obj in character:GetDescendants() do
+		if obj:IsA("BasePart") then
+			obj.LocalTransparencyModifier = alpha
+		end
+	end
+end
 
 local function StopFreeCam()
         if not FreeCamSaved.Active then
@@ -9226,7 +9346,13 @@ local function StopFreeCam()
                         FreeCamSaved.Root.Anchored = FreeCamSaved.RootAnchored == true
                 end)
         end
-        FreeCamSaved.Root = nil
+	-- Bring Character cleanup: the body becomes visible again wherever it was dropped
+	FreeCamSaved.FollowLastPos = nil
+	local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
+	if restoreChar then
+		pcall(SetCharacterLocalInvisible, restoreChar, false)
+	end
+	FreeCamSaved.Root = nil
         FreeCamSaved.RootAnchored = false
         FreeCamSaved.Position = nil
 end
@@ -9327,6 +9453,40 @@ UpdateFreeCam = function(deltaTime)
         end
 
         cam.CFrame = FreeCamLookCFrame()
+
+	-- Bring Character (Follow Cam): slide our own body along with the camera so
+	-- the head pokes through doors/walls. ProximityPrompts on the far side (the
+	-- inside of a locked door) become usable for real: fly through, press E from
+	-- inside, or let Door Bypass fire it. Turning Free Cam off drops the body
+	-- right there, so you can walk around inside and open the door normally.
+	if Misc.FreeCamFollow then
+		local followChar = Players.LocalPlayer and Players.LocalPlayer.Character
+		local followRoot = followChar and followChar:FindFirstChild("HumanoidRootPart")
+		if followRoot and followRoot:IsA("BasePart") then
+			local camPos = cam.CFrame.Position
+			local lastPos = FreeCamSaved.FollowLastPos
+			if typeof(lastPos) == "Vector3" then
+				-- smooth: move the body by the same delta the camera just moved
+				local delta = camPos - lastPos
+				if delta.Magnitude > 0.001 then
+					followRoot.CFrame = followRoot.CFrame + delta
+				end
+			else
+				-- first tick after enabling: snap the body under the camera
+				followRoot.CFrame = CFrame.new(camPos - Vector3.new(0, 2, 0))
+			end
+			FreeCamSaved.FollowLastPos = camPos
+			followRoot.AssemblyLinearVelocity = Vector3.zero
+			pcall(SetCharacterLocalInvisible, followChar, true)
+		end
+	elseif FreeCamSaved.FollowLastPos ~= nil then
+		-- follow got turned off mid-flight: keep the body where it was dropped
+		FreeCamSaved.FollowLastPos = nil
+		local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
+		if restoreChar then
+			pcall(SetCharacterLocalInvisible, restoreChar, false)
+		end
+	end
 end
 
 UpdateScriptUserESP = function()
@@ -10030,6 +10190,51 @@ MiscBox:AddToggle("FreeCam", {
 
 MiscBox:AddLabel("Spectator: press V once to toggle (no need to hold). WASD = fly, Q/E = down/up, Shift = fast, passes through walls")
 
+MiscBox:AddToggle("FreeCamFollow", {
+	Text = "Bring Character (head through door)",
+	Default = false,
+	Callback = function(value)
+		Misc.FreeCamFollow = value
+		if not value then
+			-- show the body again right away; it stays where it was dropped
+			FreeCamSaved.FollowLastPos = nil
+			local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
+			if restoreChar then
+				pcall(SetCharacterLocalInvisible, restoreChar, false)
+			end
+		end
+	end,
+}):AddKeyPicker("FreeCamFollowKeybind", {
+		Default = "KeypadNine",
+		Mode = "Toggle",
+		Text = "Bring Character",
+		SyncToggleState = true,
+})
+
+MiscBox:AddLabel("Bring Character ON: your body follows the Free Cam and can open doors from the inside. Turn Free Cam off to leave the body there. Pick your own key on the toggle above to turn it on/off like Free Cam.")
+
+MiscBox:AddToggle("EspMapFullMisc", {
+	Text = "ESP Map (open full map)",
+	Default = false,
+	Callback = function(value)
+		if EspMapFullSyncing then
+			return
+		end
+		if typeof(Toggles.EspMapFull) == "table" and typeof(Toggles.EspMapFull.SetValue) == "function" then
+			pcall(Toggles.EspMapFull.SetValue, Toggles.EspMapFull, value)
+		end
+	end,
+}):AddKeyPicker("EspMapFullMiscKeybind", {
+	Default = "KeypadEight",
+	Mode = "Toggle",
+	Text = "ESP Map",
+	SyncToggleState = true,
+})
+
+MiscBox:AddLabel("Same ESP Map as World ESP > ESP Map (Full Map): pick your own key above, then press it to open the game's full map with every player marked (red + name) and ME (you). Press the same key to close. NPC/Scav dots toggle stays in World ESP.")
+
+EspMapMiscStatusLabel = MiscBox:AddLabel("ESP Map: press your key to open the full map")
+
 MiscBox:AddSlider("FreeCamSpeed", {
         Text = "Free Cam Speed",
         Default = 60,
@@ -10253,6 +10458,293 @@ task.spawn(function()
 		if not pcall(RefreshFreeCamTPList) then
 			break
 		end
+	end
+end)
+
+MiscBox:AddDivider()
+local DoorBypassStatus = MiscBox:AddLabel("Door Bypass: fly into a locked door with Spectator on and it gets opened from the inside")
+
+local DoorBypassCooldown = {}
+local DoorBypassRunning = false
+
+local function HasAnyWord(text, words)
+	if typeof(text) ~= "string" or text == "" then
+		return false
+	end
+	for _, word in ipairs(words) do
+		if string.find(text, word, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Project Delta localizes its prompts to Thai: "ประตู" = door, "เปิดประตู" =
+-- open the door, "แล็อคประตู" = lock the door. The old filter only knew English
+-- words so every Thai door was invisible to Door Bypass. The door word itself
+-- is the strong signal; a bare "Open" on loot crates must NOT count as a door.
+local DoorNameWords = { "door", "gate", "ประตู" }
+local DoorOpenWords = { "open", "unlock", "เปิด", "ปลดล็อค" }
+local DoorLockWords = { "lock", "ล็อค" }
+
+local function IsDoorishPrompt(prompt)
+	if HasAnyWord(tostring(prompt.ObjectText or ""), DoorNameWords)
+		or HasAnyWord(tostring(prompt.ActionText or ""), DoorNameWords)
+		or HasAnyWord(tostring(prompt.Name or ""), DoorNameWords) then
+		return true
+	end
+	local foundDoor = false
+	local node = prompt.Parent
+	for _ = 1, 4 do
+		if not node or node == workspace then
+			break
+		end
+		local nodeName = string.lower(tostring(node.Name))
+		if string.find(nodeName, "extract", 1, true) then
+			return false -- never auto-trigger extraction zones
+		end
+		if HasAnyWord(nodeName, DoorNameWords) then
+			foundDoor = true
+		end
+		node = node.Parent
+	end
+	return foundDoor
+end
+
+local function IsDoorishClicker(clicker)
+	local foundDoor = false
+	local node = clicker.Parent
+	for _ = 1, 4 do
+		if not node or node == workspace then
+			break
+		end
+		local nodeName = string.lower(tostring(node.Name))
+		if string.find(nodeName, "extract", 1, true) then
+			return false -- never auto-trigger extraction zones
+		end
+		if HasAnyWord(nodeName, DoorNameWords) then
+			foundDoor = true
+		end
+		node = node.Parent
+	end
+	return foundDoor
+end
+
+-- Never auto-fire prompts whose action is only "lock" - that would lock the
+-- door against us. "เปิดประตู" (open) fires; "แล็อคประตู" (lock) is reported only.
+local function PromptLockOnly(prompt)
+	local lockHit = HasAnyWord(tostring(prompt.ActionText or ""), DoorLockWords)
+		or HasAnyWord(tostring(prompt.ObjectText or ""), DoorLockWords)
+		or HasAnyWord(tostring(prompt.Name or ""), DoorLockWords)
+	if not lockHit then
+		return false
+	end
+	local openHit = HasAnyWord(tostring(prompt.ActionText or ""), DoorOpenWords)
+		or HasAnyWord(tostring(prompt.ObjectText or ""), DoorOpenWords)
+	return not openHit
+end
+
+local function FindDoorTargetNear(position, range)
+	local params = OverlapParams.new()
+	params.RespectCanCollide = false
+	local ok, parts = pcall(workspace.GetPartBoundsInRadius, workspace, position, range, params)
+	if not ok or typeof(parts) ~= "table" then
+		return nil, 0, nil, 0
+	end
+	local best = nil
+	local bestDist = math.huge
+	local bestClicker = nil
+	local bestClickDist = math.huge
+	local seenTarget = {}
+	local function consider(inst, anchorPart)
+		if seenTarget[inst] or typeof(inst) ~= "Instance" then
+			return
+		end
+		seenTarget[inst] = true
+		local anchor = (inst.Parent and inst.Parent:IsA("BasePart")) and inst.Parent or anchorPart
+		if typeof(anchor) ~= "Instance" or not anchor:IsA("BasePart") then
+			return
+		end
+		local dist = (anchor.Position - position).Magnitude
+		if inst:IsA("ProximityPrompt") then
+			if inst.Enabled and IsDoorishPrompt(inst) and dist < bestDist then
+				best = inst
+				bestDist = dist
+			end
+		elseif inst:IsA("ClickDetector") then
+			if IsDoorishClicker(inst) and dist < bestClickDist then
+				bestClicker = inst
+				bestClickDist = dist
+			end
+		end
+	end
+	for _, part in ipairs(parts) do
+		if typeof(part) == "Instance" and part:IsA("BasePart") then
+			for _, desc in ipairs(part:GetDescendants()) do
+				consider(desc, part)
+			end
+			local par = part.Parent
+			if par and par ~= workspace then
+				for _, ch in ipairs(par:GetChildren()) do
+					consider(ch, part)
+				end
+			end
+		end
+	end
+	return best, bestDist, bestClicker, bestClickDist
+end
+
+local function FireDoorTarget(target)
+	if typeof(target) ~= "Instance" then
+		return false
+	end
+	if target:IsA("ProximityPrompt") then
+		if typeof(fireproximityprompt) == "function" then
+			local ok = pcall(fireproximityprompt, target)
+			if ok then
+				return true
+			end
+		end
+		return pcall(function()
+			target:InputHoldBegin()
+			task.wait((tonumber(target.HoldDuration) or 0) + 0.1)
+			target:InputHoldEnd()
+		end) == true
+	elseif target:IsA("ClickDetector") then
+		if typeof(fireclickdetector) == "function" then
+			return pcall(fireclickdetector, target, 0) == true
+		end
+		return false
+	end
+	return false
+end
+
+local LastDoorStatusText = ""
+local function SetDoorStatus(text)
+	if text == LastDoorStatusText then
+		return
+	end
+	LastDoorStatusText = text
+	if typeof(DoorBypassStatus.SetText) == "function" then
+		pcall(DoorBypassStatus.SetText, DoorBypassStatus, text)
+	end
+end
+
+local function DoorBypassTick()
+	if not FreeCamSaved.Active then
+		SetDoorStatus("Door Bypass: waiting for Free Cam (V)...")
+		return
+	end
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+	local range = tonumber(Misc.DoorBypassRange) or 15
+	local prompt, dist, clicker, clickDist = FindDoorTargetNear(cam.CFrame.Position, range)
+	local target = nil
+	local targetDist = 0
+	local kind = ""
+	if prompt and not PromptLockOnly(prompt) then
+		target = prompt
+		targetDist = dist
+		kind = "prompt"
+	elseif clicker then
+		target = clicker
+		targetDist = clickDist
+		kind = "clicker"
+	elseif prompt then
+		SetDoorStatus(string.format("Door Bypass: only a LOCK prompt within %dm - not firing", math.floor(dist)))
+		return
+	end
+	if not target then
+		SetDoorStatus(string.format("Door Bypass: no door within %dm of camera - fly closer", math.floor(range)))
+		return
+	end
+	local last = DoorBypassCooldown[target]
+	if last and tick() - last < 2.5 then
+		return
+	end
+	DoorBypassCooldown[target] = tick()
+	if FireDoorTarget(target) then
+		local hint = ""
+		if not Misc.FreeCamFollow then
+			hint = " - turn on Bring Character so your body is at the door"
+		end
+		SetDoorStatus(string.format("Door Bypass: fired %s '%s' (%dm)%s", kind, tostring(target.Name), math.floor(targetDist), hint))
+	else
+		SetDoorStatus("Door Bypass: executor cannot fire " .. (kind == "prompt" and "prompts (no fireproximityprompt)" or "click detectors (no fireclickdetector)"))
+	end
+end
+
+local function StartDoorBypassLoop()
+	if DoorBypassRunning then
+		return
+	end
+	DoorBypassRunning = true
+	task.spawn(function()
+		while Misc.DoorBypass == true and Library.Unloaded ~= true do
+			task.wait(0.3)
+			pcall(DoorBypassTick)
+		end
+		DoorBypassRunning = false
+	end)
+end
+
+MiscBox:AddToggle("DoorBypass", {
+	Text = "Door Bypass (Spectator)",
+	Default = false,
+	Callback = function(value)
+		Misc.DoorBypass = value
+		if value then
+			StartDoorBypassLoop()
+		else
+			if typeof(DoorBypassStatus.SetText) == "function" then
+				DoorBypassStatus:SetText("Door Bypass: off")
+			end
+		end
+	end,
+})
+MiscBox:AddSlider("DoorBypassRange", {
+	Text = "Door Bypass Range",
+	Default = 15,
+	Min = 5,
+	Max = 50,
+	Rounding = 0,
+	Callback = function(value)
+		if typeof(value) == "number" then
+			Misc.DoorBypassRange = value
+		end
+	end,
+})
+
+MiscBox:AddButton("Fire Door Now (camera position)", function()
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+	local range = math.max(tonumber(Misc.DoorBypassRange) or 15, 15)
+	local prompt, dist, clicker, clickDist = FindDoorTargetNear(cam.CFrame.Position, range)
+	local target = nil
+	local targetDist = 0
+	local kind = ""
+	if prompt and not PromptLockOnly(prompt) then
+		target = prompt
+		targetDist = dist
+		kind = "prompt"
+	elseif clicker then
+		target = clicker
+		targetDist = clickDist
+		kind = "clicker"
+	end
+	if not target then
+		SetDoorStatus(string.format("Fire Door: no open-door prompt/clicker within %dm of camera", math.floor(range)))
+		return
+	end
+	DoorBypassCooldown[target] = tick()
+	if FireDoorTarget(target) then
+		SetDoorStatus(string.format("Fire Door: fired %s '%s' (%dm)", kind, tostring(target.Name), math.floor(targetDist)))
+	else
+		SetDoorStatus("Fire Door: executor cannot fire this target")
 	end
 end)
 
@@ -10638,6 +11130,688 @@ end)
 CreditsJoin:AddLabel("https://discord.gg/XnQ6XmQgFb")
 
 ----------------------------------------------------------------
+-- ESP Map (radar overlay)
+----------------------------------------------------------------
+local RadarGui = nil
+local RadarNorth = nil
+local RadarDots = {}
+local RadarNames = {}
+local RadarNpcList = {}
+local RadarLastNpcScan = 0
+local RadarDragging = false
+local RadarDragStart = nil
+local RadarRootStart = nil
+
+local RADAR_SIZE = 190
+local RADAR_DOTS = 48
+local RADAR_NAMES = 12
+local RADAR_SELF_COLOR = Color3.fromRGB(240, 240, 240)
+local RADAR_PLAYER_COLOR = Color3.fromRGB(255, 80, 80)
+local RADAR_NPC_COLOR = Color3.fromRGB(255, 170, 0)
+local RADAR_RING_COLOR = Color3.fromRGB(0, 255, 130)
+
+local function RadarEnsureGui()
+	if RadarGui and RadarGui.Parent then
+		return true
+	end
+
+	local ok, gui = pcall(function()
+		local g = Instance.new("ScreenGui")
+		g.Name = "MikoHub_RadarMap"
+		g.ResetOnSpawn = false
+		g.DisplayOrder = 60
+		return g
+	end)
+	if not ok or typeof(gui) ~= "Instance" then
+		return false
+	end
+
+	local root = Instance.new("Frame")
+	root.Name = "Radar"
+	root.Size = UDim2.fromOffset(RADAR_SIZE, RADAR_SIZE)
+	root.Position = UDim2.new(1, -RADAR_SIZE - 14, 0, 14)
+	root.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+	root.BackgroundTransparency = 0.35
+	root.BorderSizePixel = 0
+	root.Active = true
+	root.Parent = gui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(1, 0)
+	corner.Parent = root
+
+	local ring = Instance.new("UIStroke")
+	ring.Color = RADAR_RING_COLOR
+	ring.Thickness = 1.5
+	ring.Transparency = 0.25
+	ring.Parent = root
+
+	local crossH = Instance.new("Frame")
+	crossH.AnchorPoint = Vector2.new(0.5, 0.5)
+	crossH.Position = UDim2.new(0.5, 0, 0.5, 0)
+	crossH.Size = UDim2.new(1, -26, 0, 1)
+	crossH.BackgroundColor3 = RADAR_SELF_COLOR
+	crossH.BackgroundTransparency = 0.82
+	crossH.BorderSizePixel = 0
+	crossH.Parent = root
+
+	local crossV = Instance.new("Frame")
+	crossV.AnchorPoint = Vector2.new(0.5, 0.5)
+	crossV.Position = UDim2.new(0.5, 0, 0.5, 0)
+	crossV.Size = UDim2.new(0, 1, 1, -26)
+	crossV.BackgroundColor3 = RADAR_SELF_COLOR
+	crossV.BackgroundTransparency = 0.82
+	crossV.BorderSizePixel = 0
+	crossV.Parent = root
+
+	-- self marker: small diamond + heading tick (camera forward is always up)
+	local selfDot = Instance.new("Frame")
+	selfDot.AnchorPoint = Vector2.new(0.5, 0.5)
+	selfDot.Position = UDim2.new(0.5, 0, 0.5, 0)
+	selfDot.Size = UDim2.fromOffset(7, 7)
+	selfDot.Rotation = 45
+	selfDot.BackgroundColor3 = RADAR_SELF_COLOR
+	selfDot.BorderSizePixel = 0
+	selfDot.Parent = root
+
+	local heading = Instance.new("Frame")
+	heading.AnchorPoint = Vector2.new(0.5, 0.5)
+	heading.Position = UDim2.new(0.5, 0, 0.5, -14)
+	heading.Size = UDim2.new(0, 2, 0, 10)
+	heading.BackgroundColor3 = RADAR_SELF_COLOR
+	heading.BackgroundTransparency = 0.25
+	heading.BorderSizePixel = 0
+	heading.Parent = root
+
+	local north = Instance.new("TextLabel")
+	north.Name = "North"
+	north.AnchorPoint = Vector2.new(0.5, 0.5)
+	north.Size = UDim2.fromOffset(16, 16)
+	north.BackgroundTransparency = 1
+	north.Font = Enum.Font.GothamBold
+	north.Text = "N"
+	north.TextSize = 12
+	north.TextColor3 = RADAR_RING_COLOR
+	north.TextStrokeTransparency = 0.5
+	north.Parent = root
+	RadarNorth = north
+
+	for i = 1, RADAR_DOTS do
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Size = UDim2.fromOffset(8, 8)
+		dot.BackgroundColor3 = RADAR_NPC_COLOR
+		dot.BorderSizePixel = 0
+		dot.Visible = false
+		dot.Parent = root
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(1, 0)
+		dotCorner.Parent = dot
+		RadarDots[i] = dot
+	end
+
+	for i = 1, RADAR_NAMES do
+		local lbl = Instance.new("TextLabel")
+		lbl.AnchorPoint = Vector2.new(0.5, 1)
+		lbl.Size = UDim2.fromOffset(120, 12)
+		lbl.BackgroundTransparency = 1
+		lbl.Font = Enum.Font.Gotham
+		lbl.TextSize = 10
+		lbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+		lbl.TextStrokeTransparency = 0.4
+		lbl.TextTruncate = Enum.TextTruncate.AtEnd
+		lbl.Visible = false
+		lbl.Parent = root
+		RadarNames[i] = lbl
+	end
+
+	-- drag the radar anywhere on screen
+	root.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			RadarDragging = true
+			RadarDragStart = input.Position
+			RadarRootStart = root.Position
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			RadarDragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if RadarDragging
+			and (input.UserInputType == Enum.UserInputType.MouseMovement
+				or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - RadarDragStart
+			root.Position = UDim2.new(
+				RadarRootStart.X.Scale, RadarRootStart.X.Offset + delta.X,
+				RadarRootStart.Y.Scale, RadarRootStart.Y.Offset + delta.Y)
+		end
+	end)
+
+	if not AttachOverlayGui(gui) then
+		gui:Destroy()
+		RadarGui = nil
+		return false
+	end
+
+	RadarGui = gui
+	return true
+end
+
+local function UpdateEspMap()
+	if Library.Unloaded then
+		if RadarGui then
+			pcall(function()
+				RadarGui:Destroy()
+			end)
+			RadarGui = nil
+		end
+		return
+	end
+
+	if not Misc.EspMap then
+		if RadarGui and RadarGui.Enabled then
+			RadarGui.Enabled = false
+		end
+		return
+	end
+
+	if not RadarEnsureGui() then
+		return
+	end
+	if not RadarGui.Enabled then
+		RadarGui.Enabled = true
+	end
+
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+
+	-- Radar is centered on the camera, so it also follows the Free Cam while
+	-- spectating. "Up" on the radar = where the camera looks.
+	local center = cam.CFrame.Position
+	local look = cam.CFrame.LookVector
+	local flatLook = Vector3.new(look.X, 0, look.Z)
+	if flatLook.Magnitude < 1e-3 then
+		flatLook = Vector3.new(0, 0, -1)
+	else
+		flatLook = flatLook.Unit
+	end
+	local flatRight = Vector3.new(-flatLook.Z, 0, flatLook.X)
+
+	local range = tonumber(Misc.EspMapRange) or 300
+	if range < 25 then
+		range = 25
+	end
+	local radius = RADAR_SIZE / 2 - 14
+	local scale = radius / range
+
+	-- north marker rides the ring edge
+	local northDir = Vector3.new(0, 0, -1)
+	local nX = northDir:Dot(flatRight) * (radius + 6)
+	local nY = -northDir:Dot(flatLook) * (radius + 6)
+	if RadarNorth then
+		RadarNorth.Position = UDim2.new(0.5, nX, 0.5, nY)
+	end
+
+	for _, dot in pairs(RadarDots) do
+		dot.Visible = false
+	end
+	for _, lbl in pairs(RadarNames) do
+		lbl.Visible = false
+	end
+
+	local usedDots = 0
+	local usedNames = 0
+
+	local function placeDot(pos, color, isPlayer, label)
+		if usedDots >= RADAR_DOTS then
+			return
+		end
+		local rel = pos - center
+		local rx = rel:Dot(flatRight)
+		local ry = -rel:Dot(flatLook)
+		local dist = math.sqrt(rx * rx + ry * ry)
+		local clamped = dist * scale > radius
+		if clamped and dist > 1e-3 then
+			local k = radius / (dist * scale)
+			rx *= k
+			ry *= k
+		end
+		usedDots += 1
+		local dot = RadarDots[usedDots]
+		dot.Visible = true
+		dot.BackgroundColor3 = color
+		dot.BackgroundTransparency = clamped and 0.6 or 0.1
+		local size = clamped and 6 or (isPlayer and 10 or 8)
+		dot.Size = UDim2.fromOffset(size, size)
+		dot.Position = UDim2.new(0.5, rx * scale, 0.5, ry * scale)
+
+		if isPlayer and label and usedNames < RADAR_NAMES then
+			usedNames += 1
+			local lbl = RadarNames[usedNames]
+			lbl.Visible = true
+			lbl.Text = label
+			lbl.Position = UDim2.new(0.5, rx * scale, 0.5, ry * scale - 7)
+		end
+	end
+
+	if Misc.EspMapPlayers ~= false then
+		for _, pl in Players:GetPlayers() do
+			if pl ~= Players.LocalPlayer then
+				local ch = pl.Character
+				local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+				local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+				if hrp and hrp:IsA("BasePart") and (not hum or hum.Health > 0) then
+					placeDot(hrp.Position, RADAR_PLAYER_COLOR, true, pl.Name)
+				end
+			end
+		end
+	end
+
+	if Misc.EspMapNpcs ~= false then
+		-- same NPC source the ESP and the TP target list use (ScanNPCs)
+		local now = tick()
+		if now - RadarLastNpcScan >= 3 then
+			RadarLastNpcScan = now
+			local okNpc, npcs = pcall(ScanNPCs)
+			if okNpc and typeof(npcs) == "table" then
+				RadarNpcList = npcs
+			end
+		end
+		for model, _data in pairs(RadarNpcList) do
+			if model.Parent then
+				local nroot = model:FindFirstChild("HumanoidRootPart")
+					or model.PrimaryPart
+					or model:FindFirstChildWhichIsA("BasePart")
+				if nroot and nroot:IsA("BasePart") then
+					placeDot(nroot.Position, RADAR_NPC_COLOR, false, nil)
+				end
+			end
+		end
+	end
+end
+
+----------------------------------------------------------------
+-- ESP Map (Full Map): opens the game's own map screen (the same
+-- screen the M key shows) with a live name-tagged marker for
+-- every player. Same approach as the Ardour script: native
+-- MainGui map GUI + MarkerDotTemplate + LastVerifiedPos.
+----------------------------------------------------------------
+local ESPMAP_FULL_PLAYER_COLOR = Color3.fromRGB(227, 36, 36)
+local ESPMAP_FULL_NPC_COLOR = Color3.fromRGB(255, 170, 0)
+local ESPMAP_FULL_NPC_MAX = 40
+-- marker math constants used by the game's EstonianBorderMap
+local ESPMAP_FULL_OFF_X = 208
+local ESPMAP_FULL_OFF_Z = 203
+
+local EspMapFullCacheData = nil
+local EspMapFullIsOpen = false
+local EspMapFullSelfMarker = nil
+local EspMapFullMarkers = {}
+local EspMapFullNpcDots = {}
+local EspMapFullNpcList = {}
+local EspMapFullLastNpcScan = 0
+local EspMapFullLastTick = 0
+local EspMapFullLastStatus = nil
+
+local function EspMapFullSetStatus(text)
+	if text == EspMapFullLastStatus then
+		return
+	end
+	EspMapFullLastStatus = text
+	if typeof(MapESPStatusLabel) == "table" and typeof(MapESPStatusLabel.SetText) == "function" then
+		pcall(MapESPStatusLabel.SetText, MapESPStatusLabel, text)
+	end
+	if typeof(EspMapMiscStatusLabel) == "table" and typeof(EspMapMiscStatusLabel.SetText) == "function" then
+		pcall(EspMapMiscStatusLabel.SetText, EspMapMiscStatusLabel, text)
+	end
+end
+
+local function EspMapFullResetToggle()
+	local t = Toggles and Toggles.EspMapFull
+	if t and t.Value == true then
+		pcall(function()
+			t:SetValue(false)
+		end)
+	end
+end
+
+local function EspMapFullCache()
+	if EspMapFullCacheData and EspMapFullCacheData.MainGui and EspMapFullCacheData.MainGui.Parent then
+		return EspMapFullCacheData
+	end
+	local ok, result = pcall(function()
+		local lp = Players.LocalPlayer
+		local pg = lp and lp:FindFirstChild("PlayerGui")
+		local mainGui = pg and pg:FindFirstChild("MainGui")
+		if not mainGui then
+			return nil
+		end
+		local mainFrame = mainGui:FindFirstChild("MainFrame")
+		if not mainFrame then
+			return nil
+		end
+		local mapFrame = mainFrame:FindFirstChild("MapFrame")
+		if not mapFrame then
+			return nil
+		end
+		local inner = mapFrame:FindFirstChild("MainFrame")
+		if not inner then
+			return nil
+		end
+		local markers = inner:FindFirstChild("Markers")
+		local template = inner:FindFirstChild("MarkerDotTemplate")
+		local maps = inner:FindFirstChild("Maps")
+		local map = nil
+		if maps then
+			map = maps:FindFirstChild("EstonianBorderMap")
+				or maps:FindFirstChildWhichIsA("ViewportFrame")
+				or maps:FindFirstChildWhichIsA("ImageLabel")
+				or maps:FindFirstChildWhichIsA("Frame")
+		end
+		if not markers or not template or not map then
+			return nil
+		end
+		return {
+			MainGui = mainGui,
+			MapFrame = mapFrame,
+			Inner = inner,
+			Markers = markers,
+			Template = template,
+			Map = map,
+		}
+	end)
+	if ok and typeof(result) == "table" then
+		EspMapFullCacheData = result
+		return EspMapFullCacheData
+	end
+	return nil
+end
+
+local function EspMapFullClear()
+	for _, data in pairs(EspMapFullMarkers) do
+		if data and data.markerRef then
+			pcall(function()
+				data.markerRef:Destroy()
+			end)
+		end
+	end
+	EspMapFullMarkers = {}
+	if EspMapFullSelfMarker then
+		pcall(function()
+			EspMapFullSelfMarker:Destroy()
+		end)
+		EspMapFullSelfMarker = nil
+	end
+	for _, dot in pairs(EspMapFullNpcDots) do
+		if dot then
+			pcall(function()
+				dot:Destroy()
+			end)
+		end
+	end
+	EspMapFullNpcDots = {}
+end
+
+-- kind: "self" | "player" | "npc"
+local function EspMapFullMakeMarker(name, kind)
+	local cache = EspMapFullCache()
+	if not cache then
+		return nil
+	end
+	local marker = nil
+	local ok = pcall(function()
+		marker = cache.Template:Clone()
+		marker.Name = kind == "self" and "SelfMarker" or "TeamMarker"
+		marker.Visible = true
+		if kind == "npc" then
+			marker.ImageColor3 = ESPMAP_FULL_NPC_COLOR
+			marker.TextLabel.Visible = false
+		elseif kind == "self" then
+			marker.TextLabel.Visible = true
+			marker.TextLabel.Text = "ME"
+		else
+			marker.ImageColor3 = ESPMAP_FULL_PLAYER_COLOR
+			marker.TextLabel.Visible = true
+			marker.TextLabel.Text = name
+			marker.TextLabel.RichText = false
+			marker.TextLabel.Size = UDim2.fromScale(3, 0.5)
+			marker.TextLabel.Position = UDim2.fromScale(-1, 0)
+		end
+		marker.Parent = cache.Markers
+	end)
+	if ok and marker then
+		return marker
+	end
+	return nil
+end
+
+local function EspMapFullGetWorldPos(player)
+	-- server-verified position the game stores for its own map markers
+	local ok, attr = pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local pf = rs:FindFirstChild("Players")
+		local entry = pf and pf:FindFirstChild(player.Name)
+		local status = entry and entry:FindFirstChild("Status")
+		local uac = status and status:FindFirstChild("UAC")
+		if uac then
+			return uac:GetAttribute("LastVerifiedPos")
+		end
+		return nil
+	end)
+	if ok and typeof(attr) == "Vector3" then
+		return attr
+	end
+	-- fallback: streamed character root
+	local char = player and player.Character
+	local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+	if root and root:IsA("BasePart") then
+		return root.Position
+	end
+	return nil
+end
+
+EspMapFullOpen = function()
+	local cache = EspMapFullCache()
+	if not cache then
+		EspMapFullResetToggle()
+		EspMapFullSetStatus("ESP Map: game map not found - open your map (M) once, then press the key again")
+		return
+	end
+	local ok, err = pcall(function()
+		cache.Inner.Size = UDim2.fromScale(1, 1)
+		cache.Inner.Position = UDim2.new(0.5, 0, 0.49, 0)
+		cache.MapFrame.Visible = true
+		game:GetService("UserInputService").MouseIconEnabled = true
+		local modal = cache.MainGui:FindFirstChild("ModalButton")
+		if modal then
+			modal.Modal = true
+		end
+		for _, child in pairs(cache.Markers:GetChildren()) do
+			child:Destroy()
+		end
+	end)
+	if not ok then
+		EspMapFullResetToggle()
+		EspMapFullSetStatus("ESP Map: failed to open (" .. tostring(err) .. ")")
+		return
+	end
+	EspMapFullClear()
+	EspMapFullIsOpen = true
+	EspMapFullSelfMarker = EspMapFullMakeMarker("ME", "self")
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Players.LocalPlayer then
+			local marker = EspMapFullMakeMarker(plr.Name, "player")
+			if marker then
+				EspMapFullMarkers[plr.Name] = {
+					playerRef = plr,
+					markerRef = marker,
+				}
+			end
+		end
+	end
+	EspMapFullSetStatus("ESP Map: ON - red = players, ME = you (same key closes)")
+end
+
+EspMapFullClose = function()
+	EspMapFullIsOpen = false
+	pcall(function()
+		local cache = EspMapFullCache()
+		if cache and cache.MapFrame and cache.MapFrame.Visible then
+			cache.MapFrame.Visible = false
+			local modal = cache.MainGui:FindFirstChild("ModalButton")
+			if modal then
+				modal.Modal = false
+			end
+			game:GetService("UserInputService").MouseIconEnabled = false
+		end
+	end)
+	EspMapFullClear()
+	EspMapFullSetStatus("ESP Map: OFF")
+end
+
+local function UpdateEspMapFull()
+	if not EspMapFullIsOpen then
+		return
+	end
+	local now = tick()
+	if now - EspMapFullLastTick < 0.1 then
+		return
+	end
+	EspMapFullLastTick = now
+
+	local cache = EspMapFullCache()
+	if not cache then
+		EspMapFullIsOpen = false
+		EspMapFullClear()
+		EspMapFullResetToggle()
+		EspMapFullSetStatus("ESP Map: map GUI disappeared - turned off")
+		return
+	end
+	if not cache.MapFrame.Visible then
+		-- the map was closed some other way (game key, respawn reset)
+		EspMapFullIsOpen = false
+		EspMapFullClear()
+		EspMapFullResetToggle()
+		EspMapFullSetStatus("ESP Map: OFF")
+		return
+	end
+
+	local sizeReal = tonumber(cache.Map:GetAttribute("SizeReal"))
+	if not sizeReal or sizeReal == 0 then
+		EspMapFullSetStatus("ESP Map: map SizeReal missing - markers paused")
+		return
+	end
+
+	-- drop markers of players who left, add markers for joiners
+	for name, data in pairs(EspMapFullMarkers) do
+		if data.playerRef == nil or data.playerRef.Parent == nil then
+			if data.markerRef then
+				pcall(function()
+					data.markerRef:Destroy()
+				end)
+			end
+			EspMapFullMarkers[name] = nil
+		end
+	end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= Players.LocalPlayer and EspMapFullMarkers[plr.Name] == nil then
+			local marker = EspMapFullMakeMarker(plr.Name, "player")
+			if marker then
+				EspMapFullMarkers[plr.Name] = {
+					playerRef = plr,
+					markerRef = marker,
+				}
+			end
+		end
+	end
+
+	local function project(pos)
+		return UDim2.new(0.5 + (pos.X - ESPMAP_FULL_OFF_X) / sizeReal, 0, 0.5 + (pos.Z + ESPMAP_FULL_OFF_Z) / sizeReal, 0)
+	end
+
+	if EspMapFullSelfMarker and EspMapFullSelfMarker.Parent then
+		local pos = EspMapFullGetWorldPos(Players.LocalPlayer)
+		if pos then
+			EspMapFullSelfMarker.Position = project(pos)
+			EspMapFullSelfMarker.Visible = true
+		else
+			EspMapFullSelfMarker.Visible = false
+		end
+	end
+
+	for _, data in pairs(EspMapFullMarkers) do
+		local marker = data.markerRef
+		if marker and marker.Parent then
+			local pos = EspMapFullGetWorldPos(data.playerRef)
+			if pos then
+				marker.Position = project(pos)
+				marker.Visible = true
+			else
+				marker.Visible = false
+			end
+		end
+	end
+
+	if Misc.EspMapFullNpcs == true then
+		local nowNpc = tick()
+		if nowNpc - EspMapFullLastNpcScan >= 3 then
+			EspMapFullLastNpcScan = nowNpc
+			local okNpc, npcs = pcall(ScanNPCs)
+			if okNpc and typeof(npcs) == "table" then
+				EspMapFullNpcList = npcs
+			end
+		end
+		local idx = 0
+		for model, _data in pairs(EspMapFullNpcList) do
+			if model and model.Parent then
+				idx = idx + 1
+				if idx > ESPMAP_FULL_NPC_MAX then
+					break
+				end
+				local dot = EspMapFullNpcDots[idx]
+				if dot == nil or dot.Parent == nil then
+					dot = EspMapFullMakeMarker("npc" .. tostring(idx), "npc")
+					EspMapFullNpcDots[idx] = dot
+				end
+				if dot then
+					local nroot = model:FindFirstChild("HumanoidRootPart")
+						or model.PrimaryPart
+						or model:FindFirstChildWhichIsA("BasePart")
+					local npos = nil
+					if nroot and nroot:IsA("BasePart") then
+						npos = nroot.Position
+					end
+					if npos then
+						dot.Position = project(npos)
+						dot.Visible = true
+					else
+						dot.Visible = false
+					end
+				end
+			end
+		end
+		for hideIdx = idx + 1, ESPMAP_FULL_NPC_MAX do
+			local dot = EspMapFullNpcDots[hideIdx]
+			if dot then
+				dot.Visible = false
+			end
+		end
+	else
+		for _, dot in pairs(EspMapFullNpcDots) do
+			if dot then
+				dot.Visible = false
+			end
+		end
+	end
+end
+
+----------------------------------------------------------------
 -- Loop
 ----------------------------------------------------------------
 local LastFrameTime = tick()
@@ -10670,6 +11844,8 @@ RunService.RenderStepped:Connect(function()
         runStep("LandmineESP", UpdateLandmineESP)
         runStep("ExtractionESP", UpdateExtractionESP)
         runStep("Misc", UpdateMisc, deltaTime)
+        runStep("EspMap", UpdateEspMap)
+        runStep("EspMapFull", UpdateEspMapFull)
         runStep("TriggerBot", UpdateTriggerBot)
 end)
 
