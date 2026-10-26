@@ -9636,7 +9636,7 @@ end
 local FinderGroup = Tabs.Misc:AddRightGroupbox("Item Finder")
 
 FinderGroup:AddToggle("ItemFinderEnabled", {
-    Text = "Item Finder (Auto-Scan)",
+    Text = "Enadle auto-Scan",
     Default = false,
     Callback = function(value)
         Finder.Enabled = value
@@ -9664,14 +9664,14 @@ FinderGroup:AddToggle("ItemFinderRainbow", {
 })
 
 FinderGroup:AddToggle("ItemFinderCharms", {
-    Text = "Include Charms (Auto-Target)",
+    Text = "Enadle auto-Scan",
     Default = false,
     Callback = function(value)
         Finder.IncludeCharms = value
     end,
 })
 
-FinderGroup:AddLabel("Charms: every item with 'Charm' in its name")
+FinderGroup:AddLabel("Charms")
 
 FinderGroup:AddToggle("ItemFinderCorpses", {
     Text = "Include Corpses",
