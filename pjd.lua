@@ -3902,6 +3902,7 @@ local MapESPStatusLabel -- forward decl: the label is created in the
 local EspMapFullOpen, EspMapFullClose -- forward decl: the ESP Map UI toggle (another IIFE) calls these engine functions
 local EspMapFullSyncing -- re-entrancy guard: the Misc mirror toggle and the World ESP original sync each other, must live at chunk scope
 local EspMapMiscStatusLabel -- forward decl: mirror status label created in the Misc UI section (another IIFE), updated by EspMapFullSetStatus
+local EspMapFullGetHoverPlayer -- forward decl: returns the player whose map marker the mouse is hovering (assigned in the Map ESP engine IIFE); Item X-Ray reads this
 local GetInstanceWorldPosition, PromptMatchesExtraction
 local ExtractionTags, ExtractionKeywords, ExtractionFolderNames, ExtractionAttributeNames
 local HasExtractionAttribute, NameMatchesExtraction, HasExtractionTag, TextMatchesExtraction
@@ -6664,9 +6665,9 @@ MapESPBox:AddToggle("EspMapFullNpcs", {
 	end,
 })
 
-MapESPBox:AddLabel("Opens the game's own full map with a live marker for every player (red + name) and ME (you). Pick any key you want above to open/close it.")
+MapESPBox:AddLabel("เปิดแมพใหญ่ของเกม + มาร์กเกอร์สดทุกคน (แดง+ชื่อ) และ ME (คุณ) - ตั้งคีย์เปิด/ปิดได้ด้านบน | เอาเมาส์ชี้ที่ชื่อคนบนแมพ = โชว์ Item X-Ray ของคนนั้น")
 
-MapESPStatusLabel = MapESPBox:AddLabel("ESP Map: press your key to open the full map")
+MapESPStatusLabel = MapESPBox:AddLabel("ESP Map: กดคีย์เพื่อเปิด/ปิดแมพใหญ่")
 
 WorldBox:AddToggle("CrateESP", {
         Text = "Crate ESP",
@@ -7852,7 +7853,39 @@ end
 local function UpdatePanel()
     SyncFromUI()
 
-    if not XRay.Enabled or not Camera then
+    if not Camera then
+        if Panel then
+            Panel.Visible = false
+        end
+        return
+    end
+
+    -- ESP Map hover: เอาเมาส์ชี้ที่มาร์กเกอร์คนบนแมพใหญ่ = โชว์ของคนนั้นทันที
+    -- (ทำงานแม้ตอนนั้นปิด toggle Item X-Ray อยู่)
+    local hoverPlayer = nil
+    if typeof(EspMapFullGetHoverPlayer) == "function" then
+        local okHover, hoverResult = pcall(EspMapFullGetHoverPlayer)
+        if okHover and typeof(hoverResult) == "Instance" and hoverResult.Parent then
+            hoverPlayer = hoverResult
+        end
+    end
+
+    local target = nil
+    if hoverPlayer then
+        local hoverChar = hoverPlayer.Character
+        local hoverRoot = hoverChar and hoverChar:FindFirstChild("HumanoidRootPart")
+        if hoverChar and hoverRoot then
+            local hoverHum = hoverChar:FindFirstChildOfClass("Humanoid")
+            target = {
+                Model = hoverChar,
+                Player = hoverPlayer,
+                Name = hoverPlayer.Name,
+                Dead = (hoverHum and hoverHum.Health <= 0) or false,
+            }
+        end
+    end
+
+    if not target and not XRay.Enabled then
         if Panel then
             Panel.Visible = false
         end
@@ -7863,15 +7896,16 @@ local function UpdatePanel()
         return
     end
 
-    local target = nil
-    if XRay.FovTrigger then
-        EnsurePanel()
-        ApplyAppearance()
-        local mousePos = UserInputService:GetMouseLocation()
-        target = PickTarget(mousePos.X, mousePos.Y, math.max(SilentAim.FOV, 1))
-    else
-        local vp = Camera.ViewportSize
-        target = PickTarget(vp.X / 2, vp.Y / 2, XRay.Radius)
+    if not target then
+        if XRay.FovTrigger then
+            EnsurePanel()
+            ApplyAppearance()
+            local mousePos = UserInputService:GetMouseLocation()
+            target = PickTarget(mousePos.X, mousePos.Y, math.max(SilentAim.FOV, 1))
+        else
+            local vp = Camera.ViewportSize
+            target = PickTarget(vp.X / 2, vp.Y / 2, XRay.Radius)
+        end
     end
 
     if not target then
@@ -7950,7 +7984,14 @@ local function UpdatePanel()
         end
     end
 
-    PanelTitle.Text = (XRay.Debug and "[X-RAY][DEBUG]: " or "[X-RAY]: ") .. target.Name
+    local xrayPrefix = "[X-RAY]: "
+    if XRay.Debug then
+        xrayPrefix = "[X-RAY][DEBUG]: "
+    end
+    if hoverPlayer and target.Player == hoverPlayer then
+        xrayPrefix = "[X-RAY][MAP]: "
+    end
+    PanelTitle.Text = xrayPrefix .. target.Name
     PanelBody.Text = table.concat(body, "\n")
     Panel.Visible = true
 end
@@ -10233,7 +10274,7 @@ MiscBox:AddToggle("EspMapFullMisc", {
 
 MiscBox:AddLabel("Same ESP Map as World ESP > ESP Map (Full Map): pick your own key above, then press it to open the game's full map with every player marked (red + name) and ME (you). Press the same key to close. NPC/Scav dots toggle stays in World ESP.")
 
-EspMapMiscStatusLabel = MiscBox:AddLabel("ESP Map: press your key to open the full map")
+EspMapMiscStatusLabel = MiscBox:AddLabel("ESP Map: กดคีย์เพื่อเปิด/ปิดแมพใหญ่")
 
 MiscBox:AddSlider("FreeCamSpeed", {
         Text = "Free Cam Speed",
@@ -11472,6 +11513,35 @@ local function EspMapFullSetStatus(text)
 	end
 end
 
+-- ── Hover → Item X-Ray: ชี้เมาส์ที่มาร์กเกอร์คนบนแมพ = โชว์ของคนนั้นในแผง Item X-Ray ──
+local EspMapFullHoverPlayer = nil
+
+EspMapFullGetHoverPlayer = function()
+	if EspMapFullIsOpen and EspMapFullHoverPlayer and EspMapFullHoverPlayer.Parent then
+		return EspMapFullHoverPlayer
+	end
+	return nil
+end
+
+local function EspMapFullBindHover(marker, player)
+	if not marker or not player then
+		return
+	end
+	marker.MouseMoved:Connect(function()
+		EspMapFullHoverPlayer = player
+	end)
+	marker.MouseLeave:Connect(function()
+		if EspMapFullHoverPlayer == player then
+			EspMapFullHoverPlayer = nil
+		end
+	end)
+	marker.AncestryChanged:Connect(function()
+		if not marker.Parent and EspMapFullHoverPlayer == player then
+			EspMapFullHoverPlayer = nil
+		end
+	end)
+end
+
 local function EspMapFullResetToggle()
 	local t = Toggles and Toggles.EspMapFull
 	if t and t.Value == true then
@@ -11482,13 +11552,24 @@ local function EspMapFullResetToggle()
 end
 
 local function EspMapFullCache()
-	if EspMapFullCacheData and EspMapFullCacheData.MainGui and EspMapFullCacheData.MainGui.Parent then
-		return EspMapFullCacheData
+	-- เช็คทุก reference ในแคช (ถ้าเกมสร้าง MainGui ใหม่หลังรีสปอว์น แคชเก่าจะพัง)
+	local c = EspMapFullCacheData
+	if c and c.MainGui and c.MainGui.Parent
+		and c.Inner and c.Inner.Parent
+		and c.Markers and c.Markers.Parent
+		and c.Template and c.Template.Parent
+		and c.Map and c.Map.Parent
+	then
+		return c
 	end
+	EspMapFullCacheData = nil
 	local ok, result = pcall(function()
 		local lp = Players.LocalPlayer
 		local pg = lp and lp:FindFirstChild("PlayerGui")
-		local mainGui = pg and pg:FindFirstChild("MainGui")
+		if not pg then
+			return nil
+		end
+		local mainGui = pg:FindFirstChild("MainGui")
 		if not mainGui then
 			return nil
 		end
@@ -11506,6 +11587,9 @@ local function EspMapFullCache()
 		end
 		local markers = inner:FindFirstChild("Markers")
 		local template = inner:FindFirstChild("MarkerDotTemplate")
+		if not template and markers then
+			template = markers:FindFirstChild("MarkerDotTemplate")
+		end
 		local maps = inner:FindFirstChild("Maps")
 		local map = nil
 		if maps then
@@ -11513,6 +11597,9 @@ local function EspMapFullCache()
 				or maps:FindFirstChildWhichIsA("ViewportFrame")
 				or maps:FindFirstChildWhichIsA("ImageLabel")
 				or maps:FindFirstChildWhichIsA("Frame")
+		end
+		if not map then
+			map = inner:FindFirstChildWhichIsA("ViewportFrame")
 		end
 		if not markers or not template or not map then
 			return nil
@@ -11534,6 +11621,7 @@ local function EspMapFullCache()
 end
 
 local function EspMapFullClear()
+	EspMapFullHoverPlayer = nil
 	for _, data in pairs(EspMapFullMarkers) do
 		if data and data.markerRef then
 			pcall(function()
@@ -11616,17 +11704,12 @@ local function EspMapFullGetWorldPos(player)
 	return nil
 end
 
-EspMapFullOpen = function()
-	local cache = EspMapFullCache()
-	if not cache then
-		EspMapFullResetToggle()
-		EspMapFullSetStatus("ESP Map: game map not found - open your map (M) once, then press the key again")
-		return
-	end
+local function EspMapFullDoOpen(cache)
 	local ok, err = pcall(function()
 		cache.Inner.Size = UDim2.fromScale(1, 1)
 		cache.Inner.Position = UDim2.new(0.5, 0, 0.49, 0)
 		cache.MapFrame.Visible = true
+		cache.Markers.Visible = true
 		game:GetService("UserInputService").MouseIconEnabled = true
 		local modal = cache.MainGui:FindFirstChild("ModalButton")
 		if modal then
@@ -11638,24 +11721,57 @@ EspMapFullOpen = function()
 	end)
 	if not ok then
 		EspMapFullResetToggle()
-		EspMapFullSetStatus("ESP Map: failed to open (" .. tostring(err) .. ")")
+		EspMapFullSetStatus("ESP Map: เปิดไม่สำเร็จ (" .. tostring(err) .. ")")
 		return
 	end
 	EspMapFullClear()
 	EspMapFullIsOpen = true
+	EspMapFullHoverPlayer = nil
 	EspMapFullSelfMarker = EspMapFullMakeMarker("ME", "self")
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= Players.LocalPlayer then
 			local marker = EspMapFullMakeMarker(plr.Name, "player")
 			if marker then
-				EspMapFullMarkers[plr.Name] = {
-					playerRef = plr,
-					markerRef = marker,
-				}
+				EspMapFullMarkers[plr.Name] = { playerRef = plr, markerRef = marker }
+				EspMapFullBindHover(marker, plr)
 			end
 		end
 	end
-	EspMapFullSetStatus("ESP Map: ON - red = players, ME = you (same key closes)")
+	EspMapFullSetStatus("ESP Map: เปิดแล้ว - แดง=ผู้เล่น, ME=คุณ | ชี้เมาส์ที่ชื่อคนบนแมพ = โชว์ของใน Item X-Ray")
+end
+
+-- เปิดแมพ: ถ้า GUI ยังไม่พร้อม (เพิ่งลงเซิฟ) จะรอเบื้องหลังสูงสุด 8 วิ แล้วเปิดให้เอง
+EspMapFullOpen = function()
+	local cache = EspMapFullCache()
+	if cache then
+		EspMapFullDoOpen(cache)
+		return
+	end
+	EspMapFullSetStatus("ESP Map: รอแมพของเกมโหลด (สูงสุด 8 วิ)...")
+	task.spawn(function()
+		local waited = 0
+		local found = nil
+		while waited < 8 do
+			task.wait(0.25)
+			waited += 0.25
+			if not Misc.EspMapFull then
+				return
+			end
+			found = EspMapFullCache()
+			if found then
+				break
+			end
+		end
+		if not Misc.EspMapFull then
+			return
+		end
+		if not found then
+			EspMapFullResetToggle()
+			EspMapFullSetStatus("ESP Map: หาแมพของเกมไม่เจอ - เปิดแมพปกติ (M) สักรอบ แล้วกดคีย์อีกครั้ง")
+			return
+		end
+		EspMapFullDoOpen(found)
+	end)
 end
 
 EspMapFullClose = function()
@@ -11672,7 +11788,7 @@ EspMapFullClose = function()
 		end
 	end)
 	EspMapFullClear()
-	EspMapFullSetStatus("ESP Map: OFF")
+	EspMapFullSetStatus("ESP Map: ปิดแล้ว")
 end
 
 local function UpdateEspMapFull()
@@ -11690,7 +11806,7 @@ local function UpdateEspMapFull()
 		EspMapFullIsOpen = false
 		EspMapFullClear()
 		EspMapFullResetToggle()
-		EspMapFullSetStatus("ESP Map: map GUI disappeared - turned off")
+		EspMapFullSetStatus("ESP Map: GUI แมพหาย - ปิดอัตโนมัติ")
 		return
 	end
 	if not cache.MapFrame.Visible then
@@ -11698,13 +11814,30 @@ local function UpdateEspMapFull()
 		EspMapFullIsOpen = false
 		EspMapFullClear()
 		EspMapFullResetToggle()
-		EspMapFullSetStatus("ESP Map: OFF")
+		EspMapFullSetStatus("ESP Map: ปิดแล้ว")
 		return
 	end
 
+		pcall(function()
+		cache.Markers.Visible = true
+	end)
+
 	local sizeReal = tonumber(cache.Map:GetAttribute("SizeReal"))
 	if not sizeReal or sizeReal == 0 then
-		EspMapFullSetStatus("ESP Map: map SizeReal missing - markers paused")
+		if EspMapFullSelfMarker then
+			EspMapFullSelfMarker.Visible = false
+		end
+		for _, data in pairs(EspMapFullMarkers) do
+			if data.markerRef then
+				data.markerRef.Visible = false
+			end
+		end
+		for _, dot in pairs(EspMapFullNpcDots) do
+			if dot then
+				dot.Visible = false
+			end
+		end
+		EspMapFullSetStatus("ESP Map: รอแมพโหลดข้อมูล (SizeReal)...")
 		return
 	end
 
@@ -11727,6 +11860,7 @@ local function UpdateEspMapFull()
 					playerRef = plr,
 					markerRef = marker,
 				}
+				EspMapFullBindHover(marker, plr)
 			end
 		end
 	end
