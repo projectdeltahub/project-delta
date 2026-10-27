@@ -9240,6 +9240,10 @@ local StatusLabel
 local ItemCache = {}           -- [model] = { Items=set, Time, Version }
 local PlayerQueue = {}
 local QueueIndex = 1
+local WorkQueue = {}           -- คิวเป้าที่ต้องสแกน (Model/Player/TTL)
+local QueuedSet = {}           -- กันเติมคิวซ้ำ (model -> true)
+local ActiveWorkers = 0
+local WORKER_CONCURRENCY = 3   -- สแกนพร้อมกันได้ 3 เป้า (ทุกตัว yield ทุก 300 โหนด)
 
 local AttachmentKeywords = {
     "scope", "sight", "suppressor", "visor", "grip", "laser", "nvg",
@@ -9359,6 +9363,9 @@ local function CollectFromCharacter(character, items)
         count += 1
         if count > MAX_NODES then
             break
+        end
+        if count % 300 == 0 then
+            task.wait()
         end
         local n = desc.Name
         if KnownItems[n] then
@@ -9485,6 +9492,34 @@ local function GetItemsCached(model, player, ttl)
     return items
 end
 
+-- ★ v8 FPS fix: งานสแกนหนักทั้งหมดย้ายไปทำบน worker async (task.spawn + yield)
+-- เฟรมเรนเดอร์ทำแค่จัดคิว + อ่าน cache = เปิด auto-Scan แล้ว FPS ไม่ตก
+local function PumpWorker()
+    if not Finder.Enabled then
+        return
+    end
+    while ActiveWorkers < WORKER_CONCURRENCY do
+        local job = table.remove(WorkQueue, 1)
+        if not job then
+            break
+        end
+        ActiveWorkers += 1
+        task.spawn(function()
+            local model = job.Model
+            local okJob, errJob = pcall(function()
+                if model.Parent then
+                    GetItemsCached(model, job.Player, job.TTL)
+                end
+            end)
+            if not okJob then
+                warn("[Wallhack.gg]", "ItemFinder", errJob)
+            end
+            QueuedSet[model] = nil
+            ActiveWorkers -= 1
+        end)
+    end
+end
+
 local function GetCorpseModels()
     local out = {}
     local dropped = workspace:FindFirstChild("DroppedItems")
@@ -9532,6 +9567,8 @@ local function ClearAll()
     end
     table.clear(HighlightCache)
     table.clear(ItemCache)
+    table.clear(WorkQueue)
+    table.clear(QueuedSet)
 end
 
 local FoundLabel
@@ -9664,7 +9701,7 @@ FinderGroup:AddToggle("ItemFinderRainbow", {
 })
 
 FinderGroup:AddToggle("ItemFinderCharms", {
-    Text = "Enadle auto-Scan",
+    Text = "Enadle Scan",
     Default = false,
     Callback = function(value)
         Finder.IncludeCharms = value
@@ -9746,39 +9783,27 @@ RunService.RenderStepped:Connect(function()
         local foundCount = 0
         local foundNames = {}
 
-        -- ★ staggered: สแกนทีละ 2 คนต่อรอบ หมุนเวียน
+        -- ★ v8: ไม่สแกนอะไรในเฟรมเรนเดอร์ — แค่เติมคิวเป้าที่ cache หมดอายุ/ยังไม่สแกน
         local players = Players:GetPlayers()
         PlayerQueue = players
 
-        for i = 1, PLAYERS_PER_TICK do
-            QueueIndex += 1
-            if QueueIndex > #PlayerQueue then
-                QueueIndex = 1
-            end
-            local player = PlayerQueue[QueueIndex]
-            if player and player ~= LocalPlayer then
+        for _, player in players do
+            if player ~= LocalPlayer then
                 local character = player.Character
-                local hl = HighlightCache[character]
-                if not character then
-                    if hl then
-                        RemoveHighlight(character)
-                    end
-                else
+                if character then
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
-                    local alive = not humanoid or humanoid.Health > 0
-                    if alive then
-                        local items = GetItemsCached(character, player, CACHE_TTL)
-                        local matched = MatchTargets(items)
-                        if matched then
-                            foundCount += 1
-                            foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
-                            local h = EnsureHighlight(character)
-                            if not Finder.Rainbow then
-                                h.FillColor = Finder.Color
-                                h.OutlineColor = Finder.Color
-                            end
-                        else
-                            RemoveHighlight(character)
+                    if not humanoid or humanoid.Health > 0 then
+                        local entry = ItemCache[character]
+                        local version = 0
+                        pcall(function()
+                            version = character:GetAttribute("WallhackVer") or 0
+                        end)
+                        local stale = (not entry)
+                            or entry.Version ~= version
+                            or (tick() - entry.Time) >= CACHE_TTL
+                        if stale and not QueuedSet[character] then
+                            QueuedSet[character] = true
+                            WorkQueue[#WorkQueue + 1] = { Model = character, Player = player, TTL = CACHE_TTL }
                         end
                     else
                         RemoveHighlight(character)
@@ -9787,9 +9812,23 @@ RunService.RenderStepped:Connect(function()
             end
         end
 
-        -- นับผลรวมจาก cache ทั้งหมด (ไม่สแกนเพิ่ม) เพื่อโชว์ตัวเลขถูกต้อง
-        for _, player in Players:GetPlayers() do
-            if player ~= LocalPlayer and player ~= PlayerQueue[QueueIndex] then
+        if Finder.IncludeCorpses then
+            for _, corpse in GetCorpseModels() do
+                local entry = ItemCache[corpse]
+                if (not entry) or (tick() - entry.Time) >= CORPSE_TTL then
+                    if not QueuedSet[corpse] then
+                        QueuedSet[corpse] = true
+                        WorkQueue[#WorkQueue + 1] = { Model = corpse, Player = nil, TTL = CORPSE_TTL }
+                    end
+                end
+            end
+        end
+
+        PumpWorker()
+
+        -- นับผลรวม + ไฮไลต์จาก cache ทั้งหมด (อ่านอย่างเดียว ไม่สแกนในเฟรม)
+        for _, player in players do
+            if player ~= LocalPlayer then
                 local character = player.Character
                 if character then
                     local entry = ItemCache[character]
@@ -9813,8 +9852,11 @@ RunService.RenderStepped:Connect(function()
 
         if Finder.IncludeCorpses then
             for _, corpse in GetCorpseModels() do
-                local items = GetItemsCached(corpse, nil, CORPSE_TTL)
-                local matched = MatchTargets(items)
+                local entryC = ItemCache[corpse]
+                local matched = nil
+                if entryC and (tick() - entryC.Time) < CORPSE_TTL then
+                    matched = MatchTargets(entryC.Items)
+                end
                 if matched then
                     foundCount += 1
                     foundNames[#foundNames + 1] = corpse.Name .. " (" .. matched .. ")"
@@ -9839,6 +9881,7 @@ RunService.RenderStepped:Connect(function()
             if not model.Parent then
                 HighlightCache[model] = nil
                 ItemCache[model] = nil
+                QueuedSet[model] = nil
             end
         end
 
@@ -9855,10 +9898,16 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
+local LastRainbow = 0
 RunService.RenderStepped:Connect(function()
     if not Finder.Rainbow then
         return
     end
+    local nowR = tick()
+    if nowR - LastRainbow < 0.08 then
+        return
+    end
+    LastRainbow = nowR
     local c = Color3.fromHSV((tick() % 4) / 4, 1, 1)
     for _, hl in pairs(HighlightCache) do
         if hl and hl.Parent then
