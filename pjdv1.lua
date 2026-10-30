@@ -1,9 +1,7 @@
 --[[
         Miko Hub - Project Delta
         Obsidian UI
-        Build: 2026-10-30 v17 GunRepair4 (credits Made by Yuki)
-        v17 = v16 Auto Gun Repair พอร์ตกลับมาบนสคริปต์ใหม่: ตรวจ "คลิกแล้วไม่มีกระสุนออก"
-        → ซ่อม 4 ชั้นอัตโนมัติ + ปุ่ม Repair Gun Now + กันโดนเตะฝั่ง client (Kick block) + สัญญาณยิงจาก CreateBullet/remote ปืน
+        Build: 2026-08-17bn (credits Made by Yuki)
 ]]
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -378,11 +376,10 @@ local function ResolveSilentHitPart(value)
 end
 
 local InitSilentAim, SyncSilentAimFromUI
-local InitGunSignalNet
 
 local Misc
 local RestoreMovementSounds
-local UpdateFastWalk, UpdateFreeCam, UpdateScriptUserESP, UpdateUnderground
+local UpdateFastWalk, UpdateFreeCam, UpdateScriptUserESP
 local InitGunMods, ApplyAmmoGunMods
 
 local TriggerBot = {
@@ -1229,151 +1226,12 @@ SyncSilentAimFromUI = function()
         end
 end
 
--- ═══════════════════════════════════════════════════════════════════
--- v17 ชุดสัญญาณปืน: ใช้ร่วมกับระบบ Auto Gun Repair (ปอร์ตจาก v16)
---   ถ้า _G.MikoGun_LastShotT ไม่อัปเดตหลังคลิก = ปืนค้างจริง → ซ่อมอัตโนมัติ
--- ═══════════════════════════════════════════════════════════════════
-if _G.MikoGun_LastShotT == nil then
-        _G.MikoGun_LastShotT = os.clock()
-end
-_G.MikoGun_EquipRemotes = _G.MikoGun_EquipRemotes or {}
-
-local function IsGunActionName(text)
-        text = tostring(text or ""):lower()
-        if text == "" then
-                return false
-        end
-        return text:find("shoot", 1, true)
-                or text:find("shot", 1, true)
-                or text:find("fire", 1, true)
-                or text:find("gun", 1, true)
-                or text:find("bullet", 1, true)
-                or text:find("weapon", 1, true)
-                or text:find("rifle", 1, true)
-                or text:find("pistol", 1, true)
-                or text:find("attack", 1, true)
-                or text:find("melee", 1, true)
-                or text:find("swing", 1, true)
-                or text:find("reload", 1, true)
-                or text:find("ammo", 1, true)
-                or text:find("projectile", 1, true)
-                or text:find("damage", 1, true)
-                or text:find("hitreg", 1, true)
-                or text:find("trigger", 1, true)
-                or text:find("muzzle", 1, true)
-end
-
-local function MikoIsEquipName(text)
-        text = tostring(text or ""):lower()
-        if text == "" then
-                return false
-        end
-        for _, kw in ipairs({ "equip", "switch", "select", "holster", "draw", "slot", "hotbar", "inventory", "wield" }) do
-                if text:find(kw, 1, true) then
-                        return true
-                end
-        end
-        return false
-end
-
-local function MikoRecordEquipRemote(remote, method, ...)
-        -- ★ แก้บัคบรรทัด 10712 ของ v16 ("Cannot use '...' outside of a vararg function"):
-        --   เดิมเอา ... ไปใช้ข้างใน pcall(function() ... end) ซึ่งเป็น closure ซ้อนที่
-        --   ไม่ได้ประกาศ ... = คอมไพล์พังทั้งไฟล์ สคริปต์โหลดไม่ขึ้นเลย
-        --   วิธีแก้: freeze ... เป็น table ในตัว vararg ก่อน แล้วค่อยใช้ packed ข้างใน
-        local packed = table.pack(...)
-        pcall(function()
-                if typeof(remote) ~= "Instance" or not MikoIsEquipName(remote.Name) then
-                        return
-                end
-                local out = {}
-                local n = packed.n
-                for i = 1, math.min(n, 8) do
-                        local v = packed[i]
-                        local tv = typeof(v)
-                        if tv == "string" or tv == "number" or tv == "boolean" or tv == "Instance" then
-                                out[#out + 1] = v
-                        else
-                                out[#out + 1] = tostring(v)
-                        end
-                end
-                local hist = _G.MikoGun_EquipRemotes
-                hist[#hist + 1] = { remote = remote, method = method, args = out, t = os.clock() }
-                while #hist > 5 do
-                        table.remove(hist, 1)
-                end
-        end)
-end
-
-InitGunSignalNet = function()
-        -- ═════════════════════════════════════════════════════════════
-        -- v17: ติดตั้งครั้งเดียวตอนโหลดสคริปต์ (ไม่ผูกกับ FastWalk)
-        --   (a) กันโดนเตะฝั่ง client: เกมสั่ง LocalPlayer:Kick() ผ่าน LocalScript = ขวางได้
-        --       (server เรียก Kick เอง = ขวางไม่ได้ แต่ noclip/mุดดินไม่ถูกจับเพราะ v5 ส่งตำแหน่งปกติ)
-        --   (b) จับสัญญาณ "ยิงสำเร็จ" จาก remote ฝั่งปืน (shoot/fire/bullet/...) → _G.MikoGun_LastShotT
-        --   (c) จับ remote สวม/สลับอาวุธที่เกมยิงเอง เก็บ 5 รายการล่าสุด → _G.MikoGun_EquipRemotes
-        --       (ชั้นซ่อมที่ 3 ของ Auto Gun Repair: replay remote สวมอาวุธเมื่อจำลองปุ่มไม่ผ่าน)
-        -- ═════════════════════════════════════════════════════════════
-        if _G.MikoGunNetHooked then
-                return
-        end
-        _G.MikoGunNetHooked = true
-
-        local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
-                return fn
-        end
-
-        if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
-                pcall(function()
-                        local oldNamecall
-                        oldNamecall = hookmetamethod(game, "__namecall", wrap(function(self, ...)
-                                local mtd = getnamecallmethod()
-
-                                if mtd == "Kick" and self == LocalPlayer then
-                                        print("[Miko] Blocked LocalPlayer:Kick() (client-side kick)")
-                                        return nil
-                                end
-
-                                if mtd == "FireServer" or mtd == "InvokeServer" then
-                                        local okName, remoteName = pcall(function()
-                                                return tostring(self and self.Name or "")
-                                        end)
-                                        if okName and remoteName ~= "" and IsGunActionName(remoteName) then
-                                                _G.MikoGun_LastShotT = os.clock()
-                                        end
-                                        pcall(MikoRecordEquipRemote, self, mtd, ...)
-                                end
-
-                                return oldNamecall(self, ...)
-                        end))
-                end)
-        end
-
-        -- แบบ dot-call: LocalPlayer.Kick(LocalPlayer, "...") = ไม่ผ่าน __namecall
-        pcall(function()
-                if hookfunction and typeof(LocalPlayer.Kick) == "function" then
-                        local kickFunc = LocalPlayer.Kick
-                        hookfunction(kickFunc, wrap(function(self, ...)
-                                print("[Miko] Blocked LocalPlayer.Kick(self,...) (dot-call kick)")
-                                return nil
-                        end))
-                end
-        end)
-end
-
 InitSilentAim = function()
         if oldCreateBullet or not BulletModule or typeof(hookfunction) ~= "function" then
                 return
         end
 
-        -- ★ 2026-10-30 แก้บัคสลับปืน→มีด→ปืนแล้วยิงไม่ออก:
-        --   เดิม hook นี้ไม่มี pcall ครอบ ถ้า logic ข้างใน error แม้บรรทัดเดียว
-        --   กระสุนนัดนั้นจะหายทันที (กดยิงแล้วเงียบ) — ตอนนี้แยก logic ออกเป็น
-        --   ResolveCreateBulletAim แล้วครอบด้วย pcall แบบ fail-open:
-        --   พังเมื่อไหร่ ยิงปกติด้วย aim เดิมทันที ไม่มีกระสุนหายอีก
-        local originalCreateBullet = BulletModule.CreateBullet
-
-        local function ResolveCreateBulletAim(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
+        oldCreateBullet = hookfunction(BulletModule.CreateBullet, function(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
 
                 local ammoFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
@@ -1404,6 +1262,8 @@ InitSilentAim = function()
                                         end
                                 end
                                 zeroRecoil(recoilPattern, 0)
+                        else
+                                recoilPattern = { 0, 0, 0, 0 }
                         end
 
                         -- Project Delta camera climb uses RecoilStrength / related AmmoTypes attrs
@@ -1480,15 +1340,7 @@ InitSilentAim = function()
                                 if origin then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
-                                        local oldDrag = ammo:GetAttribute("Drag")
-                                        if oldDrag ~= nil and oldDrag ~= 0 then
-                                                ammo:SetAttribute("Drag", 0)
-                                                task.defer(function()
-                                                        pcall(function()
-                                                                ammo:SetAttribute("Drag", oldDrag)
-                                                        end)
-                                                end)
-                                        end
+                                        ammo:SetAttribute("Drag", 0)
 
                                         local targetPosition = SilentAim.Prediction
                                                 and PredictTarget(target, origin, projectileSpeed, acceleration)
@@ -1502,7 +1354,7 @@ InitSilentAim = function()
                                                 finalAim = ResolveWallbangAim(finalAim, targetPosition + vertical)
                                         end
 
-                                        return finalAim
+                                        return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
                                 end
                         end
                 end
@@ -1512,23 +1364,7 @@ InitSilentAim = function()
                         finalAim = ResolveWallbangAim(aimPart, nil)
                 end
 
-                return finalAim
-        end
-
-        -- fail-open wrapper: pcall ครอบ logic ทั้งหมด ถ้าพังยิงต่อด้วย args เดิมทุกตัว
-        oldCreateBullet = originalCreateBullet
-
-        hookfunction(BulletModule.CreateBullet, function(...)
-                -- v17: ทุกครั้งที่เกมสร้างกระสุน = สัญญาณ "ปืนยิงได้ปกติ" (ให้ระบบ Auto Gun Repair ใช้)
-                _G.MikoGun_LastShotT = os.clock()
-                local args = table.pack(...)
-                local ok, finalAim = pcall(ResolveCreateBulletAim, table.unpack(args, 1, args.n))
-                if not ok then
-                        warn("[Wallhack.gg] CreateBullet hook fail-open:", finalAim)
-                        finalAim = args[5]
-                end
-                args[5] = finalAim
-                return originalCreateBullet(table.unpack(args, 1, args.n))
+                return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
         end)
 end
 
@@ -10111,17 +9947,9 @@ Misc = {
         NoRecoil = false,
         NoSpread = false,
         FastWalk = false,
-        FastWalkSpeed = 2.6,
         FreeCam = false,
         FreeCamSpeed = 60,
         FreeCamFollow = false,
-        GunRepair = true,
-        Underground = false,
-        UndergroundDepth = 1,
-        UndergroundSpeed = 1,
-        UGCamAbove = true,
-        UGLieFaceUp = false,
-        UGWalk = true,
         EspMap = false,
         EspMapRange = 300,
         EspMapPlayers = true,
@@ -10174,11 +10002,6 @@ SyncMiscFromUI = function()
         toggle("FastWalk", "FastWalk")
         toggle("FreeCam", "FreeCam")
         toggle("FreeCamFollow", "FreeCamFollow")
-        toggle("Underground", "Underground")
-        toggle("UGCamAbove", "UGCamAbove")
-        toggle("UGLieFaceUp", "UGLieFaceUp")
-        toggle("UGWalk", "UGWalk")
-        toggle("GunRepair", "GunRepair")
         toggle("EspMap", "EspMap")
         toggle("EspMapPlayers", "EspMapPlayers")
         toggle("EspMapNpcs", "EspMapNpcs")
@@ -10187,9 +10010,6 @@ SyncMiscFromUI = function()
         option("SpinSpeed", "SpinSpeed")
         option("CameraFOV", "CameraFOV")
         option("FreeCamSpeed", "FreeCamSpeed")
-        option("FastWalkSpeed", "FastWalkSpeed")
-        option("UndergroundDepth", "UndergroundDepth")
-        option("UndergroundSpeed", "UndergroundSpeed")
         option("EspMapRange", "EspMapRange")
 end
 
@@ -10671,15 +10491,8 @@ UpdateFastWalk = function(deltaTime)
                 if baseSpeed < 8 then
                         baseSpeed = 16
                 end
-                -- Fast Walk: adjustable speed multiplier (0.1 - 10)
-                local multiplier = tonumber(Misc.FastWalkSpeed) or 2.6
-                if multiplier < 0.1 then
-                        multiplier = 0.1
-                elseif multiplier > 10 then
-                        multiplier = 10
-                end
-                -- Shift = sprint bonus (+30%) on top of the chosen multiplier
-                local speed = sprinting and (baseSpeed * multiplier * 1.3) or (baseSpeed * multiplier)
+                -- Fast Walk: much faster CFrame move
+                local speed = sprinting and (baseSpeed * 3.4) or (baseSpeed * 2.6)
                 local nextPos = root.Position + move * speed * deltaTime
                 root.CFrame = CFrame.new(nextPos, nextPos + move)
         end
@@ -11041,10 +10854,49 @@ InitGunMods = function()
                 return
         end
 
-        -- ★ 2026-10-30: ลบ hook ฟังก์ชันใน Modules.VFX ออกทั้งหมด
-        -- เดิม hook แล้ว "return" เปล่าเมื่อ NoRecoil เปิด ทำให้ pipeline ยิงของเกม
-        -- ได้ค่า nil กลับไป = สลับปืน→มีด→ปืนแล้วยิงไม่ออก (และเคยทำ full-auto พังมาก่อน)
-        -- NoRecoil/NoSpread ยังทำงานครบผ่านการซีโร่ค่าบน AmmoTypes และ CreateBullet hook
+        -- Safe path only: do NOT hook FPS fire / gun modules (that broke full-auto).
+        -- Recoil climb is RecoilStrength on AmmoTypes + VFX camera kick.
+        local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
+                return fn
+        end
+
+        pcall(function()
+                local modules = ReplicatedStorage:FindFirstChild("Modules")
+                local vfx = modules and modules:FindFirstChild("VFX")
+                if not vfx then
+                        return
+                end
+                local ok, mod = pcall(require, vfx)
+                if not ok or type(mod) ~= "table" then
+                        return
+                end
+                for key, value in pairs(mod) do
+                        if type(value) == "function" then
+                                local name = tostring(key):lower()
+                                local isCameraOnly = name:find("camerashake", 1, true)
+                                        or name:find("screenshake", 1, true)
+                                        or name:find("viewmodelrecoil", 1, true)
+                                        or name:find("recoilcamera", 1, true)
+                                        or name:find("camerarecoil", 1, true)
+                                        or name:find("weaponkick", 1, true)
+                                        or name:find("weaponrecoil", 1, true)
+                                        or name == "recoil"
+                                        or name == "shake"
+                                        or name == "kick"
+                                if isCameraOnly then
+                                        pcall(function()
+                                                local old = value
+                                                mod[key] = wrap(function(...)
+                                                        if Misc.NoRecoil then
+                                                                return
+                                                        end
+                                                        return old(...)
+                                                end)
+                                        end)
+                                end
+                        end
+                end
+        end)
 
         ApplyAmmoGunMods(true)
         GunModsInstalled = true
@@ -11426,7 +11278,6 @@ UpdateMisc = function(deltaTime)
         UpdateWalkOnWater()
         UpdateFastWalk(deltaTime)
         UpdateFreeCam(deltaTime)
-        UpdateUnderground(deltaTime)
         if Misc.NoRecoil or Misc.NoSpread then
                 ApplyAmmoGunMods(false)
         elseif next(AmmoGunModCache.Recoil) or next(AmmoGunModCache.Spread) then
@@ -11439,712 +11290,6 @@ UpdateMisc = function(deltaTime)
         end
 end
 
-end)(); (function()
-end)(); (function()
--- ═══════════════════════════════════════════════════════════════════
--- v17 AUTO GUN REPAIR — แก้ "ถือปืนได้แต่ยิงไม่ออก" (เวลาสับเป็นมีดแล้วสับกลับมาปืน)
--- เกมนี้ไม่ใช้ Tool ของ Roblox (Backpack ว่าง — ปืนคือ Model:ViewModel ในกล้อง
--- สลับมีด = เกมลบ ViewModel ทิ้ง) ตรวจจับอาการ: คลิกซ้ายแล้วไม่มีสัญญาณ "ยิงสำเร็จ"
--- (CreateBullet / remote ฝั่งปืน) ภายใน 1.5 วิ = คลิกพัง 1 ครั้ง — นับเฉพาะถือปืนอยู่จริง
--- ซ่อม 4 ชั้นเรียงลำดับ:
---   (1) คืนสถานะ Humanoid ชั่วคราว (PlatformStand/Physics ค้างทำให้ flow สวมปืนตัน)
---   (2) จำลองกด X/1 ให้เกมสร้าง ViewModel ใหม่เองผ่าน input ปกติ
---   (3) replay remote สวมอาวุธล่าสุดที่เกมเคยยิงเอง (_G.MikoGun_EquipRemotes)
---   (4) จำลองกด R รีโหลด กันแม็กฝั่ง client ค้าง 0
--- + ปุ่ม "Repair Gun Now" ในแท็บ Misc กดซ่อมเองได้ทันที (หรือเรียก _G.MikoGunRepairNow())
--- + ทุกขั้น print แจ้ง console (F9) เช็คได้ว่าซ่อมถึงชั้นไหน
--- ═══════════════════════════════════════════════════════════════════
-do
-        local grLastClickT = 0
-        local grPendingT = nil
-        local grFailCount = 0
-        local grFirstFailT = 0
-        local grLastRepairT = 0
-        local grRepairing = false
-        local grLastVMState = nil
-        local MikoGunRepairNow
-
-        local function mikoIsViewModelInst(inst)
-                local ok, res = pcall(function()
-                        return typeof(inst) == "Instance" and inst:IsA("Model")
-                                and tostring(inst.Name):lower():find("viewmodel", 1, true) ~= nil
-                end)
-                return ok and res == true
-        end
-
-        local function mikoViewModelPresent()
-                local ok, res = pcall(function()
-                        local cam = workspace.CurrentCamera
-                        if not cam then
-                                return false
-                        end
-                        for _, ch in ipairs(cam:GetChildren()) do
-                                if mikoIsViewModelInst(ch) then
-                                        return true
-                                end
-                        end
-                        return false
-                end)
-                return ok and res == true
-        end
-
-        -- ถือปืนอยู่จริงไหม (เกมนี้ไม่มี Tool — ใช้ ViewModel + อนิเมชันถือปืนแทน)
-        -- อนิเมชัน fallback: เฉพาะไฟล์ "Idle" — ฟันมีด/วิ่งไม่นับ
-        local function mikoGunProbablyHeld()
-                if mikoViewModelPresent() then
-                        return true
-                end
-                local ok, res = pcall(function()
-                        local c = LocalPlayer.Character
-                        local h = c and c:FindFirstChildOfClass("Humanoid")
-                        if not h then
-                                return false
-                        end
-                        for _, tr in ipairs(h:GetPlayingAnimationTracks()) do
-                                if tr.Priority == Enum.AnimationPriority.Movement then
-                                        local nm = tostring(tr.Animation and tr.Animation.Name or ""):lower()
-                                        if nm:find("idle", 1, true) then
-                                                return true
-                                        end
-                                end
-                        end
-                        return false
-                end)
-                return ok and res == true
-        end
-
-        -- จำลองกดปุ่ม: VirtualInputManager (มีใน executor ส่วนใหญ่) → keypress/keyrelease
-        local function mikoSimKeyPress(keyEnum, keyName)
-                local sent = false
-                pcall(function()
-                        local vim = game:GetService("VirtualInputManager")
-                        if vim then
-                                vim:SendKeyEvent(true, keyEnum, false, game)
-                                task.wait(0.06)
-                                vim:SendKeyEvent(false, keyEnum, false, game)
-                                sent = true
-                        end
-                end)
-                if not sent then
-                        pcall(function()
-                                if type(keypress) == "function" and type(keyrelease) == "function" then
-                                        keypress(keyName)
-                                        task.wait(0.06)
-                                        keyrelease(keyName)
-                                        sent = true
-                                end
-                        end)
-                end
-                return sent
-        end
-
-        -- (1) คืนสถานะ Humanoid ชั่วคราวเพื่อให้ flow สวมปืนของเกมทำงาน
-        -- (เปิดเฉพาะสถานะที่โหมดมุดดินปิดไว้ — ระบบมุดจะบังคับ Physics ต่อเองในเฟรมถัดไป)
-        local function mikoNormalizeHumanoid(h)
-                pcall(function()
-                        if h.PlatformStand then
-                                h.PlatformStand = false
-                        end
-                        local st = Enum.HumanoidStateType
-                        for _, name in ipairs({ "GettingUp", "FallingDown", "Ragdoll" }) do
-                                local e = st[name]
-                                if e then
-                                        h:SetStateEnabled(e, true)
-                                end
-                        end
-                        h:ChangeState(st.Running)
-                end)
-        end
-
-        -- ตัวซ่อมหลัก (เรียกได้ทั้งอัตโนมัติ / ปุ่ม Repair Gun Now / console)
-        MikoGunRepairNow = function(reason)
-                if grRepairing then
-                        return false
-                end
-                grRepairing = true
-                task.spawn(function()
-                        local okR, errR = pcall(function()
-                                local nowT = os.clock()
-                                grLastRepairT = nowT
-                                grFailCount = 0
-                                grFirstFailT = 0
-                                grPendingT = nil
-                                local char = LocalPlayer.Character
-                                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                                if not hum or hum.Health <= 0 then
-                                        print("[Miko] v17 Repair: ตัวตาย/ไม่มี Humanoid - ข้ามการซ่อม")
-                                        return
-                                end
-                                print(string.format("[Miko] v17 Repair: เริ่มซ่อมปืน (%s) | ViewModel=%s | สถานะตัว=%s",
-                                        tostring(reason),
-                                        mikoViewModelPresent() and "มี" or "ไม่มี",
-                                        tostring(hum:GetState())))
-                                local savedAutoRotate = hum.AutoRotate
-                                -- (1) คืนสถานะ Humanoid ชั่วคราว
-                                mikoNormalizeHumanoid(hum)
-                                pcall(function()
-                                        hum.AutoRotate = true
-                                end)
-                                -- (2) จำลองกด X (ปุ่ม "ปืน กดตรงนี้เพื่อสลับ" ของเกม)
-                                local keyOk = mikoSimKeyPress(Enum.KeyCode.X, "x")
-                                if not keyOk then
-                                        print("[Miko] v17 Repair: จำลองปุ่มไม่ได้ (ไม่มี VirtualInputManager/keypress) - ไปชั้น replay remote")
-                                end
-                                task.wait(1.0)
-                                local gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
-                                local gotVM = mikoViewModelPresent()
-                                if not (gotShot or gotVM) then
-                                        -- อาจ toggle ยกปืนลงไปแล้ว → กด 1 (สล็อตปืน) ตามด้วย X
-                                        if keyOk then
-                                                mikoSimKeyPress(Enum.KeyCode.One, "1")
-                                                task.wait(0.7)
-                                                mikoSimKeyPress(Enum.KeyCode.X, "x")
-                                                task.wait(1.0)
-                                        end
-                                        gotVM = mikoViewModelPresent()
-                                        gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
-                                end
-                                -- (3) replay remote สวมอาวุธล่าสุดที่เกมเคยยิงเอง
-                                if not (gotShot or gotVM) then
-                                        pcall(function()
-                                                local hist = _G.MikoGun_EquipRemotes
-                                                if type(hist) == "table" and #hist > 0 then
-                                                        local entry = hist[#hist]
-                                                        local remote = entry.remote
-                                                        if typeof(remote) == "Instance" and remote.Parent then
-                                                                print("[Miko] v17 Repair: replay remote '" .. tostring(remote.Name) .. "' (" .. tostring(entry.method) .. ")")
-                                                                local args = entry.args or {}
-                                                                if entry.method == "InvokeServer" then
-                                                                        task.spawn(function()
-                                                                                pcall(function()
-                                                                                        remote:InvokeServer(unpack(args))
-                                                                                end)
-                                                                        end)
-                                                                else
-                                                                        task.spawn(function()
-                                                                                pcall(function()
-                                                                                        remote:FireServer(unpack(args))
-                                                                                end)
-                                                                        end)
-                                                                end
-                                                                task.wait(1.0)
-                                                                gotVM = mikoViewModelPresent()
-                                                                gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
-                                                        end
-                                                end
-                                        end)
-                                end
-                                -- (4) รีโหลดกระสุน (กันแม็กฝั่ง client ค้าง 0 หลังสลับอาวุธ)
-                                if gotVM and not gotShot then
-                                        mikoSimKeyPress(Enum.KeyCode.R, "r")
-                                        task.wait(0.8)
-                                end
-                                -- คืน AutoRotate (ระบบมุดดินจัดการส่วนอื่นต่อเองได้เลย)
-                                pcall(function()
-                                        hum.AutoRotate = savedAutoRotate
-                                end)
-                                print(string.format("[Miko] v17 Repair: จบ | ViewModel=%s | สัญญาณยิง=%s | ถ้ายังยิงไม่ได้: กด X หรือ 1 ที่คีย์บอร์ดเดี๋ยวนี้ (สถานะตัวปกติแล้ว) แล้วกด Repair Gun Now ซ้ำ",
-                                        gotVM and "มี" or "ไม่มี",
-                                        gotShot and "มี" or "ไม่มี"))
-                        end)
-                        if not okR then
-                                print("[Miko] v17 Repair error: " .. tostring(errR))
-                        end
-                        task.wait(0.5)
-                        grRepairing = false
-                end)
-                return true
-        end
-        _G.MikoGunRepairNow = MikoGunRepairNow
-
-        UserInputService.InputBegan:Connect(function(input, processed)
-                if processed then
-                        return
-                end
-                if input.UserInputType == Enum.UserInputType.MouseButton1
-                        or input.UserInputType == Enum.UserInputType.Touch then
-                        grLastClickT = os.clock()
-                        if grPendingT == nil then
-                                grPendingT = grLastClickT
-                        end
-                end
-        end)
-
-        RunService.Heartbeat:Connect(function()
-                if Library.Unloaded or Misc.GunRepair == false then
-                        return
-                end
-                local nowT = os.clock()
-
-                -- ยิงสำเร็จหลังคลิกล่าสุด = ปืนทำงานปกติ ล้างตัวนับพังทันที
-                if (tonumber(_G.MikoGun_LastShotT) or 0) >= (grLastClickT - 0.05) then
-                        grFailCount = 0
-                end
-
-                -- ViewModel กลับมา/หายไป (สลับอาวุธ/ซ่อมสำเร็จ) = เริ่มนับใหม่
-                local vmNow = mikoViewModelPresent()
-                if vmNow ~= grLastVMState then
-                        grLastVMState = vmNow
-                        grFailCount = 0
-                        grPendingT = nil
-                        grFirstFailT = 0
-                end
-
-                -- ตัดสินคลิกที่ค้าง: ผ่านไป 1.5 วิแล้วไม่มีกระสุนออก = คลิกพัง 1 ครั้ง
-                if grPendingT ~= nil and (nowT - grPendingT) >= 1.5 then
-                        local shotSince = (tonumber(_G.MikoGun_LastShotT) or 0) >= grPendingT
-                        if not shotSince and mikoGunProbablyHeld() then
-                                grFailCount += 1
-                                if grFirstFailT == 0 then
-                                        grFirstFailT = nowT
-                                end
-                                if grFailCount >= 4 and (nowT - grFirstFailT) <= 10
-                                        and (nowT - grLastRepairT) >= 8 and not grRepairing then
-                                        MikoGunRepairNow("อัตโนมัติ: คลิก 4 ครั้งไม่มีกระสุนออก")
-                                end
-                        end
-                        grPendingT = nil
-                end
-
-                -- ชุดคลิกพังเกิน 10 วิ = ล้าง (เริ่มนับใหม่ กันนับค้างจากรอบเก่า)
-                if grFirstFailT ~= 0 and (nowT - grFirstFailT) > 10 then
-                        grFailCount = 0
-                        grFirstFailT = 0
-                end
-        end)
-end
-
-----------------------------------------------------------------
--- Underground (มุดดิน) v5 — มุดใต้ผิวดินแล้วเดินด้วย WASD ได้จริง
--- ห้าม anchor ตัวละครเด็ดขาด! (anchor = client หยุดส่งตำแหน่งไป server)
--- v5: ตั้ง pose ครบ 3 จุดของเฟรม (Stepped ก่อน physics / Heartbeat หลัง
--- physics ก่อนส่งตำแหน่ง / RenderStepped ก่อน render) เพราะ controller
--- ตัวละครของเกมดึงตัวกลับขึ้นผิวดินในเฟส physics ถ้าสั่งแค่ RenderStepped
--- คนอื่นจะเห็นตัวเราโผล่-จม-นอนเอียงสลับไปมา + ล็อก Humanoid สถานะ
--- Physics กันตัวละครดันตัวลุก/ปั่นจนคนอื่นเห็นไม่นิ่ง
-----------------------------------------------------------------
-if type(_G.MikoUG_ForceStop) == "function" then
-        pcall(_G.MikoUG_ForceStop)
-end
-
-local active = false
-local stopUnderground = nil
-local camAnchor = nil
-local savedCameraSubject = nil
-local savedCameraType = nil
-local savedHumanoid = nil
-local savedAutoRotate = true
-local lastChar = nil
-local lastGroundY = nil
-local lastYaw = 0
-local printedGround = false
-local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
-local savedPlatformStand = false
-local disabledStates = nil
-local ugLastPose = nil
-local ugApplyPose = nil
-local ugSteppedConn = nil
-local ugHeartbeatConn = nil
-
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.IgnoreWater = true
-rayParams.RespectCanCollide = true
-
-local function BuildExclude()
-        local cam = workspace.CurrentCamera
-        local list = {}
-        if cam then
-                list[#list + 1] = cam
-        end
-        local ok, players = pcall(function()
-                return Players:GetPlayers()
-        end)
-        if ok and players then
-                for i = 1, #players do
-                        local c = players[i].Character
-                        if c then
-                                list[#list + 1] = c
-                        end
-                end
-        end
-        if camAnchor then
-                list[#list + 1] = camAnchor
-        end
-        rayParams.FilterDescendantsInstances = list
-end
-
-local function ProbeGround(root)
-        local startY = (lastGroundY or root.Position.Y) + 5
-        BuildExclude()
-        local hit = workspace:Raycast(
-                Vector3.new(root.Position.X, startY, root.Position.Z),
-                Vector3.new(0, -500, 0),
-                rayParams
-        )
-        if hit then
-                local y = hit.Position.Y
-                if hit.Normal.Y < 0.5 then
-                        return false -- เพดาน/ผนังเอียง ไม่ใช่พื้น
-                end
-                if lastGroundY and math.abs(y - lastGroundY) > 12 then
-                        return false -- ผิวเด้งเกินไป = ขยะ ray ปฏิเสธ
-                end
-                lastGroundY = y
-                return true
-        end
-        if not lastGroundY then
-                -- ray ไม่เจอพื้นเลย ก็ยังมุด (สมมติใต้ตัว 3 สตัดคือผิวดิน)
-                lastGroundY = root.Position.Y - 3
-        end
-        return false
-end
-
-local function EnsureCamAnchor()
-        if camAnchor and camAnchor.Parent then
-                return camAnchor
-        end
-        local part = Instance.new("Part")
-        part.Name = "MikoUG_CamAnchor"
-        part.Size = Vector3.new(1, 1, 1)
-        part.Transparency = 1
-        part.Anchored = true
-        part.CanCollide = false
-        part.CanQuery = false
-        part.CanTouch = false
-        part.Locked = true
-        part.CFrame = CFrame.new(0, -500, 0)
-        part.Parent = workspace
-        camAnchor = part
-        return part
-end
-
-stopUnderground = function()
-        active = false
-        local char = LocalPlayer.Character
-        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and char:FindFirstChild("HumanoidRootPart")
-        local cam = workspace.CurrentCamera
-        if cam then
-                if savedCameraType ~= nil then
-                        pcall(function()
-                                cam.CameraType = savedCameraType
-                        end)
-                else
-                        pcall(function()
-                                cam.CameraType = Enum.CameraType.Custom
-                        end)
-                end
-                if savedCameraSubject and savedCameraSubject.Parent then
-                        pcall(function()
-                                cam.CameraSubject = savedCameraSubject
-                        end)
-                elseif humanoid then
-                        pcall(function()
-                                cam.CameraSubject = humanoid
-                        end)
-                end
-        end
-        if camAnchor then
-                pcall(function()
-                        camAnchor:Destroy()
-                end)
-                camAnchor = nil
-        end
-        if ugSteppedConn then
-                pcall(function()
-                        ugSteppedConn:Disconnect()
-                end)
-                ugSteppedConn = nil
-        end
-        if ugHeartbeatConn then
-                pcall(function()
-                        ugHeartbeatConn:Disconnect()
-                end)
-                ugHeartbeatConn = nil
-        end
-        ugApplyPose = nil
-        ugLastPose = nil
-        if savedHumanoid and savedHumanoid.Parent then
-                pcall(function()
-                        savedHumanoid.AutoRotate = savedAutoRotate
-                        savedHumanoid.PlatformStand = savedPlatformStand
-                        if disabledStates then
-                                for _, stName in ipairs(disabledStates) do
-                                        local st = Enum.HumanoidStateType[stName]
-                                        if st then
-                                                savedHumanoid:SetStateEnabled(st, true)
-                                        end
-                                end
-                        end
-                        savedHumanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end)
-        end
-        savedHumanoid = nil
-        local curChar = LocalPlayer.Character
-        local curHum = curChar and curChar:FindFirstChildOfClass("Humanoid")
-        if curHum then
-                pcall(function()
-                        curHum.AutoRotate = savedAutoRotate
-                        curHum.PlatformStand = false
-                        if disabledStates then
-                                for _, stName in ipairs(disabledStates) do
-                                        local st = Enum.HumanoidStateType[stName]
-                                        if st then
-                                                curHum:SetStateEnabled(st, true)
-                                        end
-                                end
-                        end
-                        curHum:ChangeState(Enum.HumanoidStateType.GettingUp)
-                end)
-        end
-        disabledStates = nil
-        savedCameraSubject = nil
-        savedCameraType = nil
-        if collideSaved then
-                for part, value in pairs(collideSaved) do
-                        pcall(function()
-                                if part and part.Parent then
-                                        part.CanCollide = value
-                                end
-                        end)
-                end
-                collideSaved = nil
-        end
-        if root then
-                local upY = (lastGroundY or root.Position.Y) + 3.5
-                pcall(function()
-                        root.Anchored = false
-                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
-                        root.AssemblyLinearVelocity = Vector3.zero
-                end)
-        end
-        lastGroundY = nil
-        lastChar = nil
-        printedGround = false
-end
-_G.MikoUG_ForceStop = stopUnderground
-
-UpdateUnderground = function(deltaTime)
-        if typeof(deltaTime) ~= "number" or deltaTime ~= deltaTime or deltaTime <= 0 then
-                deltaTime = 0.016
-        elseif deltaTime > 0.1 then
-                deltaTime = 0.1
-        end
-
-        if Library.Unloaded or not Misc.Underground or Misc.FreeCam then
-                if active then
-                        stopUnderground()
-                        print("[Miko] Underground OFF - ตัวขึ้นผิวดินแล้ว")
-                end
-                return
-        end
-
-        local char = LocalPlayer.Character
-        local humanoid = char and char:FindFirstChildOfClass("Humanoid")
-        local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
-        if not char or not humanoid or not root or humanoid.Health <= 0 then
-                return
-        end
-
-        if char ~= lastChar then
-                lastChar = char
-                lastGroundY = nil
-                printedGround = false
-                collideSaved = nil
-        end
-
-        if not active then
-                active = true
-                local cam = workspace.CurrentCamera
-                savedCameraSubject = cam and cam.CameraSubject or nil
-                savedCameraType = cam and cam.CameraType or nil
-                savedHumanoid = humanoid
-                savedAutoRotate = humanoid.AutoRotate
-                pcall(function()
-                        humanoid.AutoRotate = false
-                end)
-                savedPlatformStand = humanoid.PlatformStand
-                disabledStates = { "GettingUp", "FallingDown", "Ragdoll", "Jumping", "Climbing", "Swimming", "Seated" }
-                pcall(function()
-                        humanoid.PlatformStand = true
-                        for _, stName in ipairs(disabledStates) do
-                                local st = Enum.HumanoidStateType[stName]
-                                if st then
-                                        humanoid:SetStateEnabled(st, false)
-                                end
-                        end
-                        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-                end)
-                -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
-                -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
-                -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
-                if ugSteppedConn then
-                        pcall(function()
-                                ugSteppedConn:Disconnect()
-                        end)
-                end
-                if ugHeartbeatConn then
-                        pcall(function()
-                                ugHeartbeatConn:Disconnect()
-                        end)
-                end
-                ugApplyPose = function()
-                        local c = LocalPlayer.Character
-                        local h = c and c:FindFirstChildOfClass("Humanoid")
-                        local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
-                        if not c or not h or not r or h.Health <= 0 then
-                                return
-                        end
-                        if not Misc.Underground or Misc.FreeCam or Library.Unloaded then
-                                return
-                        end
-                        if h:GetState() ~= Enum.HumanoidStateType.Physics then
-                                pcall(function()
-                                        h:ChangeState(Enum.HumanoidStateType.Physics)
-                                end)
-                        end
-                        for _, part in ipairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") and part.CanCollide then
-                                        part.CanCollide = false
-                                end
-                        end
-                        pcall(function()
-                                r.AssemblyLinearVelocity = Vector3.zero
-                                r.AssemblyAngularVelocity = Vector3.zero
-                                if ugLastPose then
-                                        r.CFrame = ugLastPose
-                                end
-                        end)
-                end
-                ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
-                ugHeartbeatConn = RunService.Heartbeat:Connect(ugApplyPose)
-                print("[Miko] Underground ON")
-        end
-
-        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
-        ProbeGround(root)
-
-        if not printedGround and lastGroundY then
-                printedGround = true
-                print(string.format("[Miko] Underground: ผิวดิน Y=%.1f", lastGroundY))
-        end
-
-        local depth = tonumber(Misc.UndergroundDepth) or 1
-        if depth < 0.1 then
-                depth = 0.1
-        elseif depth > 1 then
-                depth = 1
-        end
-        local targetY = (lastGroundY or root.Position.Y) - depth
-
-        -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        local dir = Vector3.zero
-        if Misc.UGWalk then
-                local ok, md = pcall(function()
-                        return humanoid.MoveDirection
-                end)
-                if ok and typeof(md) == "Vector3" then
-                        dir = md
-                end
-        end
-
-        local speed = 16
-        if humanoid.WalkSpeed and humanoid.WalkSpeed > 0.1 then
-                speed = humanoid.WalkSpeed
-        end
-        -- Underground Speed (0.1 - 2): สไลเดอร์เฉพาะของโหมดมุดดิน คูณจาก WalkSpeed ปกติ
-        -- (แยกออกจาก FastWalk เพื่อให้คุมความเร็วใต้ดินได้ตรงจุดและทำนายผลได้)
-        local ugSpeedMult = tonumber(Misc.UndergroundSpeed) or 1
-        if ugSpeedMult < 0.1 then
-                ugSpeedMult = 0.1
-        elseif ugSpeedMult > 2 then
-                ugSpeedMult = 2
-        end
-        speed = speed * ugSpeedMult
-
-        local pos = root.Position + dir * speed * deltaTime
-        pos = Vector3.new(pos.X, targetY, pos.Z)
-
-        if dir.Magnitude > 0.01 then
-                lastYaw = math.atan2(-dir.X, -dir.Z)
-        end
-
-        -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
-        if not collideSaved then
-                collideSaved = {}
-        end
-        for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
-                        if collideSaved[part] == nil then
-                                collideSaved[part] = part.CanCollide
-                        end
-                        if part.CanCollide then
-                                part.CanCollide = false
-                        end
-                end
-        end
-        if not humanoid.PlatformStand then
-                pcall(function()
-                        humanoid.PlatformStand = true
-                end)
-        end
-
-        -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
-        -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
-        -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
-        -- ผิวดินช่วง physics — ไม่งั้นคนอื่นเห็นตัวเราโผล่/จม/นอนเอียงสลับไปมา
-        local pose = nil
-        if Misc.UGLieFaceUp then
-                pose = CFrame.new(pos)
-                        * CFrame.Angles(0, lastYaw, 0)
-                        * CFrame.Angles(math.pi / 2, 0, 0)
-        else
-                pose = CFrame.new(pos) * CFrame.Angles(0, lastYaw, 0)
-        end
-        ugLastPose = pose
-        pcall(function()
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-                root.CFrame = pose
-        end)
-
-        -- กล้อง: อยู่บนผิวดินตามตัว (ปกติ) หรือมุดลงไปกับตัว
-        local cam = workspace.CurrentCamera
-        if cam then
-                if Misc.UGCamAbove then
-                        local anchor = EnsureCamAnchor()
-                        anchor.CFrame = CFrame.new(root.Position.X, lastGroundY + 2.4, root.Position.Z)
-                        if cam.CameraSubject ~= anchor then
-                                pcall(function()
-                                        cam.CameraSubject = anchor
-                                end)
-                        end
-                        if cam.CameraType ~= Enum.CameraType.Custom then
-                                pcall(function()
-                                        cam.CameraType = Enum.CameraType.Custom
-                                end)
-                        end
-                else
-                        if camAnchor then
-                                pcall(function()
-                                        camAnchor:Destroy()
-                                end)
-                                camAnchor = nil
-                        end
-                        if cam.CameraSubject ~= humanoid then
-                                pcall(function()
-                                        cam.CameraSubject = humanoid
-                                end)
-                        end
-                        if cam.CameraType ~= Enum.CameraType.Custom then
-                                pcall(function()
-                                        cam.CameraType = Enum.CameraType.Custom
-                                end)
-                        end
-                end
-        end
-end
 end)(); (function()
 local MiscBox = Tabs.Misc:AddLeftGroupbox("Misc")
 
@@ -12266,20 +11411,6 @@ MiscBox:AddToggle("FastWalk", {
         end,
 })
 
-MiscBox:AddSlider("FastWalkSpeed", {
-        Text = "Fast Walk Speed",
-        Tooltip = "Speed multiplier (0.1 - 10)",
-        Default = 2.6,
-        Min = 0.1,
-        Max = 10,
-        Rounding = 1,
-        Callback = function(value)
-                if typeof(value) == "number" and value > 0 then
-                        Misc.FastWalkSpeed = value
-                end
-        end,
-})
-
 MiscBox:AddToggle("FreeCam", {
         Text = "Free Cam",
         Default = false,
@@ -12301,99 +11432,6 @@ MiscBox:AddToggle("FreeCam", {
         Mode = "Hold",
         Text = "Free Cam",
         SyncToggleState = false,
-})
-
-MiscBox:AddToggle("Underground", {
-        Text = "Underground (มุดดิน)",
-        Default = false,
-        Callback = function(value)
-                Misc.Underground = value
-                UpdateUnderground(0)
-        end,
-}):AddKeyPicker("UndergroundKeybind", {
-        Default = "KeypadZero",
-        Mode = "Toggle",
-        Text = "Underground (มุดดิน)",
-        SyncToggleState = true,
-})
-
-MiscBox:AddSlider("UndergroundDepth", {
-        Text = "Underground Depth",
-        Tooltip = "ความลึกตอนมุดดิน (0.1 - 1)",
-        Default = 1,
-        Min = 0.1,
-        Max = 1,
-        Rounding = 2,
-        Callback = function(value)
-                if typeof(value) == "number" then
-                        Misc.UndergroundDepth = value
-                end
-        end,
-})
-
-MiscBox:AddSlider("UndergroundSpeed", {
-        Text = "Underground Speed",
-        Tooltip = "ความเร็วตอนมุดดิน (0.1 - 2)",
-        Default = 1,
-        Min = 0.1,
-        Max = 2,
-        Rounding = 2,
-        Callback = function(value)
-                if typeof(value) == "number" and value > 0 then
-                        Misc.UndergroundSpeed = value
-                end
-        end,
-})
-
--- v17: ระบบซ่อมปืน — ตรวจ "คลิกแล้วไม่มีกระสุนออก" (สลับมีด→ปืนแล้วยิงไม่ได้) แล้วซ่อมให้เอง
-MiscBox:AddToggle("GunRepair", {
-        Text = "Auto Gun Repair (ซ่อมปืนอัตโนมัติ)",
-        Tooltip = "คลิกยิง 4 ครั้งแล้วไม่มีกระสุนออก = ซ่อมให้เองอัตโนมัติ (แก้อาการสับมีดแล้วสับกลับมาปืนยิงไม่ได้)",
-        Default = true,
-        Callback = function(value)
-                Misc.GunRepair = value
-        end,
-})
-
-MiscBox:AddButton({
-        Text = "Repair Gun Now (ซ่อมปืนตอนนี้)",
-        Func = function()
-                if type(_G.MikoGunRepairNow) == "function" then
-                        _G.MikoGunRepairNow("ปุ่มมือ")
-                else
-                        pcall(function()
-                                Library:Notify({
-                                        Title = "Miko Hub",
-                                        Description = "ระบบซ่อมปืนยังไม่พร้อม ลองอีกครั้ง",
-                                        Time = 3,
-                                })
-                        end)
-                end
-        end,
-})
-
-MiscBox:AddToggle("UGCamAbove", {
-        Text = "Camera Above Ground",
-        Default = true,
-        Callback = function(value)
-                Misc.UGCamAbove = value
-        end,
-})
-
-MiscBox:AddToggle("UGLieFaceUp", {
-        Text = "Lie Face Up (นอนหงาย)",
-        Default = false,
-        Callback = function(value)
-                Misc.UGLieFaceUp = value
-        end,
-})
-
-MiscBox:AddToggle("UGWalk", {
-        Text = "WASD Walk (เดินตามกล้อง)",
-        Default = true,
-        Callback = function(value)
-                Misc.UGWalk = value
-        end,
 })
 
 MiscBox:AddLabel("Spectator: ")
@@ -13094,11 +12132,6 @@ MenuGroup:AddButton("Unload", function()
         end
         UpdateFastWalk(0)
         UpdateFreeCam(0)
-        pcall(function()
-                if _G.MikoUG_ForceStop then
-                        _G.MikoUG_ForceStop()
-                end
-        end)
         RestoreMovementSounds()
         ClearWaterPlatform()
         RestoreLightingDefaults()
@@ -13199,7 +12232,7 @@ local CategoryOffLists = {
                 Toggles = {
                         "ItemFinderEnabled", "ItemFinderRainbow", "ItemFinderCharms", "ItemFinderCorpses",
                         "Spinbot", "ThirdPerson", "WalkOnWater", "WallPenetration", "NoRecoil", "NoSpread",
-                        "FastWalk", "FreeCam", "Underground", "FullBright", "FOVChanger",
+                        "FastWalk", "FreeCam", "FullBright", "FOVChanger",
                 },
         },
 }
@@ -13999,10 +13032,9 @@ local function UpdateEspMapFull()
                 return
         end
 
-        -- ★ 2026-10-30: แก้ ESP map กระพริบตอนมุดดิน
-        -- เดิมบังคับ Markers.Visible = true ทุก 0.1 วิ ซึ่งสวนกับเกมที่ซ่อน markers
-        -- เมื่อผู้เล่นอยู่ต่ำ/ใต้ดิน สองฝั่งตีกันทุกเฟรมจนกระพริบรัวๆ
-        -- ตอนนี้ตั้งค่าครั้งเดียวตอนเปิดแมพ (EspMapFullDoOpen) แล้วปล่อยตามเกม
+                pcall(function()
+                cache.Markers.Visible = true
+        end)
 
         local sizeReal = tonumber(cache.Map:GetAttribute("SizeReal"))
         if not sizeReal or sizeReal == 0 then
@@ -14332,7 +13364,6 @@ end
 
 SafeSync()
 task.defer(function()
-        pcall(InitGunSignalNet) -- v17: กันโดนเตะฝั่ง client + จับสัญญาณยิง/สวมอาวุธ (ติดตั้งครั้งเดียว)
         pcall(InitSilentAim)
         pcall(function()
                 if Library and Library.Toggle then
