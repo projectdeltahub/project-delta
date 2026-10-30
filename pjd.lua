@@ -1,7 +1,7 @@
 --[[
         Miko Hub - Project Delta
         Obsidian UI
-        Build: 2026-10-30 (credits Made by Yuki)
+        Build: 2026-08-17bn (credits Made by Yuki)
 ]]
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -1271,14 +1271,7 @@ InitSilentAim = function()
                 return
         end
 
-        -- ★ 2026-10-30 แก้บัคสลับปืน→มีด→ปืนแล้วยิงไม่ออก:
-        --   เดิม hook นี้ไม่มี pcall ครอบ ถ้า logic ข้างใน error แม้บรรทัดเดียว
-        --   กระสุนนัดนั้นจะหายทันที (กดยิงแล้วเงียบ) — ตอนนี้แยก logic ออกเป็น
-        --   ResolveCreateBulletAim แล้วครอบด้วย pcall แบบ fail-open:
-        --   พังเมื่อไหร่ ยิงปกติด้วย aim เดิมทันที ไม่มีกระสุนหายอีก
-        local originalCreateBullet = BulletModule.CreateBullet
-
-        local function ResolveCreateBulletAim(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
+        oldCreateBullet = hookfunction(BulletModule.CreateBullet, function(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
 
                 local ammoFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
@@ -1309,6 +1302,8 @@ InitSilentAim = function()
                                         end
                                 end
                                 zeroRecoil(recoilPattern, 0)
+                        else
+                                recoilPattern = { 0, 0, 0, 0 }
                         end
 
                         -- Project Delta camera climb uses RecoilStrength / related AmmoTypes attrs
@@ -1385,15 +1380,7 @@ InitSilentAim = function()
                                 if origin then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
-                                        local oldDrag = ammo:GetAttribute("Drag")
-                                        if oldDrag ~= nil and oldDrag ~= 0 then
-                                                ammo:SetAttribute("Drag", 0)
-                                                task.defer(function()
-                                                        pcall(function()
-                                                                ammo:SetAttribute("Drag", oldDrag)
-                                                        end)
-                                                end)
-                                        end
+                                        ammo:SetAttribute("Drag", 0)
 
                                         local targetPosition = SilentAim.Prediction
                                                 and PredictTarget(target, origin, projectileSpeed, acceleration)
@@ -1407,7 +1394,7 @@ InitSilentAim = function()
                                                 finalAim = ResolveWallbangAim(finalAim, targetPosition + vertical)
                                         end
 
-                                        return finalAim
+                                        return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
                                 end
                         end
                 end
@@ -1417,21 +1404,7 @@ InitSilentAim = function()
                         finalAim = ResolveWallbangAim(aimPart, nil)
                 end
 
-                return finalAim
-        end
-
-        -- fail-open wrapper: pcall ครอบ logic ทั้งหมด ถ้าพังยิงต่อด้วย args เดิมทุกตัว
-        oldCreateBullet = originalCreateBullet
-
-        hookfunction(BulletModule.CreateBullet, function(...)
-                local args = table.pack(...)
-                local ok, finalAim = pcall(ResolveCreateBulletAim, table.unpack(args, 1, args.n))
-                if not ok then
-                        warn("[Wallhack.gg] CreateBullet hook fail-open:", finalAim)
-                        finalAim = args[5]
-                end
-                args[5] = finalAim
-                return originalCreateBullet(table.unpack(args, 1, args.n))
+                return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
         end)
 end
 
@@ -10936,10 +10909,49 @@ InitGunMods = function()
                 return
         end
 
-        -- ★ 2026-10-30: ลบ hook ฟังก์ชันใน Modules.VFX ออกทั้งหมด
-        -- เดิม hook แล้ว "return" เปล่าเมื่อ NoRecoil เปิด ทำให้ pipeline ยิงของเกม
-        -- ได้ค่า nil กลับไป = สลับปืน→มีด→ปืนแล้วยิงไม่ออก (และเคยทำ full-auto พังมาก่อน)
-        -- NoRecoil/NoSpread ยังทำงานครบผ่านการซีโร่ค่าบน AmmoTypes และ CreateBullet hook
+        -- Safe path only: do NOT hook FPS fire / gun modules (that broke full-auto).
+        -- Recoil climb is RecoilStrength on AmmoTypes + VFX camera kick.
+        local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
+                return fn
+        end
+
+        pcall(function()
+                local modules = ReplicatedStorage:FindFirstChild("Modules")
+                local vfx = modules and modules:FindFirstChild("VFX")
+                if not vfx then
+                        return
+                end
+                local ok, mod = pcall(require, vfx)
+                if not ok or type(mod) ~= "table" then
+                        return
+                end
+                for key, value in pairs(mod) do
+                        if type(value) == "function" then
+                                local name = tostring(key):lower()
+                                local isCameraOnly = name:find("camerashake", 1, true)
+                                        or name:find("screenshake", 1, true)
+                                        or name:find("viewmodelrecoil", 1, true)
+                                        or name:find("recoilcamera", 1, true)
+                                        or name:find("camerarecoil", 1, true)
+                                        or name:find("weaponkick", 1, true)
+                                        or name:find("weaponrecoil", 1, true)
+                                        or name == "recoil"
+                                        or name == "shake"
+                                        or name == "kick"
+                                if isCameraOnly then
+                                        pcall(function()
+                                                local old = value
+                                                mod[key] = wrap(function(...)
+                                                        if Misc.NoRecoil then
+                                                                return
+                                                        end
+                                                        return old(...)
+                                                end)
+                                        end)
+                                end
+                        end
+                end
+        end)
 
         ApplyAmmoGunMods(true)
         GunModsInstalled = true
@@ -11371,7 +11383,11 @@ local ugHeartbeatConn = nil
 
 -- Hide the local character and any gear welded to its torso, including gear
 -- that the game parents outside Character. Never modify replicated Transparency.
-local ugHiddenParts = {} -- [Instance] = { original modifier, change connection }
+-- ★ FPS fix 2026-10-30 (ยิงปืนแล้วเกมค้าง): ไม่ต่อ GetPropertyChangedSignal
+--   รายชิ้นอีกต่อไป — ตอนยิง เกม spawn VFX ใต้กล้องเป็นสิบชิ้นต่อนัด ทำให้เกิด
+--   connect/disconnect + signal dispatch จำนวนมากต่อเฟรมจน FPS ตกหนัก
+--   การซ่อนใช้การ re-assert ใน BindToRenderStep (รันหลังกล้อง) แทน ซึ่งชนะอยู่แล้ว
+local ugHiddenParts = {} -- [Instance] = { Value = LocalTransparencyModifier เดิม }
 local function UGHidePart(obj)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
@@ -11383,15 +11399,7 @@ local function UGHidePart(obj)
                 if not ok then
                         return
                 end
-                local saved = { Value = oldValue }
-                ugHiddenParts[obj] = saved
-                pcall(function()
-                        saved.Connection = obj:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
-                                if active and obj.LocalTransparencyModifier ~= 1 then
-                                        obj.LocalTransparencyModifier = 1
-                                end
-                        end)
-                end)
+                ugHiddenParts[obj] = { Value = oldValue }
         end
         pcall(function()
                 obj.LocalTransparencyModifier = 1
@@ -11399,9 +11407,6 @@ local function UGHidePart(obj)
 end
 
 local function UGRestorePart(obj, saved)
-        if saved.Connection then
-                saved.Connection:Disconnect()
-        end
         pcall(function()
                 obj.LocalTransparencyModifier = saved.Value
         end)
@@ -11514,6 +11519,7 @@ end
 -- กล้องอัปเดตเสมอ (priority มากกว่า Camera) มุมกล้องตอนเปิดมุดดินจึงเหมือนตอนปิดจริง ๆ
 local UGHideStepName = "MikoUG_HideLocalBody"
 local ugHideStepBound = false
+local ugLastRescan = 0
 local UGBindHideStep = function()
         if ugHideStepBound then
                 return
@@ -11521,15 +11527,34 @@ local UGBindHideStep = function()
         -- priority 2147483000 = รันหลังกล้องของเกม/Roblox ทุกตัว (กล้องเกม FPS ส่วนใหญ่
         -- เป็น Scriptable และมองข้าม Humanoid.CameraOffset) ทำให้ (1) การซ่อนตัวชนะแน่นอน
         -- (2) ล็อกความสูงกล้องไว้ที่ระดับเดิมตอนเปิดมุดดิน = มุมมองอยู่ที่เดิม ไม่จมลงไปกับตัว
+        --
+        -- ★ FPS fix 2026-10-30 (ยิงปืนแล้ว FPS ตกเหลือ ~3): เดิม callback นี้ทำงานหนัก
+        --   ทุกเฟรม = GetDescendants ตัวละคร + camera:GetDescendants + GetConnectedParts
+        --   แถมช่วงยิง เกมเพิ่ม VFX ใต้กล้องทุกนัด งานต่อเฟรมเลยบานสะพรั่งจนขั้ว render
+        --   ถูกกินหมด (วัดจริง: Render เหลือ 2.1 ครั้ง/วินาที ทั้งที่ physics ยัง 62/วิ)
+        --   ตอนนี้แบ่งเป็น 2 ชั้น:
+        --   - ทุกเฟรม: re-assert LTM=1 เฉพาะชิ้นที่ track ไว้แล้ว (ไม่กี่สิบ write เท่านั้น)
+        --     + ล็อกความสูงกล้อง = ตัวยังถูกซ่อน 100% เพราะเรารันหลัง TransparencyController
+        --   - ทุก 0.12 วิ: สแกนหาตัว/เป้/อุปกรณ์ใหม่เท่านั้น (หน่วงได้เพราะชิ้นเดิมยังถูก
+        --     re-assert ทุกเฟรมอยู่แล้ว มุมมองไม่มีทางเห็นตัว)
         local ok = pcall(function()
                 RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
                                 return
                         end
                         local c = LocalPlayer.Character
-                        if c then
-                                UGHideLocalBody(c)
-                                UGHideAttachedGear(c)
+                        for obj, _ in pairs(ugHiddenParts) do
+                                if obj.Parent then
+                                        obj.LocalTransparencyModifier = 1
+                                end
+                        end
+                        local now = tick()
+                        if now - ugLastRescan >= 0.12 then
+                                ugLastRescan = now
+                                if c then
+                                        UGHideLocalBody(c)
+                                        UGHideAttachedGear(c)
+                                end
                         end
                         local cam = workspace.CurrentCamera
                         local h = c and c:FindFirstChildOfClass("Humanoid")
@@ -11749,7 +11774,9 @@ UpdateUnderground = function(deltaTime)
                                         end
                                 end
                         end
-                        UGHideLocalBody(c)
+                        -- (UGHideLocalBody ย้ายไปทำใน BindToRenderStep ตัวเดียว —
+                        --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
+                        --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
                         pcall(function()
                                 r.AssemblyLinearVelocity = Vector3.zero
                                 r.AssemblyAngularVelocity = Vector3.zero
@@ -11828,7 +11855,8 @@ UpdateUnderground = function(deltaTime)
                         end
                 end
         end
-        UGHideLocalBody(char)
+        -- (การซ่อนตัวทำใน BindToRenderStep priority 2147483000 จุดเดียวพอ —
+        --  ค่า LTM ที่เขียนตรงนี้จะโดน TransparencyController ล้างทุกเฟรมอยู่แล้ว)
         -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
         -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
         -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
@@ -11974,10 +12002,10 @@ MiscBox:AddToggle("FastWalk", {
 
 MiscBox:AddSlider("FastWalkSpeed", {
         Text = "Fast Walk Speed",
-        Tooltip = "Speed multiplier (0.1 - 3)",
+        Tooltip = "Speed multiplier (0.1 - 10)",
         Default = 2.6,
         Min = 0.1,
-        Max = 3,
+        Max = 10,
         Rounding = 1,
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
@@ -12019,7 +12047,7 @@ MiscBox:AddToggle("Underground", {
 }):AddKeyPicker("UndergroundKeybind", {
         Default = "KeypadZero",
         Mode = "Toggle",
-        Text = "Underground",
+        Text = "Underground (มุดดิน)",
         SyncToggleState = true,
 })
 
@@ -14113,4 +14141,4 @@ pcall(function()
         end)
 end)
 
-end)()
+end)()  
