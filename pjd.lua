@@ -1,96 +1,7 @@
 --[[
         Miko Hub - Project Delta
         Obsidian UI
-        Build: 2026-10-30 v14 GunFix (credits Made by Yuki)
-        v14 GunFix: แก้ "ถือปืนขึ้นได้แต่ยิงไม่ออก" + ลบฟังก์ชันตามคำขอ:
-            (1) ลบ "Exit At Spot" ออกทั้งหมด — ไม่จำเป็นแล้วเพราะโหมดที่เหลือมุดด้วย
-                "ตัวจริง" พอปิด = ลอยขึ้นตรงจุดที่ปิดเสมอ (ปิดตรงไหนขึ้นตรงนั้นอัตโนมัติ)
-            (2) ลบ "Ghost Mode" ออกทั้งหมด — โหมดที่วิเคราะห์จาก log แล้วเป็นสาเหตุที่
-                เกมฆ่าเรากลางเซสชัน (log: state=FallingDown + evaluateStateMachine=false
-                + CanCollide=false + CameraSubject เป็น Part แปลกปลอม → ViewModel ปืน
-                ถูกลบ → ตาย → เกิดใหม่แล้ว ViewModel ไม่กลับมา = ถือปืนได้แต่ยิงไม่ออก)
-            (3) การมุดใหม่ = โหมด Stealth เท่านั้น: คงสถานะ Humanoid = Running ปกติ
-                ไม่แตะ CanCollide/PlatformStand/ViewModel/AnimationTrack ใด ๆ
-                = ระบบปืนของเกมทำงานปกติ ยิง/เล็ง/รีโหลดได้ขณะมุด
-            (4) ปุ่ม Underground กดเปิด/ปิดได้ (KeyPicker ปรับเปลี่ยนปุ่มได้ใน UI ค่าเริ่มต้น = B)
-            (5) Underground Depth ปรับได้ 0.1 - 2 สตัด (ค่าเริ่มต้น = 1)
-            (6) แก้บัค "เปิดมุดดินแล้วไม่มุด" ที่แก้ไม่หายใน v13: UI toggle "Camera Above
-                Ground" ยังตั้ง Default = true ค้าง (ทั้งที่ Misc = false) Obsidian เรียก
-                Callback(Default) ตอนสร้าง UI = ค่า false ถูกทับเป็น true ทุกครั้งที่เปิดเกม
-                → ตอนนี้ UI Default = false ตรงกันแล้ว = เปิดมุดดินปุ๊บกล้องมุดลงทันที
-            (7) ตอนปิด: ProbeGround จะหาผิวดินที่จุด XZ ปัจจุบันทุกเฟรมระหว่างลอยขึ้น
-                แล้วลอยขึ้นแบบนุ่มนวล 16 สตัด/วิ = ปิดตรงไหนขึ้นตรงนั้น ไม่มี teleport กระชาก
-            ข้อควรรู้: โหมดนี้ส่งตำแหน่งใต้ดินจริงขึ้นเซิร์ฟเวอร์ = มีความเสี่ยงโดนจับ
-            (ยิ่งลึก/ยิ่งนานยิ่งเสี่ยง) | กล้องคงอยู่บน Humanoid ตลอด = ViewModel ปืนไม่พัง
-        v13 CameraDig: แก้ "เปิดมุดดินแล้วไม่มุด" — สาเหตุ: ปุ่ม "Camera Above Ground"
-            ค่าเริ่มต้น = ON ทำให้โหมด Ghost บังคับกล้องลอยค้างเหนือผิวดิน 2.4 สตัดตลอดเฟรม
-            ต่อให้ตัวเสมือนมุดใต้ดินไปแล้ว ตาในเกมก็ยังเห็นผิวดิน/ถ้ำเหมือนเดิม = ดูเหมือนไม่มุด
-            → v13: เปลี่ยนค่าเริ่มต้นเป็น OFF = เปิดมุดดินปุ๊บกล้องมุดลงใต้ดินตามตัวเสมือนทันที
-            (กล้อง client-only ไม่มีผลต่อแอนตี้ชีต) | ถ้าอยากได้กล้องลอยบนผิว (มองรอบตัวบนผิว
-            ระหว่างเดินเก็บของใต้ดินด้วย ESP) กดเปิดกลับได้เอง ปุ่มเดิม พร้อม label อธิบาย +
-            print เตือนใน console ตอนเปิดมุดทั้งที่กล้องบนผิว + label สถานะเตือนกล้องบนผิว
-            | Ghost/Stealth: เปิดพร้อมกันได้ Ghost ชนะเสมอ (Stealth รอใช้ตอนปิด Ghost เท่านั้น)
-        v12 ExitAtSpot: แก้ "พอปิดก็วาปกลับมาที่เดิม" — เพิ่ม toggle "Exit At Spot (ปิดตรงไหนขึ้นตรงนั้น)":
-            โหมด Ghost ตัวจริงถูกถือ (Anchored+PIN) ไว้ที่จุด anchor = จุดที่ยืนตอนเปิด พอปิด
-            v11 จะ PIN ตัวกลับจุดนั้นแล้วปลด = มุมมองเด้งกลับจุดเดิมทันที (วาปกลับตามคลิป)
-            → v12: ถ้าเปิด Exit At Spot ไว้ ตอนปิดจะปลด anchor ที่จุดเดิมก่อน (ตำแหน่งตรงกับ
-            ที่เซิร์ฟเวอร์รู้ = ไม่มี teleport กระชาก = ไม่โดนจับ) แล้วให้ "ตัวจริง" เดินขึ้นผิวดิน
-            ไปยังจุด XZ ที่ตัวเสมือนอยู่ตอนปิด: เดินเองด้วย Humanoid:Move (อนิเมชันเดินครบ =
-            เซิร์ฟเวอร์เห็นแค่คนวิ่งปกติ) ตามผิวดินทุกเฟรมด้วย raycast ความเร็ว ≤ 16 สตัด/วิ
-            (ความเร็วที่พิสูจน์แล้วว่าไม่โดนเตะ Speedhack) ติดสิ่งกีดขวาง > 1.2 วิ = สลับเป็น
-            เลื่อนตามผิวดินแบบนุ่มนวลอัตโนมัติ = ปิดตรงไหนตัวขึ้นตรงนั้น | ข้อแลก: ยิ่งมุดไกล
-            ยิ่งใช้เวลาเดินนาน (คนอื่นเห็นตัววิ่งตามปกติ) | ปิด toggle = วาปกลับจุดเดิมแบบ v11
-            (ปลอดภัยสุด) | ตาย/รีสปอว์น/เปิด Underground ซ้ำ/FreeCam/Unload = ยกเลิกทันที
-        v11 GhostWin: แก้ "โดนเตะ Speedhack detected" (คลิป 2026-10-29 01-12-39) — สาเหตุรากฐาน:
-        (★) ปุ่ม "Lie Face Up (นอนหงาย)" ที่เปิดค้างไว้ ไปปิด Ghost โดยนัยทั้งหมด
-            (เงื่อนไขเดิม ghostOn = UGGhost and not UGLieFaceUp) = ระบบกันเตะ v10
-            เป็น dead code สคริปต์หลุดไปใช้โหมด FULL เก่า: เขียน root.CFrame ใต้ดิน
-            ทุกเฟรมบน root ที่ "ไม่ได้ anchor" = replicate ขึ้นเซิร์ฟเวอร์จริง ๆ
-            + FastWalk ไม่ถูก interlock (IsGhostActive คืน false) = ลากตัวจริง
-            16 x 2.6 = 41.6 สตัด/วิ = เซิร์ฟเวอร์จับ "Speedhack detected"
-            (คลิปก่อนหน้า "Noclip detected" ก็มาจากรูรั่วเดียวกันนี้)
-            → v11: Ghost มีสิทธิ์สูงสุดเสมอ (LieFaceUp ไม่ปิด Ghost อีกต่อไป
-            เหลือแค่จัดท่านอนให้ตัวที่ถือ = client-only ไม่ replicate) + FastWalk
-            ห้ามแตะตัวจริงตลอดที่ Underground เปิด + Stealth/FULL จำกัดความเร็ว
-            ≤ 16 สตัด/วิ + label สถานะเตือน "เสี่ยงโดนเตะ" เมื่อไม่ได้อยู่โหมด Ghost
-        v10 PureStill v2: แก้ "ตามคริปเลยยังโดนเตะเหมือนเดิม" — รูรั่วที่ยังเหลือใน v9.4:
-        (1) ตัวจริงนิ่ง (anchor) แต่ controller เกมยังเล่น "อนิเมชันเดิน" บนตัวจริง
-            (AnimationTrack:Play replicate ขึ้นเซิร์ฟเวอร์เสมอแม้ physics จะนิ่ง)
-            เซิร์ฟเวอร์เห็นตัวนิ่งสนิท + อนิเมชันเดิน = ลายเซ็น noclip ตรง ๆ
-            → v10 บล็อก track:Play() ของอนิเมชันเดิน/วิ่งตัวจริง (hook __namecall)
-            + หยุดซ้ำทุก 0.15 วิ + เคลียร์ MoveDirection/Jump = ตัวจริงดูเหมือน
-            คนยืน AFK จริง ๆ เท่านั้น (idle/อนิเมชันอาวุธยังผ่านปกติ)
-        (2) v9.4 "ปล่อยถือ" เมื่อ drift > 4-8 สตัด — controller ของเกมเดินตัวจริงไป
-            เรื่อย ๆ ขณะที่เรา anchor มันอยู่ (CFrame เขียนทับ anchored ได้) พอปล่อย
-            = ตำแหน่งที่เลื่อนไป replicate ขึ้นเซิร์ฟเวอร์ทันที = teleport = เตะ
-            → v10 ห้ามปล่อยถือกลางเซสชันเด็ดขาด: PIN root.CFrame = จุด anchor
-            ทุกเฟส (เขียน CFrame บน part ที่ anchor ฝั่ง client = ไม่ replicate —
-            พิสูจน์แล้วจาก FreeCam Bring Character) + รับเฉพาะ server-teleport
-            > 30 สตัด/เฟรม (ย้ายโซนจริง เซิร์ฟเวอร์รู้ตำแหน่งอยู่แล้ว)
-        (3) ตอนปิด/ตาย/โหลดใหม่ = PIN กลับจุด anchor ก่อนปลด anchor ทุกครั้ง
-            = ไม่มีตำแหน่งแปลกให้เซิร์ฟเวอร์เห็นตลอดอายุเซสชัน
-        v9.4 PureStill: แก้ "ยังโดนเตะอยู่" — เปลี่ยนวิธีถือตัวจริงทั้งหมด:
-        (1) ห้ามเขียน root.CFrame ขณะถือเด็ดขาด (v8-v9.3 เขียน CFrame ทุกเฟรมสู้
-            controller ของเกม = เซิร์ฟเวอร์เห็นตำแหน่งสั่น/rubber-band = จับ Noclip ได้)
-            → ถือด้วย root.Anchored = true ฝั่ง client ครั้งเดียว ไม่เขียนอะไรอีกเลย
-        (2) เกมย้ายตัว/controller เดินตัว = ไม่สู้ ปล่อย anchor ทันที ให้ตัวเดินปกติ
-            แล้วจับใหม่เมื่อ "ยืนหยุดสนิทบนพื้น" (ความเร็ว < 2.5 + ตัวนิ่งจริง) เท่านั้น
-        (3) ลบ SetStateEnabled(false)/ChangeState/Move(zero) ออกจาก Ghost ทั้งหมด
-            = Humanoid เป็นธรรมชาติ 100% ไม่มีลายนิ้วมือให้แอนตี้ชีตอ่าน
-        (4) บล็อก Kick ทั้งแบบ namecall (:Kick) และแบบ dot-call (LocalPlayer.Kick(lp))
-        (5) ซ่อน part ของเราใต้ CurrentCamera + เปลี่ยนเป็นชื่อกลาง (กันสแกน workspace)
-        v9.3 NoAirKick: แก้ "เปิด Underground ตอนเพิ่งลงแมพแล้วโดนเตะ Noclip" —
-        (1) จับ anchor เฉพาะตอนเท้าแตะพื้นจริงเท่านั้น (v9 เดิมจับกลางอากาศระหว่างตก
-            พื้นระยะ 6 สตัด + จับฉุกเฉินครบ 1 วิ = ตัวจริงถูกถือค้างกลางฟ้า = เตะ Noclip)
-        (2) ช่วงลอย/ตก = โหมดตามตัวจริง (ไม่มุด ไม่เขียน root) ลงพื้นแล้วเริ่มมุดเอง
-        (3) ถือ anchor แล้วถ้าเกมย้ายตัว (ดีพลอย/ย้ายโซน/แรงระเบิด) = ปล่อยถือทันที
-            ไม่ดึงกลับแบบ rubber-band ไม่รับ anchor กลางอากาศ (สาเหตุเตะเดิม)
-        (4) watchdog ห้ามเขียนตำแหน่งช่วง Ghost โหมดตามตัวจริง + ล้าง pose เก่า Stealth
-        v9.2 FireFix (คงเดิม): แก้ "ถือปืนได้แต่ยิงไม่ออก" —
-        (1) hook ปืนครอบ pcall + ยิงซ้ำแบบต้นฉบับอัตโนมัติ = กระสุนออกเสมอ
-        (2) ไม่ซีโร่ Accuracy/Bloom (กันหารศูนย์/NaN ในสมการยิงของเกม)
-        (3) FastWalk ไม่บล็อก remote ฝั่งปืน (shoot/fire/bullet/...)
-        (4) aim table ของ SilentAim/Wallbang มี .Position กันเกมอ่าน error
+        Build: 2026-10-30 (fix: ยิงไม่ออกหลังสับอาวุธ / ESP map กระพริบ / UG Speed 0.1-2 / UG Depth 0.1-1 / ปุ่มมุดดิน)
 ]]
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -991,19 +902,6 @@ end)
 do
 local BulletModule
 local oldCreateBullet
--- v9.2 FIRE FIX: นับครั้งที่ mod ปืนทำให้สายยิงพัง + ยิงซ้ำด้วยค่าต้นฉบับ (กระสุนต้องออกเสมอ)
-local MikoGunFireFails = 0
-local MikoGunFireLastWarn = 0
-local function MikoGunPristineRetry(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
-        MikoGunFireFails += 1
-        _G.MikoGun_FireFails = MikoGunFireFails
-        local nowM = os.clock()
-        if nowM - MikoGunFireLastWarn > 30 then
-                MikoGunFireLastWarn = nowM
-                print(string.format("[Miko] v9.2: ตรวจเจอสายยิงพังจาก mod ปืน (ครั้งที่ %d) - ยิงแบบต้นฉบับให้อัตโนมัติ กระสุนออกปกติ", MikoGunFireFails))
-        end
-        return oldCreateBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
-end
 local AiZones = workspace:FindFirstChild("AiZones")
 
 pcall(function()
@@ -1169,12 +1067,7 @@ local function ForceAmmoPenetration(ammo)
 
         for _, name in names do
                 pcall(function()
-                        -- v9.1 แก้ถือปืนไม่ได้: เขียนเฉพาะ attr ที่มีอยู่แล้วและเป็น number
-                        -- (เดิม SetAttribute ทับทุกชื่อ ถ้าเกมเก็บค่าชนิดอื่นจะพัง)
-                        local cur = ammo:GetAttribute(name)
-                        if cur == nil or typeof(cur) == "number" then
-                                ammo:SetAttribute(name, 9999)
-                        end
+                        ammo:SetAttribute(name, 9999)
                 end)
                 local child = ammo:FindFirstChild(name)
                 if child and (child:IsA("NumberValue") or child:IsA("IntValue")) then
@@ -1300,7 +1193,6 @@ local function ResolveWallbangAim(aimPart, forcedTargetPos)
         if lastClearOrigin and hitPos then
                 return {
                         CFrame = CFrame.new(lastClearOrigin, hitPos),
-                        Position = hitPos, -- v9.2: กันเกมอ่าน .Position แล้ว error กลางสายยิง
                 }
         end
 
@@ -1339,11 +1231,14 @@ InitSilentAim = function()
                 return
         end
 
-        oldCreateBullet = hookfunction(BulletModule.CreateBullet, function(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
-                -- v9.2 FIRE FIX: ทุกขั้นตอนของ mod ปืนอยู่ใน pcall — ถ้าพังแม้บรรทัดเดียว
-                -- (attr ปืน/aim table/โค้ดเกมเอง) จะยิงซ้ำด้วย args ต้นฉบับทันที = กระสุนออกเสมอ
-                -- (ใช้ table.pack กันค่า return หลายค่าของ CreateBullet หาย)
-                local pM = table.pack(pcall(function()
+        -- ★ 2026-10-30 แก้บัคสลับปืน→มีด→ปืนแล้วยิงไม่ออก:
+        --   เดิม hook นี้ไม่มี pcall ครอบ ถ้า logic ข้างใน error แม้บรรทัดเดียว
+        --   กระสุนนัดนั้นจะหายทันที (กดยิงแล้วเงียบ) — ตอนนี้แยก logic ออกเป็น
+        --   ResolveCreateBulletAim แล้วครอบด้วย pcall แบบ fail-open:
+        --   พังเมื่อไหร่ ยิงปกติด้วย aim เดิมทันที ไม่มีกระสุนหายอีก
+        local originalCreateBullet = BulletModule.CreateBullet
+
+        local function ResolveCreateBulletAim(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
 
                 local ammoFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
@@ -1374,15 +1269,9 @@ InitSilentAim = function()
                                         end
                                 end
                                 zeroRecoil(recoilPattern, 0)
-                        else
-                                recoilPattern = { 0, 0, 0, 0 }
                         end
 
                         -- Project Delta camera climb uses RecoilStrength / related AmmoTypes attrs
-                        -- v9.1 แก้ถือปืนไม่ได้: เขียน attribute แบบ "คง type เดิม" เสมอ
-                        -- (เดิมใส่ 0 ทับโดยไม่เช็ค type — ถ้าเดิมเป็น Vector2/Vector3 เช่น recoil
-                        --  แบบแกน X/Y จะถูกแทนด้วย number โค้ดปืนของเกมอ่านแล้ว error ทำให้
-                        --  สลับกลับมาถือปืนไม่ได้ ส่วนมีดไม่แตะ ammo config จึงปกติ)
                         if ammo then
                                 for _, attrName in {
                                         "RecoilStrength",
@@ -1399,16 +1288,8 @@ InitSilentAim = function()
                                         "RecoilScale",
                                 } do
                                         pcall(function()
-                                                local v = ammo:GetAttribute(attrName)
-                                                local tv = typeof(v)
-                                                if tv == "number" then
+                                                if ammo:GetAttribute(attrName) ~= nil then
                                                         ammo:SetAttribute(attrName, 0)
-                                                elseif tv == "Vector2" then
-                                                        ammo:SetAttribute(attrName, Vector2.zero)
-                                                elseif tv == "Vector3" then
-                                                        ammo:SetAttribute(attrName, Vector3.zero)
-                                                elseif tv == "CFrame" then
-                                                        ammo:SetAttribute(attrName, CFrame.new())
                                                 end
                                         end)
                                 end
@@ -1416,9 +1297,6 @@ InitSilentAim = function()
                 end
 
                 if Misc and Misc.NoSpread and ammo then
-                        -- v9.1: คง type เดิม (Spread ในเกม FPS มักเป็น Vector2 ห้ามทับด้วยเลข)
-                        -- v9.2 FIRE FIX: ตัด Accuracy/Bloom/BloomMax ออก — เกมบางเส้นเอาค่าพวกนี้ไปหารหรือ .Unit
-                        -- (= 0 แล้วได้ NaN → กระสุนไม่ถือกำเนิด = อาการ "ยิงไม่ออก") ซีโร่เฉพาะตระกูล Spread
                         for _, attrName in {
                                 "Spread",
                                 "MaxSpread",
@@ -1427,18 +1305,13 @@ InitSilentAim = function()
                                 "AimSpread",
                                 "SpreadMultiplier",
                                 "SpreadScale",
+                                "Accuracy",
+                                "Bloom",
+                                "BloomMax",
                         } do
                                 pcall(function()
-                                        local v = ammo:GetAttribute(attrName)
-                                        local tv = typeof(v)
-                                        if tv == "number" then
+                                        if ammo:GetAttribute(attrName) ~= nil then
                                                 ammo:SetAttribute(attrName, 0)
-                                        elseif tv == "Vector2" then
-                                                ammo:SetAttribute(attrName, Vector2.zero)
-                                        elseif tv == "Vector3" then
-                                                ammo:SetAttribute(attrName, Vector3.zero)
-                                        elseif tv == "CFrame" then
-                                                ammo:SetAttribute(attrName, CFrame.new())
                                         end
                                 end)
                         end
@@ -1446,8 +1319,11 @@ InitSilentAim = function()
                         for attr, value in pairs(ammo:GetAttributes()) do
                                 if typeof(value) == "number" then
                                         local lower = tostring(attr):lower()
-                                        -- v9.2: เหลือเฉพาะ spread (ตัด bloom/accuracy/deviation ที่เสี่ยงหารศูนย์ออก)
-                                        if lower:find("spread", 1, true) then
+                                        if lower:find("spread", 1, true)
+                                                or lower:find("bloom", 1, true)
+                                                or lower:find("accuracy", 1, true)
+                                                or lower:find("deviation", 1, true)
+                                        then
                                                 pcall(function()
                                                         ammo:SetAttribute(attr, 0)
                                                 end)
@@ -1469,8 +1345,14 @@ InitSilentAim = function()
                                 if origin then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
-                                        if typeof(ammo:GetAttribute("Drag")) == "number" then
-                                                ammo:SetAttribute("Drag", 0) -- v9.1: เขียนเฉพาะมีอยู่แล้ว ไม่สร้าง attr ใหม่ให้เกม
+                                        local oldDrag = ammo:GetAttribute("Drag")
+                                        if oldDrag ~= nil and oldDrag ~= 0 then
+                                                ammo:SetAttribute("Drag", 0)
+                                                task.defer(function()
+                                                        pcall(function()
+                                                                ammo:SetAttribute("Drag", oldDrag)
+                                                        end)
+                                                end)
                                         end
 
                                         local targetPosition = SilentAim.Prediction
@@ -1479,14 +1361,13 @@ InitSilentAim = function()
                                         local vertical = ProjectileDrop(origin, targetPosition, projectileSpeed, acceleration)
                                         finalAim = {
                                                 CFrame = CFrame.new(origin, targetPosition + vertical),
-                                                Position = targetPosition + vertical, -- v9.2: กันเกมอ่าน .Position แล้ว error กลางสายยิง
                                         }
 
                                         if Misc and Misc.WallPenetration then
                                                 finalAim = ResolveWallbangAim(finalAim, targetPosition + vertical)
                                         end
 
-                                        return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
+                                        return finalAim
                                 end
                         end
                 end
@@ -1496,13 +1377,21 @@ InitSilentAim = function()
                         finalAim = ResolveWallbangAim(aimPart, nil)
                 end
 
-                return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
-                end))
-                if pM[1] then
-                        return table.unpack(pM, 2, pM.n)
+                return finalAim
+        end
+
+        -- fail-open wrapper: pcall ครอบ logic ทั้งหมด ถ้าพังยิงต่อด้วย args เดิมทุกตัว
+        oldCreateBullet = originalCreateBullet
+
+        hookfunction(BulletModule.CreateBullet, function(...)
+                local args = table.pack(...)
+                local ok, finalAim = pcall(ResolveCreateBulletAim, table.unpack(args, 1, args.n))
+                if not ok then
+                        warn("[Wallhack.gg] CreateBullet hook fail-open:", finalAim)
+                        finalAim = args[5]
                 end
-                -- v9.2: กระสุนต้องออกเสมอ — ยิงซ้ำด้วย args ต้นฉบับ (ไม่มี mod ปืนช่วง shot นั้น)
-                return MikoGunPristineRetry(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
+                args[5] = finalAim
+                return originalCreateBullet(table.unpack(args, 1, args.n))
         end)
 end
 
@@ -10090,14 +9979,11 @@ Misc = {
         FreeCamSpeed = 60,
         FreeCamFollow = false,
         Underground = false,
-        UndergroundDepth = 1, -- v14: ค่าเริ่มต้น 1 (ช่วง 0.1 - 2)
-        UGSpeed = 1,
-        UGGhost = false, -- v14: Ghost Mode ถูกลบออกตามคำขอ (คง key ไว้ให้ branch เก่าที่เหลืออยู่เฉย ๆ = ไม่มีวันทำงาน)
-        UGStealth = true,
-        UGCamAbove = false, -- v13: default OFF = เปิดมุดดินแล้วกล้องมุดลงเห็นใต้ดินทันที (สาเหตุ "เปิดมุดดินแล้วไม่มุด" คือค่าเดิม true)
+        UndergroundDepth = 1,
+        UndergroundSpeed = 1,
+        UGCamAbove = true,
         UGLieFaceUp = false,
         UGWalk = true,
-        -- v14: UGExitAtSpot ถูกลบออกตามคำขอ
         EspMap = false,
         EspMapRange = 300,
         EspMapPlayers = true,
@@ -10154,7 +10040,6 @@ SyncMiscFromUI = function()
         toggle("UGCamAbove", "UGCamAbove")
         toggle("UGLieFaceUp", "UGLieFaceUp")
         toggle("UGWalk", "UGWalk")
-        toggle("UGStealth", "UGStealth")
         toggle("EspMap", "EspMap")
         toggle("EspMapPlayers", "EspMapPlayers")
         toggle("EspMapNpcs", "EspMapNpcs")
@@ -10165,7 +10050,7 @@ SyncMiscFromUI = function()
         option("FreeCamSpeed", "FreeCamSpeed")
         option("FastWalkSpeed", "FastWalkSpeed")
         option("UndergroundDepth", "UndergroundDepth")
-        option("UGSpeed", "UGSpeed")
+        option("UndergroundSpeed", "UndergroundSpeed")
         option("EspMapRange", "EspMapRange")
 end
 
@@ -10179,7 +10064,6 @@ local SilentWalkSaved = {
         Active = false,
         WalkSpeed = nil,
 }
-local fwSoundT = 0 -- v7: throttle การสแกนเสียงฝีเท้า (เดิม GetDescendants ทุกเฟรม)
 
 local function IsFootstepKeyword(text)
         text = tostring(text or ""):lower()
@@ -10285,20 +10169,6 @@ local function IsLocoAnimTrack(track)
         end)
         for _, name in names do
                 local lower = tostring(name):lower()
-                -- อนิเมชันอาวุธ/เล็ง (ADS) ต้องไม่ถูกมองเป็น locomotion — ไม่งั้นถือเป้าไม่ขึ้น
-                if lower:find("aim", 1, true)
-                        or lower:find("ads", 1, true)
-                        or lower:find("equip", 1, true)
-                        or lower:find("reload", 1, true)
-                        or lower:find("weapon", 1, true)
-                        or lower:find("gun", 1, true)
-                        or lower:find("hold", 1, true)
-                        or lower:find("tool", 1, true)
-                        or lower:find("fire", 1, true)
-                        or lower:find("shoot", 1, true)
-                then
-                        return false
-                end
                 if lower:find("walk", 1, true)
                         or lower:find("run", 1, true)
                         or lower:find("sprint", 1, true)
@@ -10364,118 +10234,6 @@ local function GetSilentWalkMoveVector()
                 return Vector3.zero
         end
         return world.Unit
-end
-
--- ---------- Fast Walk: ไดรฟ์อนิเมชันเดินให้หน้าตาเหมือนเดินปกติ ----------
-local FWAnimTrack = nil
-local FWAnimLast = nil
-local FWLastChar = nil
-
-local function StopFWAnimation()
-        if FWAnimTrack then
-                pcall(function()
-                        FWAnimTrack:Stop(0.15)
-                end)
-                FWAnimTrack = nil
-        end
-        FWLastChar = nil
-end
-
-local function GetFWAnimation(character)
-        local animate = character:FindFirstChild("Animate")
-        if not animate then
-                return nil
-        end
-        local section = animate:FindFirstChild("walk")
-                or animate:FindFirstChild("run")
-                or animate:FindFirstChild("sprint")
-        if not section then
-                return nil
-        end
-        local animValue = section:FindFirstChild("WalkAnim")
-                or section:FindFirstChild("RunAnim")
-                or section:FindFirstChildWhichIsA("Animation")
-        if not animValue or not animValue:IsA("Animation") then
-                return nil
-        end
-        local id = animValue.AnimationId
-        if FWAnimLast and FWAnimLast.AnimationId == id then
-                return FWAnimLast
-        end
-        -- โคลนเปลี่ยนชื่อ กัน hook ปิดเสียงฝีเท้าของเราหยุดอนิเมชันตัวเอง
-        -- (ชื่อต้องไม่มีคำ walk/run/move/loco ตาม IsLocoAnimTrack)
-        local clone = Instance.new("Animation")
-        clone.AnimationId = id
-        clone.Name = "MikoFW_Drive"
-        FWAnimLast = clone
-        return clone
-end
-
-local function UpdateFWAnimation(character, humanoid, moving, actualSpeed, baseSpeed)
-        if not character or not humanoid then
-                StopFWAnimation()
-                return
-        end
-        if FWLastChar ~= character then
-                StopFWAnimation()
-                FWLastChar = character
-        end
-        local animator = humanoid:FindFirstChildOfClass("Animator")
-                or humanoid:FindFirstChild("Animator", true)
-        if not animator then
-                return
-        end
-        if not moving then
-                if FWAnimTrack then
-                        pcall(function()
-                                FWAnimTrack:Stop(0.2)
-                        end)
-                        FWAnimTrack = nil
-                end
-                return
-        end
-        local anim = GetFWAnimation(character)
-        if not anim then
-                return
-        end
-        if not FWAnimTrack or FWAnimTrack.Animation ~= anim then
-                if FWAnimTrack then
-                        pcall(function()
-                                FWAnimTrack:Stop(0)
-                        end)
-                end
-                local okTrack, track = pcall(function()
-                        return animator:LoadAnimation(anim)
-                end)
-                if okTrack and track then
-                        pcall(function()
-                                track.Priority = Enum.AnimationPriority.Movement
-                                track.Looped = true
-                        end)
-                        FWAnimTrack = track
-                else
-                        FWAnimTrack = nil
-                        return
-                end
-        end
-        local track = FWAnimTrack
-        if not track then
-                return
-        end
-        -- อัตราเล่นตามความเร็วจริงแต่จำกัด 0.75-1.4x เพื่อหน้าตาเหมือนเดินปกติ
-        local rate = 1
-        if typeof(baseSpeed) == "number" and baseSpeed > 0.5
-                and typeof(actualSpeed) == "number" and actualSpeed > 0
-        then
-                rate = math.clamp(actualSpeed / baseSpeed, 0.75, 1.4)
-        end
-        pcall(function()
-                track.Looped = true
-                if not track.IsPlaying then
-                        track:Play(0.1)
-                end
-                track:AdjustSpeed(rate)
-        end)
 end
 
 local function SilenceAnimationFootsteps(character)
@@ -10598,55 +10356,6 @@ local function IsFootstepRemoteName(text)
                 or (text:find("audio", 1, true) and (text:find("foot", 1, true) or text:find("step", 1, true) or text:find("move", 1, true)))
 end
 
--- v9.2 FIRE FIX: ชื่อที่เกี่ยวกับปืน/การโจมตี — ห้ามบล็อกเด็ดขาด (กัน FastWalk ตัดสายยิง)
-local function IsGunActionName(text)
-        text = tostring(text or ""):lower()
-        if text == "" then
-                return false
-        end
-        return text:find("shoot", 1, true)
-                or text:find("shot", 1, true)
-                or text:find("fire", 1, true)
-                or text:find("gun", 1, true)
-                or text:find("bullet", 1, true)
-                or text:find("weapon", 1, true)
-                or text:find("rifle", 1, true)
-                or text:find("pistol", 1, true)
-                or text:find("attack", 1, true)
-                or text:find("melee", 1, true)
-                or text:find("swing", 1, true)
-                or text:find("reload", 1, true)
-                or text:find("ammo", 1, true)
-                or text:find("projectile", 1, true)
-                or text:find("damage", 1, true)
-                or text:find("hitreg", 1, true)
-                or text:find("trigger", 1, true)
-                or text:find("muzzle", 1, true)
-end
-
--- v9.2: เช็ค args แบบลึกว่ามีชื่อฝั่งปืนปนอยู่ไหม (string / Instance / table key-value)
-local function ArgsLookLikeGunAction(...)
-        local packed = table.pack(...)
-        for i = 1, packed.n do
-                local value = packed[i]
-                local t = typeof(value)
-                if t == "string" and IsGunActionName(value) then
-                        return true
-                end
-                if t == "Instance" and IsGunActionName(value.Name) then
-                        return true
-                end
-                if t == "table" then
-                        for key, nested in pairs(value) do
-                                if IsGunActionName(key) or IsGunActionName(nested) then
-                                        return true
-                                end
-                        end
-                end
-        end
-        return false
-end
-
 local function ArgsLookLikeFootstep(...)
         local packed = table.pack(...)
         for i = 1, packed.n do
@@ -10696,11 +10405,7 @@ local function EnsureSilentWalkNetwork()
                                         pcall(function()
                                                 remoteName = self.Name
                                         end)
-                                        -- v9.2 FIRE FIX: ถ้า remote/args มีชื่อฝั่งปืน (shoot/fire/bullet/...)
-                                        -- ห้ามบล็อกเด็ดขาดแม้จับคู่คำว่าเสียงเดินได้ = กันยิงไม่ออก
-                                        if (IsFootstepRemoteName(remoteName) or ArgsLookLikeFootstep(...))
-                                                and not IsGunActionName(remoteName)
-                                                and not ArgsLookLikeGunAction(...) then
+                                        if IsFootstepRemoteName(remoteName) or ArgsLookLikeFootstep(...) then
                                                 if method == "InvokeServer" or method == "Invoke" then
                                                         return nil
                                                 end
@@ -10784,20 +10489,6 @@ UpdateFastWalk = function(deltaTime)
         if not Misc.FastWalk then
                 RestoreSilentWalkMovement()
                 RestoreMovementSounds()
-                StopFWAnimation()
-                return
-        end
-
-        -- v8: Ghost มุดดินทำงานอยู่ = ห้ามขยับตัวจริงเด็ดขาด (ตัวจริงต้องยืนนิ่งที่จุด anchor)
-        -- ความเร็ว Fast Walk จะถูกใช้คูณกับความเร็วเดินใต้ดิน (ตัวเสมือน) แทน
-        -- v11: Underground เปิดโหมดไหนอยู่ก็ห้ามแตะตัวจริงเด็ดขาด — โหมด FULL/Stealth
-        -- เขียน root.CFrame ลง root ที่ unanchored = replicate = ตัวจริงถูกลาก
-        -- 16 x 2.6 = 41.6 สตัด/วิ = เซิร์ฟเวอร์จับ "Speedhack detected" ตรง ๆ
-        -- (สาเหตุเตะในคลิป 2026-10-29 01-12-39)
-        if Misc.Underground then
-                return
-        end
-        if _G.MikoUG_IsGhostActive and _G.MikoUG_IsGhostActive() then
                 return
         end
 
@@ -10841,21 +10532,17 @@ UpdateFastWalk = function(deltaTime)
                 if baseSpeed < 8 then
                         baseSpeed = 16
                 end
-                -- Fast Walk: adjustable speed multiplier (0.1 - 3)
+                -- Fast Walk: adjustable speed multiplier (0.1 - 10)
                 local multiplier = tonumber(Misc.FastWalkSpeed) or 2.6
                 if multiplier < 0.1 then
                         multiplier = 0.1
-                elseif multiplier > 3 then
-                        multiplier = 3
+                elseif multiplier > 10 then
+                        multiplier = 10
                 end
                 -- Shift = sprint bonus (+30%) on top of the chosen multiplier
                 local speed = sprinting and (baseSpeed * multiplier * 1.3) or (baseSpeed * multiplier)
                 local nextPos = root.Position + move * speed * deltaTime
                 root.CFrame = CFrame.new(nextPos, nextPos + move)
-                -- เล่นอนิเมชันเดินให้เหมือนเดินปกติ (เสียงฝีเท้ายังถูกปิดอยู่)
-                UpdateFWAnimation(character, humanoid, true, speed, baseSpeed)
-        else
-                UpdateFWAnimation(character, humanoid, false)
         end
 
         -- Kill horizontal velocity so other clients' footstep checks see you as idle
@@ -10865,21 +10552,17 @@ UpdateFastWalk = function(deltaTime)
                 root.AssemblyAngularVelocity = Vector3.zero
         end)
 
-        -- v7: throttle 0.5 วิ (เดิมสแกน PlayerScripts ทั้งชุดทุกเฟรม = FPS ร่วง)
-        if os.clock() - fwSoundT > 0.5 then
-                fwSoundT = os.clock()
-                pcall(function()
-                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
-                        if not scripts then
-                                return
+        pcall(function()
+                local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
+                if not scripts then
+                        return
+                end
+                for _, desc in scripts:GetDescendants() do
+                        if IsMovementSound(desc) then
+                                MuteMovementSound(desc)
                         end
-                        for _, desc in scripts:GetDescendants() do
-                                if IsMovementSound(desc) then
-                                        MuteMovementSound(desc)
-                                end
-                        end
-                end)
-        end
+                end
+        end)
 end
 
 local FreeCamSaved = {
@@ -11109,8 +10792,9 @@ local SpreadAttributeNames = {
         "AimSpread",
         "SpreadMultiplier",
         "SpreadScale",
-        -- v9.2 FIRE FIX: ตัด Accuracy/Bloom/BloomMax ออกจากการซีโร่ถาวร
-        -- (เกมเอาไปหาร/.Unit แล้วได้ NaN = ยิงไม่ออก)
+        "Accuracy",
+        "Bloom",
+        "BloomMax",
 }
 
 local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
@@ -11145,8 +10829,9 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                 if child:IsA("NumberValue") or child:IsA("IntValue") then
                         local lower = child.Name:lower()
                         local isRecoil = lower:find("recoil", 1, true) or lower:find("kick", 1, true)
-                        -- v9.2: เหลือเฉพาะ spread (ตัด bloom/accuracy ที่เสี่ยงหารศูนย์ออก)
                         local isSpread = lower:find("spread", 1, true)
+                                or lower:find("bloom", 1, true)
+                                or lower:find("accuracy", 1, true)
                         local match = (enabled and cacheBucket == AmmoGunModCache.Recoil and isRecoil)
                                 or (enabled and cacheBucket == AmmoGunModCache.Spread and isSpread)
                         local restore = (not enabled) and cacheBucket[ammo.Name .. "::child::" .. child:GetFullName()] ~= nil
@@ -11217,49 +10902,10 @@ InitGunMods = function()
                 return
         end
 
-        -- Safe path only: do NOT hook FPS fire / gun modules (that broke full-auto).
-        -- Recoil climb is RecoilStrength on AmmoTypes + VFX camera kick.
-        local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
-                return fn
-        end
-
-        pcall(function()
-                local modules = ReplicatedStorage:FindFirstChild("Modules")
-                local vfx = modules and modules:FindFirstChild("VFX")
-                if not vfx then
-                        return
-                end
-                local ok, mod = pcall(require, vfx)
-                if not ok or type(mod) ~= "table" then
-                        return
-                end
-                for key, value in pairs(mod) do
-                        if type(value) == "function" then
-                                local name = tostring(key):lower()
-                                local isCameraOnly = name:find("camerashake", 1, true)
-                                        or name:find("screenshake", 1, true)
-                                        or name:find("viewmodelrecoil", 1, true)
-                                        or name:find("recoilcamera", 1, true)
-                                        or name:find("camerarecoil", 1, true)
-                                        or name:find("weaponkick", 1, true)
-                                        or name:find("weaponrecoil", 1, true)
-                                        or name == "recoil"
-                                        or name == "shake"
-                                        or name == "kick"
-                                if isCameraOnly then
-                                        pcall(function()
-                                                local old = value
-                                                mod[key] = wrap(function(...)
-                                                        if Misc.NoRecoil then
-                                                                return
-                                                        end
-                                                        return old(...)
-                                                end)
-                                        end)
-                                end
-                        end
-                end
-        end)
+        -- ★ 2026-10-30: ลบ hook ฟังก์ชันใน Modules.VFX ออกทั้งหมด
+        -- เดิม hook แล้ว "return" เปล่าเมื่อ NoRecoil เปิด ทำให้ pipeline ยิงของเกม
+        -- ได้ค่า nil กลับไป = สลับปืน→มีด→ปืนแล้วยิงไม่ออก (และเคยทำ full-auto พังมาก่อน)
+        -- NoRecoil/NoSpread ยังทำงานครบผ่านการซีโร่ค่าบน AmmoTypes และ CreateBullet hook
 
         ApplyAmmoGunMods(true)
         GunModsInstalled = true
@@ -11657,101 +11303,16 @@ end
 end)(); (function()
 end)(); (function()
 ----------------------------------------------------------------
--- Underground (มุดดิน) v9 — ติด 100%: เปิดปุ๊บ = มุดทันทีทุกสถานการณ์ (กระโดด/ตกสูง/ว่ายน้ำก็ติด)
---   ตัวจริงลอย/ตกอยู่ = ปล่อยตกตามฟิสิกส์ธรรมชาติ (เซิร์ฟเวอร์เห็นการตกปกติ)
---   แล้วจับ anchor เองทันทีที่เท้าแตะพื้น — ไม่มีทางค้างที่ "รอลงพื้น" แบบ v8
--- GHOST 2.0: ตัวจริงยืนจุดเดิม + ตัวเสมือนเดินใต้ดิน (ไม่โดนเตะแน่นอน)
--- =====================================================================
--- v11 GhostWin — รูรั่วที่เจอใน v10 (คลิป 2026-10-29 01-12-39: เตะ "Speedhack detected"):
---   ผู้ใช้เปิด "Lie Face Up" ค้าง -> ghostOn = UGGhost and not UGLieFaceUp = false
---   = ระบบกันเตะ v10 ทั้งหมดไม่เคยทำงานเลย (dead code) สคริปต์วิ่งเข้าโหมด FULL:
---   เขียน root.CFrame ใต้ดินทุกเฟรมบน root ที่ unanchored (= replicate ขึ้นเซิร์ฟเวอร์)
---   และ FastWalk ไม่ถูกห้ามเพราะ IsGhostActive คืน false = ลากตัวจริง 41.6 สตัด/วิ
---   แก้ v11: Ghost ชนะเสมอ (LieFaceUp เหลือแค่ท่านอนของตัวที่ถือ client-only)
---   + ห้าม FastWalk แตะตัวจริงระหว่าง Underground เปิด + cap ความเร็ว Stealth/FULL ≤ 16
--- =====================================================================
--- v10 PureStill v2 — รูรั่วที่เจอใน v9.4 (คลิป 2026-10-29: เดินใต้ดิน ~8 วิแล้วเตะ):
---   (1) ตัวจริงถูก anchor นิ่ง แต่ controller เกมยังเล่น "อนิเมชันเดิน" บนตัวจริง
---       (AnimationTrack:Play replicate ขึ้นเซิร์ฟเวอร์เสมอ แม้ physics จะนิ่ง)
---       เซิร์ฟเวอร์เห็น: ตัวนิ่งสนิท + อนิเมชันเดินเล่นอยู่ = ลายเซ็น noclip ตรง ๆ
---   (2) v9.4 "ปล่อยถือ" เมื่อตัวจริงเลื่อนเกิน 4-8 สตัด — controller เดินตัวจริง
---       ไปเรื่อย ๆ ขณะเรา anchor มัน (CFrame เขียนทับ anchored ได้) พอปล่อย =
---       ตำแหน่งที่เลื่อนไป replicate ทั้งย่อ = teleport ที่จับได้
---   (3) MoveDirection/Jump ที่ยังผ่านเข้าเซิร์ฟเวอร์ขณะตัวนิ่ง
---   แก้ v10: PIN root.CFrame จุด anchor ทุกเฟส (เขียน CFrame บน part ที่ anchor
---   client = ไม่ replicate — พิสูจน์จาก FreeCam Bring Character) + ไม่ปล่อยถือ
---   กลางเซสชัน (รับเฉพาะ server-teleport > 30 สตัด/เฟรม) + บล็อก/หยุดอนิเมชัน
---   เดินตัวจริง (hook Play + หยุดซ้ำ) + เคลียร์ MoveDirection/Jump
---   = เซิร์ฟเวอร์เห็น "คนยืน AFK นิ่งสนิท" เท่านั้นตลอดทั้งเซสชัน
--- =====================================================================
--- ทำไม v7 (Anchor Desync) ยังโดนเตะ Noclip detected:
---   v7 anchor HumanoidRootPart client-side แล้วเขียน root.CFrame = ตำแหน่งใต้ดินทุกเฟรม
---   แต่ CFrame ของตัวละครถูกซิงค์ขึ้นเซิร์ฟเวอร์ผ่าน network ownership อยู่ดี
---   (การ anchor client-side ไม่ได้หยุดการซิงค์ CFrame ของ assembly ที่ client เป็นเจ้าของ)
---   เซิร์ฟเวอร์จึงยังเห็นตัวละครจมอยู่ใต้ผิวดิน/เดินทะลุดินทุกเฟรม = จับ noclip ได้เหมือนเดิม
--- v8 หลักการใหม่ "ไม่เขียนตำแหน่งใต้ดินลง root เด็ดขาด":
---   1) ตัวจริง (root): ถือ CFrame ไว้ที่ "จุด anchor บนผิวดิน" ทุกเฟรมทุกเฟส
---      (Stepped/Heartbeat) เขียนเฉพาะตำแหน่งผิวดิน = ต่อให้ CFrame ซิงค์ขึ้นเซิร์ฟเวอร์
---      เซิร์ฟเวอร์ก็เห็นแค่ "คนยืนนิ่งปกติ" ไม่มีอะไรใต้ดินให้จับเลย
---   2) ตัวมุด: เป็นตำแหน่งเสมือน ugVirtPos (ตัวแปร client ล้วน) เดินด้วย WASD
---      ความลึก/ผิวดินไล่ตาม raycast client = เซิร์ฟเวอร์ไม่เห็นอะไรทั้งสิ้น
---   3) กล้อง: อยู่เหนือผิวดินตามตัวเสมือน (UGCamAbove) หรือมุดลงตามตัวเสมือน = ปกติสุด
---   4) ปิด Underground = จบทันที ไม่ต้องไหลกลับจุด anchor (ตัวจริงไม่เคยขยับไปไหน)
---   5) Fast Walk จะคูณความเร็วเดินใต้ดิน (ตัวเสมือน) ไม่แตะตัวจริง
---   ข้อแลกเปลี่ยน Ghost: ยิง/เก็บของ/ดาเมจจากศัตรู อิงตำแหน่ง "ตัวจริงที่จุด anchor"
---   อยากยิงตรงจากใต้ดินจริง ๆ = ปิด Ghost ไปใช้ Stealth (ส่งตำแหน่งจริง = เสี่ยงโดนเตะ)
--- Stealth: ส่งตำแหน่งจริงใต้ดิน (Humanoid Running ปกติ) ยิงตรงจุด แต่เซิร์ฟเวอร์เห็นใต้ดิน = เสี่ยงเตะ
--- FULL: สไตล์เดิม v5 (Physics + PlatformStand + ปิด CanCollide) เสี่ยงเตะสูงสุด
+-- Underground (มุดดิน) v5 — มุดใต้ผิวดินแล้วเดินด้วย WASD ได้จริง
+-- ห้าม anchor ตัวละครเด็ดขาด! (anchor = client หยุดส่งตำแหน่งไป server)
 -- v5: ตั้ง pose ครบ 3 จุดของเฟรม (Stepped ก่อน physics / Heartbeat หลัง
 -- physics ก่อนส่งตำแหน่ง / RenderStepped ก่อน render) เพราะ controller
 -- ตัวละครของเกมดึงตัวกลับขึ้นผิวดินในเฟส physics ถ้าสั่งแค่ RenderStepped
 -- คนอื่นจะเห็นตัวเราโผล่-จม-นอนเอียงสลับไปมา + ล็อก Humanoid สถานะ
 -- Physics กันตัวละครดันตัวลุก/ปั่นจนคนอื่นเห็นไม่นิ่ง
+----------------------------------------------------------------
 if type(_G.MikoUG_ForceStop) == "function" then
         pcall(_G.MikoUG_ForceStop)
-end
-
--- v7: ขวางการ Kick ฝั่ง client — เกมบางตัวตรวจจับฝั่ง server แล้วส่ง remote กลับมา
--- ให้ LocalScript ของเกมเรียก LocalPlayer:Kick() เอง แบบนี้ขวางได้
--- (ถ้า server เรียก Kick เองฝั่ง server จะขวางไม่ได้ แต่ Ghost mode จะไม่ให้จับเจอตั้งแต่ต้น)
-if not _G.MikoUG_KickHooked then
-        _G.MikoUG_KickHooked = true
-        -- (a) แบบ player:Kick("...") = ผ่าน __namecall (เดิมมีอยู่แล้ว)
-        if hookmetamethod and newcclosure and getnamecallmethod then
-                local oldNamecall
-                oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-                        local mtd = getnamecallmethod()
-                        if mtd == "Kick" and self == LocalPlayer then
-                                print("[Miko] Blocked LocalPlayer:Kick() (client-side kick)")
-                                return nil
-                        end
-                        -- v10: ขวางอนิเมชันเดิน/วิ่งของตัวจริงขณะ Ghost ถือตัวอยู่
-                        -- (ตัวจริงต้อง "เงียบ" เหมือนคนยืน AFK — อนิเมชันเดินที่เล่นค้าง
-                        --  บนตัวนิ่งคือลายเซ็น noclip ที่เซิร์ฟเวอร์เห็นชัดที่สุด)
-                        -- เกม/controller เรียก track:Play() ผ่าน __namecall = จับได้ตรงนี้
-                        if mtd == "Play" then
-                                local blockFn = _G.MikoUG_BlockLocoPlay
-                                if type(blockFn) == "function" then
-                                        local okBlk, blockIt = pcall(blockFn, self)
-                                        if okBlk and blockIt then
-                                                return nil
-                                        end
-                                end
-                        end
-                        return oldNamecall(self, ...)
-                end))
-        end
-        -- (b) v9.4: แบบ LocalPlayer.Kick(LocalPlayer, "...") = ไม่ผ่าน __namecall
-        --     แอนตี้ชีตบางตัวเรียกแบบ dot-call เพื่อเลี่ยง hook namecall พอดี
-        pcall(function()
-                if hookfunction and newcclosure and typeof(LocalPlayer.Kick) == "function" then
-                        local kickFunc = LocalPlayer.Kick
-                        hookfunction(kickFunc, newcclosure(function(self, ...)
-                                print("[Miko] Blocked LocalPlayer.Kick(self,...) (dot-call kick)")
-                                return nil
-                        end))
-                end
-        end)
 end
 
 local active = false
@@ -11772,108 +11333,6 @@ local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
-local ugCurrentDepth = nil -- ความลึกปัจจุบัน (จม/ลอยแบบค่อยเป็นค่อยไป กันโดนเตะ)
-local ugExiting = false    -- true = กำลังลอยขึ้นผิวดินก่อนปิดจริง
--- v6.2 state: กล้อง self-heal + watchdog มุดตลอดเวลา
-local ugLastPoseT = 0      -- เวลาที่ apply pose ล่าสุด (watchdog ใช้จับลูปค้าง)
-local ugStatusT = 0        -- throttle อัปเดต status label
-local ugLastMouseT = 0     -- เมาส์ขยับล่าสุด
-local ugMouseDX, ugMouseDY = 0, 0
-local ugCamRotLast = nil   -- look vector เดิม (ไว้ตรวจกล้องเกมค้าง)
-local ugFrozenSince = nil  -- เวลาที่กล้องเริ่มนิ่ง
-local ugManualLook = false -- true = กล้องเกมตาย → หมุนมุมมองเองด้วยเมาส์
-local ugMouseYaw, ugMousePitch = 0, 0
-local ugWatchdogConn = nil
-local ugInputConn = nil
-local ugLastPoseRoot = nil -- root ที่ pose นี้เป็นของ (กัน teleport ตัวใหม่หลังรีสปอว์น)
-local ugAirborneT = 0      -- v9: เวลาสะสมที่ตัวจริงลอยโดยไม่มีพื้นใต้ตัวเลย (v9.3: ใช้รีเซ็ต state เท่านั้น)
-local ugAirSince = nil     -- v9.3: เวลาที่เริ่มถือตัวจริงทั้งที่ FloorMaterial = Air (พื้นหาย > 1 วิ = ปล่อยถือ)
--- v9.4 PureStill state
-local ugAnchorSaved = nil  -- ค่า root.Anchored เดิม (คืนตอนปล่อย/ปิด)
-local ugAnchorRoot = nil   -- root ตัวที่เรา anchor ไว้ (คืนค่าให้ถูกตัว กันรีสปอว์น)
-local ugModeGhost = false  -- true = เซสชันนี้เป็น Ghost (watchdog/ตอนปิด ต้องไม่เขียน CFrame)
-local ugLastBodyPos = nil  -- ตำแหน่งตัวจริงเฟรมก่อน (จับว่าเกม teleport ตัว / ตัวนิ่งจริงไหม)
-local ugAnimStopT = 0      -- v10: เวลาที่หยุดอนิเมชันเดินครั้งล่าสุด (throttle 0.15 วิ)
-
--- v10: ตรวจว่า track เป็นอนิเมชัน locomotion (เดิน/วิ่ง) หรือไม่ — ใช้ทั้งบล็อก Play
--- และหยุดท้ายเฟรม | idle/เล็ง/อาวุธ/รีโหลด ต้องผ่าน (ตัวจริงต้องดูเป็นคนยืนถือปืนจริง)
-local function ugIsLocoTrack(track)
-        local ok, res = pcall(function()
-                local names = { track.Name }
-                if track.Animation then
-                        names[#names + 1] = track.Animation.Name
-                        names[#names + 1] = track.Animation.AnimationId
-                end
-                for _, nm in ipairs(names) do
-                        local lw = tostring(nm):lower()
-                        if lw:find("aim", 1, true) or lw:find("ads", 1, true) or lw:find("equip", 1, true)
-                                or lw:find("reload", 1, true) or lw:find("weapon", 1, true) or lw:find("gun", 1, true)
-                                or lw:find("hold", 1, true) or lw:find("tool", 1, true) or lw:find("fire", 1, true)
-                                or lw:find("shoot", 1, true) or lw:find("idle", 1, true) then
-                                return false
-                        end
-                        if lw:find("walk", 1, true) or lw:find("run", 1, true) or lw:find("sprint", 1, true)
-                                or lw:find("jog", 1, true) or lw:find("loco", 1, true) or lw:find("move", 1, true)
-                                or lw:find("crouch", 1, true) or lw:find("prone", 1, true) then
-                                return true
-                        end
-                end
-                return false
-        end)
-        return ok and res == true
-end
-
--- v10: หยุดอนิเมชันเดิน/วิ่งทั้งหมดบนตัวจริง (backstop — ตัวหลักคือ hook บล็อก Play)
-local ugStopRealLocoAnims = function(char)
-        local h = char and char:FindFirstChildOfClass("Humanoid")
-        local an = h and h:FindFirstChildOfClass("Animator")
-        if not an then
-                return
-        end
-        local tracks = nil
-        pcall(function()
-                tracks = an:GetPlayingAnimationTracks()
-        end)
-        if not tracks then
-                return
-        end
-        for _, tr in ipairs(tracks) do
-                if ugIsLocoTrack(tr) then
-                        pcall(function()
-                                tr:Stop(0)
-                        end)
-                end
-        end
-end
-
--- v10: hook __namecall ใช้ตัดสินว่าจะบล็อก track:Play() หรือไม่ (true = บล็อก)
--- เงื่อนไข: Ghost ถือตัวอยู่ (active+anchor) + track เป็นของ Humanoid ตัวเรา + เป็น locomotion
-_G.MikoUG_BlockLocoPlay = function(track)
-        if not active or not ugModeGhost or not ugAnchorPose then
-                return false
-        end
-        if typeof(track) ~= "Instance" or not track:IsA("AnimationTrack") then
-                return false
-        end
-        local par = track.Parent
-        if not par or not par:IsA("Animator") then
-                return false
-        end
-        local hum = par.Parent
-        local c = LocalPlayer.Character
-        if not c or not hum or not hum:IsA("Humanoid") or hum.Parent ~= c then
-                return false
-        end
-        return ugIsLocoTrack(track)
-end
--- v7 Ghost state
-local ugAnchorPose = nil          -- v8: CFrame จุด anchor บนผิวดิน (ตัวจริงถูกถือไว้ที่นี่ = เซิร์ฟเวอร์เห็นยืนปกติ)
-local ugVirtPos = nil             -- v8: ตำแหน่ง "ตัวมุด" เสมือน client-only (เซิร์ฟเวอร์ไม่เห็นเลย)
-local ugFloorPart = nil           -- แผ่นพื้นล่องหนใต้เท้า (client-only ทำให้ FloorMaterial ไม่เป็น Air)
-local ugCharParts = nil           -- cache รายชื่อ BasePart ตัวละคร (FULL mode ใช้ แทน GetDescendants ทุกเฟรม)
-local ugCharPartsT = 0
-local ugExcludeT = 0              -- cache รายการ exclude ของ rayParams (ลด garbage ทุกเฟรม)
-local ugExcludeKey = nil
 
 local rayParams = RaycastParams.new()
 rayParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -11881,13 +11340,7 @@ rayParams.IgnoreWater = true
 rayParams.RespectCanCollide = true
 
 local function BuildExclude()
-        -- v7: cache ไว้ 1 วินาที (เดิมสร้างตารางใหม่ทุกเฟรม = กากขยะ GC ทำ FPS ร่วง)
         local cam = workspace.CurrentCamera
-        local key = tostring(cam) .. "|" .. tostring(lastChar)
-        local nowT = os.clock()
-        if ugExcludeKey == key and (nowT - ugExcludeT) < 1 then
-                return
-        end
         local list = {}
         if cam then
                 list[#list + 1] = cam
@@ -11906,19 +11359,14 @@ local function BuildExclude()
         if camAnchor then
                 list[#list + 1] = camAnchor
         end
-        if ugFloorPart then
-                list[#list + 1] = ugFloorPart
-        end
         rayParams.FilterDescendantsInstances = list
-        ugExcludeKey = key
-        ugExcludeT = nowT
 end
 
-local function ProbeGround(pos, deltaTime)
-        local startY = (lastGroundY or pos.Y) + 5
+local function ProbeGround(root)
+        local startY = (lastGroundY or root.Position.Y) + 5
         BuildExclude()
         local hit = workspace:Raycast(
-                Vector3.new(pos.X, startY, pos.Z),
+                Vector3.new(root.Position.X, startY, root.Position.Z),
                 Vector3.new(0, -500, 0),
                 rayParams
         )
@@ -11927,27 +11375,15 @@ local function ProbeGround(pos, deltaTime)
                 if hit.Normal.Y < 0.5 then
                         return false -- เพดาน/ผนังเอียง ไม่ใช่พื้น
                 end
-                local dt = (typeof(deltaTime) == "number" and deltaTime > 0 and deltaTime < 0.5) and deltaTime or 0.016
-                if lastGroundY then
-                        local dy = y - lastGroundY
-                        if math.abs(dy) > 60 then
-                                return false -- เจอผิวไกลผิดปกติ = ขยะ ray ปฏิเสธ
-                        end
-                        -- v6.2: ลงเนินตามผิวเร็ว 60/s (เดินลงเนินแล้วตัวไม่โผล่พ้นผิว)
-                        -- ขึ้นเนินไล่นุ่มนวล 28/s (กัน teleport ขึ้นกระชาก = โดนเตะ)
-                        if dy < 0 then
-                                lastGroundY = lastGroundY + math.max(dy, -60 * dt)
-                        else
-                                lastGroundY = lastGroundY + math.min(dy, 28 * dt)
-                        end
-                        return true
+                if lastGroundY and math.abs(y - lastGroundY) > 12 then
+                        return false -- ผิวเด้งเกินไป = ขยะ ray ปฏิเสธ
                 end
                 lastGroundY = y
                 return true
         end
         if not lastGroundY then
                 -- ray ไม่เจอพื้นเลย ก็ยังมุด (สมมติใต้ตัว 3 สตัดคือผิวดิน)
-                lastGroundY = pos.Y - 3
+                lastGroundY = root.Position.Y - 3
         end
         return false
 end
@@ -11957,9 +11393,7 @@ local function EnsureCamAnchor()
                 return camAnchor
         end
         local part = Instance.new("Part")
-        -- v9.4: เปลี่ยนเป็นชื่อกลาง + เก็บใต้ CurrentCamera (ไม่วางกองไว้ใน workspace
-        -- ให้แอนตี้ชีตฝั่ง client ที่ไล่สแกน part แปลก ๆ ใน workspace เห็น)
-        part.Name = "CameraAnchorNode"
+        part.Name = "MikoUG_CamAnchor"
         part.Size = Vector3.new(1, 1, 1)
         part.Transparency = 1
         part.Anchored = true
@@ -11968,118 +11402,9 @@ local function EnsureCamAnchor()
         part.CanTouch = false
         part.Locked = true
         part.CFrame = CFrame.new(0, -500, 0)
-        part.Parent = workspace.CurrentCamera or workspace
+        part.Parent = workspace
         camAnchor = part
         return part
-end
-
--- v6.1: บังคับกล้องให้อยู่ "เหนือผิวดิน" ทุกเฟรม แก้จอดำตามคลิป
--- เกมนี้ใช้กล้อง FPS Scriptable ของตัวเอง (ตั้ง CameraSubject ธรรมดาไม่มีผล)
--- ต้อง override CFrame หลังกล้องเกมอัปเดตเสมอ (Bind ที่ Last+1):
--- ตำแหน่ง = เหนือผิวดิน 2.4 สตัด / การหมุนเอาจากกล้องเดิม = เล็งเหมือนเดิมทุกอย่าง
-local ugCamY = nil
-local ugCamLastT = 0
--- v6.2: กล้อง self-heal — ถ้ากล้องเกม (FPS Scriptable) ค้าง/ตาย เช่นตอน death cam,
--- รีสปอว์น หรือสู้กับโมดูลกล้องของเกม ภาพจะแข็งนิ่ง (บัคตามคลิป) → ตรวจจับว่า
--- rotation ไม่เปลี่ยนเกิน 0.9 วิ แล้วสลับไป "หมุนมุมมองเองด้วยเมาส์" ทันที
--- เมื่อกล้องเกมกลับมาขยับอีกครั้งจะคืนสิทธิ์ให้เกมอัตโนมัติ
-local function ugCameraOverride()
-        if Library.Unloaded then
-                return
-        end
-        -- v8 Ghost: โหมดกล้องมุดลง (UGCamAbove=false) ต้องให้ override ทำงานด้วย
-        if not Misc.UGCamAbove and not ugVirtPos then
-                return
-        end
-        if not active and not ugExiting then
-                return
-        end
-        local cam = workspace.CurrentCamera
-        local c = LocalPlayer.Character
-        local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
-        if not cam or not r or not lastGroundY then
-                return
-        end
-        if ugVirtPos then
-                -- v8 Ghost: ตัวจริงอยู่ผิวดินเสมอ ใช้ความลึกเสมือนตัดสินแทน
-                if (ugCurrentDepth or 0) < 0.15 then
-                        return -- ยังไม่จม = คืนกล้องให้เกม
-                end
-        elseif r.Position.Y > lastGroundY + 2.0 then
-                return -- ตัวขึ้นผิวดินแล้ว คืนกล้องให้เกม
-        end
-        local nowT = os.clock()
-        local dtc = ugCamLastT > 0 and math.clamp(nowT - ugCamLastT, 0.001, 0.1) or 0.016
-        ugCamLastT = nowT
-        -- v8: จุดอ้างอิง XZ = ตำแหน่งเสมือน (Ghost) หรือตัวจริง (Stealth/FULL)
-        local refX = ugVirtPos and ugVirtPos.X or r.Position.X
-        local refZ = ugVirtPos and ugVirtPos.Z or r.Position.Z
-        local targetCamY = lastGroundY + 2.4
-        if ugVirtPos then
-                if not Misc.UGCamAbove then
-                        -- Ghost + กล้องมุดลง: กล้องตามตัวเสมือนใต้ดิน
-                        targetCamY = ugVirtPos.Y + 0.8
-                end
-        elseif r.Position.Y > lastGroundY then
-                -- ตอนกำลังลอยขึ้น (exit) ให้กล้องตามตัวขึ้นไปด้วย กันกระตุกตอนส่งมอบคืนเกม
-                targetCamY = math.max(targetCamY, r.Position.Y + 1.2)
-        end
-        -- v7: กันกล้องทะลุเพดาน/สันหลังคา = จอดำ/เบลอตามคลิป — ถ้ามีหลังคาต่ำกว่า
-        -- 2.4 สตัดเหนือผิวดิน ให้กล้องต่ำลงมาใต้หลังคาแทน
-        do
-                BuildExclude()
-                local up = workspace:Raycast(
-                        Vector3.new(refX, lastGroundY + 0.3, refZ),
-                        Vector3.new(0, 7, 0),
-                        rayParams
-                )
-                if up and up.Normal.Y < -0.2 then -- ผิวหันลง = หลังคา/ส่วนยื่น
-                        local maxY = up.Position.Y - 0.45
-                        if targetCamY > maxY then
-                                targetCamY = maxY
-                        end
-                end
-        end
-        if ugCamY == nil then
-                ugCamY = math.max(r.Position.Y, targetCamY)
-        end
-        ugCamY = ugCamY + math.clamp(targetCamY - ugCamY, -24 * dtc, 24 * dtc)
-        local cf = cam.CFrame
-        -- v6.2: ตรวจว่ากล้องเกมยัง "หมุนตามเมาส์" อยู่ไหม
-        -- v7: เทียบแบบ Vector3 ตรง ๆ (เดิม string.format ทุกเฟรม = กากขยะ GC)
-        local look = cf.LookVector
-        if ugCamRotLast == nil or (ugCamRotLast - look).Magnitude > 0.0002 then
-                ugFrozenSince = nil
-                if ugManualLook then
-                        ugManualLook = false -- กล้องเกมกลับมาทำงานเอง
-                        print("[Miko] Underground: game camera recovered")
-                end
-        else
-                if ugFrozenSince == nil then
-                        ugFrozenSince = nowT
-                elseif not ugManualLook and (nowT - ugFrozenSince) > 0.9 then
-                        ugManualLook = true -- กล้องเกมค้าง → รับจบการหมุนเอง
-                        print("[Miko] Underground: game camera frozen -> manual mouse look")
-                end
-        end
-        ugCamRotLast = look
-        local rot
-        if ugManualLook then
-                -- หมุนเองจาก delta เมาส์สะสม (เมาส์ต้องอยู่บนหน้าต่างนี้)
-                ugMouseYaw = ugMouseYaw - ugMouseDX * 0.004
-                ugMousePitch = math.clamp(ugMousePitch - ugMouseDY * 0.004, -1.35, 1.35)
-                ugMouseDX, ugMouseDY = 0, 0
-                rot = CFrame.Angles(0, ugMouseYaw, 0) * CFrame.Angles(ugMousePitch, 0, 0)
-        else
-                rot = cf - cf.Position
-                -- seed มุมจากกล้องเกมตลอดเวลา เผื่อต้องสลับ manual แบบไร้รอยต่อ
-                ugMouseYaw = math.atan2(-look.X, -look.Z)
-                ugMousePitch = math.clamp(math.asin(math.clamp(look.Y, -1, 1)), -1.35, 1.35)
-                ugMouseDX, ugMouseDY = 0, 0
-        end
-        pcall(function()
-                cam.CFrame = CFrame.new(refX, ugCamY, refZ) * rot
-        end)
 end
 
 stopUnderground = function()
@@ -12126,21 +11451,8 @@ stopUnderground = function()
                 end)
                 ugHeartbeatConn = nil
         end
-        pcall(function()
-                RunService:UnbindFromRenderStep("MikoUG_CameraOverride")
-        end)
-        ugCamY = nil
-        ugCamLastT = 0
-        -- v6.2: เคลียร์ state กล้อง self-heal ด้วย
-        ugCamRotLast = nil
-        ugFrozenSince = nil
-        ugManualLook = false
-        ugMouseYaw, ugMousePitch = 0, 0
-        ugMouseDX, ugMouseDY = 0, 0
-        ugLastPoseT = 0
         ugApplyPose = nil
         ugLastPose = nil
-        ugLastPoseRoot = nil
         if savedHumanoid and savedHumanoid.Parent then
                 pcall(function()
                         savedHumanoid.AutoRotate = savedAutoRotate
@@ -12187,70 +11499,19 @@ stopUnderground = function()
                 end
                 collideSaved = nil
         end
-        -- v7: ทำลายแผ่นพื้นล่องหนก่อนปลด anchor (กัน physics ไปเกี่ยวกับมัน)
-        if ugFloorPart then
+        if root then
+                local upY = (lastGroundY or root.Position.Y) + 3.5
                 pcall(function()
-                        ugFloorPart:Destroy()
-                end)
-                ugFloorPart = nil
-        end
-        -- v10: ก่อนปลด anchor ต้อง PIN ตัวกลับจุด anchor ก่อนเสมอ (client-local ไม่
-        -- replicate) — ถ้าปลดทันทีขณะตัวเลื่อนหลุดจากจุด (controller เขียนทับระหว่าง
-        -- เฟรม) = ตำแหน่งใหม่ replicate ขึ้นเซิร์ฟเวอร์ = teleport โดนจับ Noclip ได้
-        if ugAnchorSaved ~= nil and ugAnchorRoot and ugAnchorRoot.Parent and ugAnchorPose then
-                pcall(function()
-                        ugAnchorRoot.CFrame = ugAnchorPose
-                        ugAnchorRoot.AssemblyLinearVelocity = Vector3.zero
-                        ugAnchorRoot.AssemblyAngularVelocity = Vector3.zero
-                end)
-        end
-        -- v9.4/v10: คืน root.Anchored ค่าเดิมเสมอ (Ghost PureStill ถือด้วย Anchored client)
-        -- คืนให้ root "ตัวที่เรา anchor เอาไว้" เท่านั้น (กันรีสปอว์นได้ root ตัวใหม่)
-        if ugAnchorSaved ~= nil and ugAnchorRoot and ugAnchorRoot.Parent then
-                pcall(function()
-                        ugAnchorRoot.Anchored = ugAnchorSaved
-                end)
-        end
-        ugAnchorSaved = nil
-        ugAnchorRoot = nil
-        ugLastBodyPos = nil
-        -- v8: Ghost = ตัวจริงถูกถือไว้ที่จุด anchor บนผิวดินตลอด ปิดปุ๊บจบเลย
-        -- ไม่มีดันตัว/ไหลกลับ/teleport ให้เซิร์ฟเวอร์เห็น
-        -- Stealth/FULL = ตัวจริงจมใต้ดินจริง → ดันขึ้นผิวดินเหมือนเดิม
-        -- v6.1: ดันขึ้นผิวดินเฉพาะตัวละคร "ตัวเดิมที่มุดอยู่" เท่านั้น
-        -- (กันรีสปอว์นแล้ว lastGroundY เก่าพาตัวใหม่ลอย/จม)
-        -- v9.4: Ghost ห้ามเข้า push-up เด็ดขาด (ตัวจริงไม่เคยจมใต้ดิน + lastGroundY
-        -- เป็นพื้นของ "ตัวเสมือน" ที่อยู่ไกลตัวจริงได้ = เทียบแล้วผิด = เกิด teleport ปลอม)
-        if root and lastChar and curChar == lastChar and not ugModeGhost then
-                if ugAnchorPose == nil and root.Position.Y < ((lastGroundY or root.Position.Y) - 0.5) then
-                        -- v6.2: ถ้า lastGroundY หาย ให้คิดจากความลึกปัจจุบันแทน
-                        -- (เดิมดันแค่ rootY+3.5 ถ้า depth=5 ตัวจะยังฝังใต้ดิน 1.5 สตัด!)
-                        local baseY = lastGroundY or (root.Position.Y + math.max(ugCurrentDepth or 3, 3))
-                        local upY = baseY + 3.5
-                        pcall(function()
-                                root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
-                        end)
-                end
-                pcall(function()
+                        root.Anchored = false
+                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
                         root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
                 end)
         end
-        ugAnchorPose = nil
-        ugVirtPos = nil
-        ugModeGhost = false
-        ugAirborneT = 0 -- v9: รีเซ็ตตัวนับลอยไร้พื้น
-        ugCharParts = nil
-        ugExiting = false
-        ugCurrentDepth = nil
         lastGroundY = nil
         lastChar = nil
         printedGround = false
 end
 _G.MikoUG_ForceStop = stopUnderground
-
--- v14: ลบระบบ Exit At Spot (v12) ออกทั้งหมดตามคำขอ
--- ตอนปิด Underground ตัวจะลอยขึ้นผิวดิน "ตรงจุดที่ปิด" อัตโนมัติ (โหมดที่เหลือมุดด้วยตัวจริง)
 
 UpdateUnderground = function(deltaTime)
         if typeof(deltaTime) ~= "number" or deltaTime ~= deltaTime or deltaTime <= 0 then
@@ -12260,55 +11521,9 @@ UpdateUnderground = function(deltaTime)
         end
 
         if Library.Unloaded or not Misc.Underground or Misc.FreeCam then
-                -- v6.2: อัปเดตสถานะปิดใน UI (throttle 0.5s)
-                if os.clock() - ugStatusT > 0.5 then
-                        ugStatusT = os.clock()
-                        if _G.MikoUG_StatusSet then
-                                local offTxt
-                                if Misc.FreeCam then
-                                        offTxt = "Underground: paused (FreeCam/Spectator)"
-                                else
-                                        offTxt = "Underground: OFF"
-                                end
-                                pcall(_G.MikoUG_StatusSet, offTxt)
-                        end
-                end
                 if active then
-                        if Library.Unloaded or Misc.FreeCam then
-                                -- ปิดทันที (unload / สลับไป FreeCam)
-                                stopUnderground()
-                                print("[Miko] Underground OFF - ตัวขึ้นผิวดินแล้ว")
-                        else
-                                -- ปิดปกติ (Stealth/FULL): ลอยขึ้นผิวดินแบบนุ่มนวลก่อน (กันโดนเตะ teleport/noclip)
-                                ugExiting = true
-                                local exChar = LocalPlayer.Character
-                                local exHum = exChar and exChar:FindFirstChildOfClass("Humanoid")
-                                local exRoot = exChar and (exChar:FindFirstChild("HumanoidRootPart") or exChar.PrimaryPart)
-                                if not exChar or not exHum or not exRoot or exHum.Health <= 0 then
-                                        stopUnderground()
-                                        print("[Miko] Underground OFF - ตัวขึ้นผิวดินแล้ว")
-                                        return
-                                end
-                                ProbeGround(exRoot.Position, deltaTime)
-                                if ugCurrentDepth == nil then
-                                        ugCurrentDepth = math.max(0.1, (lastGroundY or exRoot.Position.Y) - exRoot.Position.Y)
-                                end
-                                local exDelta = -3.5 - ugCurrentDepth
-                                if exDelta < 0 then
-                                        ugCurrentDepth = ugCurrentDepth + math.max(exDelta, -16 * deltaTime)
-                                else
-                                        ugCurrentDepth = ugCurrentDepth + math.min(exDelta, 16 * deltaTime)
-                                end
-                                if ugCurrentDepth <= -3 then
-                                        stopUnderground()
-                                        print("[Miko] Underground OFF - ตัวขึ้นผิวดินแล้ว")
-                                else
-                                        -- ugApplyPose (Stepped/Heartbeat) จะ re-assert ตำแหน่งให้เอง
-                                        local exY = (lastGroundY or exRoot.Position.Y) - ugCurrentDepth
-                                        ugLastPose = CFrame.new(Vector3.new(exRoot.Position.X, exY, exRoot.Position.Z))
-                                                * CFrame.Angles(0, lastYaw, 0)
-                                end
-                        end
+                        stopUnderground()
+                        print("[Miko] Underground OFF - ตัวขึ้นผิวดินแล้ว")
                 end
                 return
         end
@@ -12317,55 +11532,18 @@ UpdateUnderground = function(deltaTime)
         local humanoid = char and char:FindFirstChildOfClass("Humanoid")
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
         if not char or not humanoid or not root or humanoid.Health <= 0 then
-                -- v6.1: ตาย/ตัวหาย = คืนกล้อง+เคลียร์สถานะ แต่คง toggle เดิมไว้
-                -- พอรีสปอว์นเสร็จจะมุดต่ออัตโนมัติ (มุดได้ตลอดเวลา)
-                if active and (not char or (humanoid and humanoid.Health <= 0)) then
-                        stopUnderground()
-                        print("[Miko] Underground pause - รอรีสปอว์นแล้วมุดต่อ")
-                end
-                -- v6.2: สถานะรอรีสปอว์น
-                if os.clock() - ugStatusT > 0.5 then
-                        ugStatusT = os.clock()
-                        if _G.MikoUG_StatusSet then
-                                pcall(_G.MikoUG_StatusSet, "Underground: waiting respawn...")
-                        end
-                end
                 return
         end
 
         if char ~= lastChar then
-                if active then
-                        -- v6.1: ตัวละครเปลี่ยน (รีสปอว์น) = เคลียร์ของเก่าให้สะอาด
-                        -- แล้ว init ใหม่ด้านล่าง = กลับมามุดต่อเอง
-                        stopUnderground()
-                end
                 lastChar = char
                 lastGroundY = nil
                 printedGround = false
                 collideSaved = nil
-                ugCurrentDepth = 0
-                ugExiting = false
         end
 
-        ugExiting = false -- เปิดอยู่ปกติ (ถ้ากำลัง exit แล้วผู้ใช้เปิดกลับ = จมลงใหม่)
-
         if not active then
-                -- v14: ลบ ugCancelExitGlide (Exit At Spot) ออกแล้ว
-                -- v9 ติด 100%: ตัด "ประตูรอแตะพื้น" ออกทั้งหมด — เปิดปุ๊บ = มุดทันทีทุกสถานการณ์
-                -- (เดิม v8 รอจับ anchor ตอนแตะพื้นก่อนเสมอ ถ้าเปิดตอนกระโดด/ตกจากที่สูง/โหน
-                -- บันไดเชือก/zip line/ว่ายน้ำ หรือเกมใช้ controller ตัวเองจน FloorMaterial ค้าง
-                -- เป็น Air = ค้างที่ "รอลงพื้นก่อนมุด..." แล้วไม่มีวันเริ่ม = "บางทีไม่ติด")
-                -- v9: ตัวเสมือน + กล้องใต้ดินเริ่มทำงาน "เฟรมแรก" เสมอ ส่วนตัวจริง:
-                --   - อยู่บนพื้นแล้ว      → จับ anchor ถือตัวทันที (เหมือน v8)
-                --   - กำลังลอย/ตกอยู่    → ปล่อยตก "ตามฟิสิกส์ธรรมชาติ" (เซิร์ฟเวอร์เห็นแค่
-                --                          คนตกหล่นปกติ ไม่ลอยค้าง) แล้วจับ anchor เอง
-                --                          ทันทีที่เท้าแตะพื้น (ดู v9 capture ใน Ghost branch)
-                --   - ไม่มีพื้นใต้ตัวเลย  → คงโหมดตามตัวจริงไปเรื่อย ๆ (v9.3: ห้ามจับกลางอากาศเด็ดขาด
-                --     ตัวจริงเคลื่อนที่ตามธรรมชาติ เซิร์ฟเวอร์เห็นคนปกติ ไม่มีทางโดนเตะ noclip)
-                ugAirborneT = 0
                 active = true
-                -- v9.4: จำโหมดของเซสชันนี้ (Ghost = watchdog/ตอนปิดต้องไม่เขียน CFrame)
-                ugModeGhost = Misc.UGGhost == true
                 local cam = workspace.CurrentCamera
                 savedCameraSubject = cam and cam.CameraSubject or nil
                 savedCameraType = cam and cam.CameraType or nil
@@ -12375,33 +11553,17 @@ UpdateUnderground = function(deltaTime)
                         humanoid.AutoRotate = false
                 end)
                 savedPlatformStand = humanoid.PlatformStand
-                if Misc.UGStealth then
-                        -- STEALTH: คงสถานะ Humanoid ปกติ (Running) ไม่แตะ CanCollide ไม่ PlatformStand
-                        -- เกม/แอนตี้ชีตมองตัวลครปกติ -> ไม่โดนเตะ noclip + ถือเป้า/ยิงได้ปกติ
-                        disabledStates = { "GettingUp", "FallingDown", "Ragdoll" }
-                        pcall(function()
-                                for _, stName in ipairs(disabledStates) do
-                                        local st = Enum.HumanoidStateType[stName]
-                                        if st then
-                                                humanoid:SetStateEnabled(st, false)
-                                        end
+                disabledStates = { "GettingUp", "FallingDown", "Ragdoll", "Jumping", "Climbing", "Swimming", "Seated" }
+                pcall(function()
+                        humanoid.PlatformStand = true
+                        for _, stName in ipairs(disabledStates) do
+                                local st = Enum.HumanoidStateType[stName]
+                                if st then
+                                        humanoid:SetStateEnabled(st, false)
                                 end
-                                humanoid:ChangeState(Enum.HumanoidStateType.Running)
-                        end)
-                else
-                        -- FULL: สไตล์เดิม v5 (Physics + PlatformStand + ปิด CanCollide)
-                        disabledStates = { "GettingUp", "FallingDown", "Ragdoll", "Jumping", "Climbing", "Swimming", "Seated" }
-                        pcall(function()
-                                humanoid.PlatformStand = true
-                                for _, stName in ipairs(disabledStates) do
-                                        local st = Enum.HumanoidStateType[stName]
-                                        if st then
-                                                humanoid:SetStateEnabled(st, false)
-                                        end
-                                end
-                                humanoid:ChangeState(Enum.HumanoidStateType.Physics)
-                        end)
-                end
+                        end
+                        humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+                end)
                 -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
                 -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
                 -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
@@ -12422,51 +11584,17 @@ UpdateUnderground = function(deltaTime)
                         if not c or not h or not r or h.Health <= 0 then
                                 return
                         end
-                        if (not Misc.Underground and not ugExiting) or Misc.FreeCam or Library.Unloaded then
+                        if not Misc.Underground or Misc.FreeCam or Library.Unloaded then
                                 return
                         end
-                        local stealth = (Misc.UGStealth == true)
-                        if stealth then
-                                -- STEALTH: บังคับสถานะ Running (ปกติ) ไม่แตะ CanCollide
-                                -- v6.2: ถ้าเพิ่งสลับจาก FULL/LieFaceUp กลับมา PlatformStand
-                                -- จะค้าง true = ตัวแข็งเดินไม่ได้ (บัคตามคลิป) → บังคับปิดตรงนี้
-                                if h.PlatformStand then
-                                        pcall(function()
-                                                h.PlatformStand = false
-                                        end)
-                                end
-                                if h:GetState() ~= Enum.HumanoidStateType.Running then
-                                        pcall(function()
-                                                h:ChangeState(Enum.HumanoidStateType.Running)
-                                        end)
-                                end
-                        else
-                                -- FULL: Physics เหมือน v5
-                                if h:GetState() ~= Enum.HumanoidStateType.Physics then
-                                        pcall(function()
-                                                h:ChangeState(Enum.HumanoidStateType.Physics)
-                                        end)
-                                end
+                        if h:GetState() ~= Enum.HumanoidStateType.Physics then
+                                pcall(function()
+                                        h:ChangeState(Enum.HumanoidStateType.Physics)
+                                end)
                         end
-                        if not stealth then
-                                -- FULL: ปิด CanCollide — v7 ใช้ cache รายชื่อ part (เดิม GetDescendants
-                                -- ทุกเฟรม 3 เฟส = หนักเครื่องมาก FPS ร่วงตามคลิป)
-                                local parts = ugCharParts
-                                if not parts or (os.clock() - ugCharPartsT) > 2 then
-                                        parts = {}
-                                        for _, part in ipairs(c:GetDescendants()) do
-                                                if part:IsA("BasePart") then
-                                                        parts[#parts + 1] = part
-                                                end
-                                        end
-                                        ugCharParts = parts
-                                        ugCharPartsT = os.clock()
-                                end
-                                for i = 1, #parts do
-                                        local part = parts[i]
-                                        if part.Parent and part.CanCollide then
-                                                part.CanCollide = false
-                                        end
+                        for _, part in ipairs(c:GetDescendants()) do
+                                if part:IsA("BasePart") and part.CanCollide then
+                                        part.CanCollide = false
                                 end
                         end
                         pcall(function()
@@ -12479,50 +11607,26 @@ UpdateUnderground = function(deltaTime)
                 end
                 ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
                 ugHeartbeatConn = RunService.Heartbeat:Connect(ugApplyPose)
-                pcall(function()
-                        RunService:UnbindFromRenderStep("MikoUG_CameraOverride")
-                        RunService:BindToRenderStep("MikoUG_CameraOverride", Enum.RenderPriority.Last.Value + 1, ugCameraOverride)
-                end)
-                print("[Miko] Underground v14 ON (Stealth: มุดด้วยตัวจริง state ปกติ = ยิงปืนได้ | ปิดแล้วลอยขึ้นตรงจุดที่ปิด)")
-                if Misc.UGCamAbove then
-                        print("[Miko] v14 เตือน: Camera Above Ground เปิดอยู่ = กล้องจะลอยค้างบนผิวดินตลอด (มองไม่เห็นใต้ดิน) — ถ้าต้องการมองลงใต้ดินให้ปิดปุ่ม Camera Above Ground")
-                end
+                print("[Miko] Underground ON")
         end
 
-
-        -- v14: ลบโหมด Ghost (ตัวจริงถูกถือที่ anchor + ตัวเสมือน) ออกทั้งหมด
-        -- โหมดที่เหลือ: Stealth (ส่งตำแหน่งจริง state Running ปกติ = ยิงได้) / FULL แบบเก่า
-
-        -- Stealth / FULL: หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
-        ProbeGround(root.Position, deltaTime)
+        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
+        ProbeGround(root)
 
         if not printedGround and lastGroundY then
                 printedGround = true
                 print(string.format("[Miko] Underground: ผิวดิน Y=%.1f", lastGroundY))
         end
 
-        local targetDepth = tonumber(Misc.UndergroundDepth) or 1
-        if targetDepth < 0.1 then
-                targetDepth = 0.1
-        elseif targetDepth > 2 then
-                targetDepth = 2
+        local depth = tonumber(Misc.UndergroundDepth) or 1
+        if depth < 0.1 then
+                depth = 0.1
+        elseif depth > 1 then
+                depth = 1
         end
-        if ugCurrentDepth == nil then
-                ugCurrentDepth = 0
-        end
-        -- จมลงแบบค่อยเป็นค่อยไป (กัน teleport กระชาก = โดนเตะ noclip)
-        local sinkRate = 10
-        local depthDelta = targetDepth - ugCurrentDepth
-        if depthDelta > 0 then
-                ugCurrentDepth = ugCurrentDepth + math.min(depthDelta, sinkRate * deltaTime)
-        else
-                ugCurrentDepth = ugCurrentDepth + math.max(depthDelta, -16 * deltaTime)
-        end
-        local targetY = (lastGroundY or root.Position.Y) - ugCurrentDepth
+        local targetY = (lastGroundY or root.Position.Y) - depth
 
         -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        -- v6.1: ถ้าเกมใช้ controller ของตัวเอง MoveDirection จะนิ่งเป็น 0 = เดินไม่ได้
-        -- จึงเพิ่ม fallback อ่านปุ่ม WASD ตรง ๆ คำนวณทิศจากกล้องเอง = เดินได้ทุกกรณี
         local dir = Vector3.zero
         if Misc.UGWalk then
                 local ok, md = pcall(function()
@@ -12531,117 +11635,53 @@ UpdateUnderground = function(deltaTime)
                 if ok and typeof(md) == "Vector3" then
                         dir = md
                 end
-                if dir.Magnitude < 0.01 then
-                        local fx, fz = 0, 0
-                        pcall(function()
-                                if UserInputService:IsKeyDown(Enum.KeyCode.W) or UserInputService:IsKeyDown(Enum.KeyCode.Up) then
-                                        fz = fz + 1
-                                end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.S) or UserInputService:IsKeyDown(Enum.KeyCode.Down) then
-                                        fz = fz - 1
-                                end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.A) or UserInputService:IsKeyDown(Enum.KeyCode.Left) then
-                                        fx = fx - 1
-                                end
-                                if UserInputService:IsKeyDown(Enum.KeyCode.D) or UserInputService:IsKeyDown(Enum.KeyCode.Right) then
-                                        fx = fx + 1
-                                end
-                        end)
-                        if fx ~= 0 or fz ~= 0 then
-                                local ugFlatCam = workspace.CurrentCamera
-                                local look = ugFlatCam and ugFlatCam.CFrame.LookVector or Vector3.new(0, 0, -1)
-                                local flat = Vector3.new(look.X, 0, look.Z)
-                                if flat.Magnitude < 0.05 then
-                                        flat = Vector3.new(0, 0, -1)
-                                else
-                                        flat = flat.Unit
-                                end
-                                local right = Vector3.new(-flat.Z, 0, flat.X)
-                                dir = flat * fz + right * fx
-                                if dir.Magnitude > 0.001 then
-                                        dir = dir.Unit
-                                end
-                        end
-                end
         end
 
         local speed = 16
         if humanoid.WalkSpeed and humanoid.WalkSpeed > 0.1 then
                 speed = humanoid.WalkSpeed
         end
-        if Misc.FastWalk then
-                local sprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
-                local ugMultiplier = tonumber(Misc.FastWalkSpeed) or 2.6
-                if ugMultiplier < 0.1 then
-                        ugMultiplier = 0.1
-                elseif ugMultiplier > 3 then
-                        ugMultiplier = 3
-                end
-                if sprinting then
-                        speed = speed * ugMultiplier * 1.3
-                else
-                        speed = speed * ugMultiplier
-                end
+        -- Underground Speed (0.1 - 2): สไลเดอร์เฉพาะของโหมดมุดดิน คูณจาก WalkSpeed ปกติ
+        -- (แยกออกจาก FastWalk เพื่อให้คุมความเร็วใต้ดินได้ตรงจุดและทำนายผลได้)
+        local ugSpeedMult = tonumber(Misc.UndergroundSpeed) or 1
+        if ugSpeedMult < 0.1 then
+                ugSpeedMult = 0.1
+        elseif ugSpeedMult > 2 then
+                ugSpeedMult = 2
         end
-        -- v9.1: ความเร็วมุดดินเฉพาะตัว (slider Underground Speed 0.1 - 5 เท่า)
-        do
-                local ugSpd = tonumber(Misc.UGSpeed) or 1
-                if ugSpd < 0.1 then
-                        ugSpd = 0.1
-                elseif ugSpd > 5 then
-                        ugSpd = 5
-                end
-                speed = speed * ugSpd
-        end
-        -- v11: โหมด Stealth/FULL เขียนตำแหน่งจริงลง root (replicate ขึ้นเซิร์ฟเวอร์)
-        -- = ความเร็วที่เซิร์ฟเวอร์เห็นต้องไม่เกินคนเดินปกติเด็ดขาด (กัน Speedhack)
-        if speed > 16 then
-                speed = 16
-        end
+        speed = speed * ugSpeedMult
 
         local pos = root.Position + dir * speed * deltaTime
         pos = Vector3.new(pos.X, targetY, pos.Z)
 
-        -- v6.1: หมุนตัวตามกล้องแบบ FPS — ตอนขึ้นผิวดินตัวจะหันทางที่เล็งพอดี
-        local ugYawCam = workspace.CurrentCamera
-        if ugYawCam then
-                local look = ugYawCam.CFrame.LookVector
-                if math.abs(look.X) > 0.001 or math.abs(look.Z) > 0.001 then
-                        lastYaw = math.atan2(-look.X, -look.Z)
-                end
-        elseif dir.Magnitude > 0.01 then
+        if dir.Magnitude > 0.01 then
                 lastYaw = math.atan2(-dir.X, -dir.Z)
         end
 
-        -- v14: STEALTH ไม่แตะ CanCollide/PlatformStand เลย = ระบบปืน/ViewModel ทำงานปกติ
-        -- เฉพาะ FULL (ปิด Stealth) ที่ปิด CanCollide + PlatformStand
-        local stealth = (Misc.UGStealth == true)
-        if not stealth then
-                if not collideSaved then
-                        collideSaved = {}
-                end
-                for _, part in ipairs(char:GetDescendants()) do
-                        if part:IsA("BasePart") then
-                                if collideSaved[part] == nil then
-                                        collideSaved[part] = part.CanCollide
-                                end
-                                if part.CanCollide then
-                                        part.CanCollide = false
-                                end
+        -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
+        if not collideSaved then
+                collideSaved = {}
+        end
+        for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                        if collideSaved[part] == nil then
+                                collideSaved[part] = part.CanCollide
+                        end
+                        if part.CanCollide then
+                                part.CanCollide = false
                         end
                 end
-                if not humanoid.PlatformStand then
-                        pcall(function()
-                                humanoid.PlatformStand = true
-                        end)
-                end
+        end
+        if not humanoid.PlatformStand then
+                pcall(function()
+                        humanoid.PlatformStand = true
+                end)
         end
 
+        -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
         -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
         -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
         -- ผิวดินช่วง physics — ไม่งั้นคนอื่นเห็นตัวเราโผล่/จม/นอนเอียงสลับไปมา
-        -- (GHOST ใช้ root.Anchored = true ซึ่ง CFrame ยังเขียนได้ตามปกติ client-only
-        --  ส่วน Stealth/FULL ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics)
         local pose = nil
         if Misc.UGLieFaceUp then
                 pose = CFrame.new(pos)
@@ -12651,8 +11691,6 @@ UpdateUnderground = function(deltaTime)
                 pose = CFrame.new(pos) * CFrame.Angles(0, lastYaw, 0)
         end
         ugLastPose = pose
-        ugLastPoseT = os.clock() -- v6.2: ไว้ให้ watchdog จับว่าลูปหลักยังทำงานอยู่
-        ugLastPoseRoot = root
         pcall(function()
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
@@ -12670,8 +11708,11 @@ UpdateUnderground = function(deltaTime)
                                         cam.CameraSubject = anchor
                                 end)
                         end
-                        -- v6.1: ไม่บังคับ CameraType=Custom แล้ว (เกมใช้กล้อง Scriptable
-                        -- ของตัวเอง บังคับแล้วสู้กัน) ใช้ ugCameraOverride จัดการแทน
+                        if cam.CameraType ~= Enum.CameraType.Custom then
+                                pcall(function()
+                                        cam.CameraType = Enum.CameraType.Custom
+                                end)
+                        end
                 else
                         if camAnchor then
                                 pcall(function()
@@ -12691,112 +11732,6 @@ UpdateUnderground = function(deltaTime)
                         end
                 end
         end
-
-        -- v6.2: label สถานะใน UI (เห็นชัดว่ามุดอยู่ลึกเท่าไร เดินได้ไหม กล้องโหมดไหน)
-        if os.clock() - ugStatusT > 0.5 then
-                ugStatusT = os.clock()
-                if _G.MikoUG_StatusSet then
-                        local mode = stealth and "Stealth" or "FULL"
-                        local moveTxt = dir.Magnitude > 0.01 and "moving" or "idle"
-                        local camTxt = ugManualLook and "manual-look" or "game-cam"
-                        pcall(_G.MikoUG_StatusSet, string.format(
-                                "Underground: ON  depth %.1f | %s | %s | %s",
-                                ugCurrentDepth or 0, mode, moveTxt, camTxt))
-                end
-        end
-end
-
-----------------------------------------------------------------
--- v6.2: watchdog — "มุดตลอดเวลา"
--- 1) ถ้าลูปหลัก (RenderStepped) ค้าง/สะดุด > 0.3 วิ ให้กดตัวไว้ใต้ดินเอง
---    (ตัวไม่โผล่ ไม่หล่น ต่อให้ UI/ลูปมีปัญหา)
--- 2) ถ้า BindToRenderStep ของกล้องหลุด ให้ผูกกลับเอง
--- 3) จับเมาส์สำหรับโหมด manual-look เมื่อกล้องเกมค้าง
-----------------------------------------------------------------
-ugInputConn = UserInputService.InputChanged:Connect(function(input)
-        pcall(function()
-                if input.UserInputType == Enum.UserInputType.MouseMovement then
-                        local d = input.Delta
-                        if d and (d.X ~= 0 or d.Y ~= 0) then
-                                ugLastMouseT = os.clock()
-                                ugMouseDX = ugMouseDX + d.X
-                                ugMouseDY = ugMouseDY + d.Y
-                        end
-                end
-        end)
-end)
-
-ugWatchdogConn = RunService.Heartbeat:Connect(function()
-        if Library.Unloaded then
-                return
-        end
-        if not Misc.Underground and not ugExiting then
-                return
-        end
-        if Misc.FreeCam and not ugExiting then
-                return
-        end
-        if active then
-                local c = LocalPlayer.Character
-                local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
-                -- กดตัวไว้เฉพาะ root ตัวเดิมที่ pose นี้เป็นของ (กันพาตัวใหม่หลังรีสปอว์น)
-                if r and r == ugLastPoseRoot then
-                        -- v14: กดตัวไว้ใต้ดินเองถ้าลูปหลักสะดุด > 0.3 วิ (Stealth/FULL เขียน CFrame ได้)
-                        if ugLastPose and (os.clock() - ugLastPoseT) > 0.3 then
-                                pcall(function()
-                                        r.AssemblyLinearVelocity = Vector3.zero
-                                        r.CFrame = ugLastPose
-                                        ugLastPoseT = os.clock()
-                                end)
-                        end
-                end
-                -- กล้องหลุดจาก render step หรือเปล่า ให้ผูกคืน
-                local okBound, bound = pcall(function()
-                        return RunService:IsBoundToRenderStep("MikoUG_CameraOverride")
-                end)
-                if okBound and bound == false and Misc.UGCamAbove then
-                        pcall(function()
-                                RunService:BindToRenderStep("MikoUG_CameraOverride", Enum.RenderPriority.Last.Value + 1, ugCameraOverride)
-                        end)
-                end
-        end
-end)
-
--- รีสปอว์น: ดันให้มุดต่อทันทีที่ตัวใหม่พร้อม (ไม่ต้องรอ ไม่ต้องแตะอะไร)
-LocalPlayer.CharacterAdded:Connect(function()
-        for i = 1, 6 do
-                task.delay(0.2 * i, function()
-                        if not Library.Unloaded and Misc.Underground and not Misc.FreeCam then
-                                pcall(UpdateUnderground, 0.016)
-                        end
-                end)
-        end
-end)
-
--- v6.2: hook สำหรับปุ่ม Unload (ปิด watchdog + จับเมาส์ให้สะอาด)
-_G.MikoUG_UnloadExtras = function()
-        pcall(function()
-                if ugWatchdogConn then
-                        ugWatchdogConn:Disconnect()
-                        ugWatchdogConn = nil
-                end
-                if ugInputConn then
-                        ugInputConn:Disconnect()
-                        ugInputConn = nil
-                end
-        end)
-        _G.MikoUG_StatusSet = nil
-        _G.MikoUG_BlockLocoPlay = nil
-end
-
--- v8: บอกโมดูลอื่น (FastWalk) ว่า Ghost กำลังทำงาน = ห้ามขยับตัวจริง
-_G.MikoUG_IsGhostActive = function()
-        -- v9: ugVirtPos ถูกตั้งตั้งแต่เฟรมแรกที่เปิด (แม้ช่วงลอย/ตกรอจับ anchor)
-        -- = FastWalk จะไม่ขยับตัวจริงตลอดทั้งเซสชัน Ghost
-        return active == true
-                and Misc.Underground == true
-                and Misc.UGGhost == true
-                and (ugAnchorPose ~= nil or ugVirtPos ~= nil)
 end
 end)(); (function()
 local MiscBox = Tabs.Misc:AddLeftGroupbox("Misc")
@@ -12870,11 +11805,7 @@ MiscBox:AddToggle("WallPenetration", {
                                                         "Pen",
                                                 } do
                                                         pcall(function()
-                                                                -- v9.1: คง type เดิม — เขียนเฉพาะถ้าไม่มี attr หรือเป็น number
-                                                                local cur = ammo:GetAttribute(name)
-                                                                if cur == nil or typeof(cur) == "number" then
-                                                                        ammo:SetAttribute(name, 9999)
-                                                                end
+                                                                ammo:SetAttribute(name, 9999)
                                                         end)
                                                         local child = ammo:FindFirstChild(name)
                                                         if child and (child:IsA("NumberValue") or child:IsA("IntValue")) then
@@ -12925,10 +11856,10 @@ MiscBox:AddToggle("FastWalk", {
 
 MiscBox:AddSlider("FastWalkSpeed", {
         Text = "Fast Walk Speed",
-        Tooltip = "Speed multiplier (0.1 - 3)",
+        Tooltip = "Speed multiplier (0.1 - 10)",
         Default = 2.6,
         Min = 0.1,
-        Max = 3,
+        Max = 10,
         Rounding = 1,
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
@@ -12967,38 +11898,20 @@ MiscBox:AddToggle("Underground", {
                 Misc.Underground = value
                 UpdateUnderground(0)
         end,
-}):AddKeyPicker("UGKeybind", {
-        -- v14: ปุ่มกดเปิด/ปิด Underground — กดที่กล่องปุ่มใน UI แล้วกดปุ่มที่ต้องการเพื่อเปลี่ยน
-        Default = "B",
+}):AddKeyPicker("UndergroundKeybind", {
+        Default = "KeypadZero",
         Mode = "Toggle",
-        Text = "Underground (ปุ่มเปิด/ปิด)",
+        Text = "Underground (มุดดิน)",
         SyncToggleState = true,
 })
 
-MiscBox:AddLabel("v14: โหมดมุดดิน = ส่งตำแหน่งจริง (Stealth) ยิงปืน/เก็บของได้ตรงจุด | ปิดแล้วลอยขึ้นตรงจุดที่ปิดเสมอ | Ghost Mode และ Exit At Spot ถูกลบออกตามคำขอ")
-
-
-MiscBox:AddToggle("UGStealth", {
-        Text = "Stealth Mode (ยิงตรง แต่เสี่ยงเตะ)",
-        Default = true,
-        Callback = function(value)
-                Misc.UGStealth = value
-                if Misc.Underground and _G.MikoUG_ForceStop then
-                        -- รีสตาร์ตโหมดให้ค่าใหม่มีผลทันที
-                        pcall(_G.MikoUG_ForceStop)
-                end
-        end,
-})
-
-MiscBox:AddLabel("Stealth = โหมดมาตรฐาน: คงสถานะ Humanoid ปกติ (Running) ไม่แตะ CanCollide/ViewModel = ยิงปืน/เล็ง/รีโหลดได้ขณะมุด | ปิด Stealth = FULL แบบเก่า (PlatformStand + ปิด CanCollide = ระบบปืนพัง ใช้เฉพาะฉุกเฉิน)")
-
 MiscBox:AddSlider("UndergroundDepth", {
         Text = "Underground Depth",
-        Tooltip = "ความลึก 0.1 - 1.5 สตัด",
+        Tooltip = "ความลึกตอนมุดดิน (0.1 - 1)",
         Default = 1,
         Min = 0.1,
-        Max = 2,
-        Rounding = 1,
+        Max = 1,
+        Rounding = 2,
         Callback = function(value)
                 if typeof(value) == "number" then
                         Misc.UndergroundDepth = value
@@ -13006,45 +11919,35 @@ MiscBox:AddSlider("UndergroundDepth", {
         end,
 })
 
--- v9.1: ปรับความเร็วเดินใต้ดิน (คูณความเร็วตอนมุด 0.1 - 5 เท่า)
-MiscBox:AddSlider("UGSpeed", {
+MiscBox:AddSlider("UndergroundSpeed", {
         Text = "Underground Speed",
-        Tooltip = "ความเร็วมุดดิน 0.1 - 2 เท่า",
+        Tooltip = "ความเร็วตอนมุดดิน (0.1 - 2)",
         Default = 1,
         Min = 0.1,
-        Max = 5,
-        Rounding = 1,
+        Max = 2,
+        Rounding = 2,
         Callback = function(value)
-                if typeof(value) == "number" then
-                        Misc.UGSpeed = value
+                if typeof(value) == "number" and value > 0 then
+                        Misc.UndergroundSpeed = value
                 end
         end,
 })
 
 MiscBox:AddToggle("UGCamAbove", {
-        Text = "Camera Above Ground (กล้องลอยบนผิว — ปิด = มุดลง)",
-        Default = false, -- v14 แก้: เดิม UI Default = true ทั้งที่ Misc = false (Obsidian เรียก Callback(Default) ตอนสร้าง = ทับค่า false ทิ้ง = สาเหตุ "เปิดมุดดินแล้วไม่มุด" ที่แก้ไม่หาย!)
+        Text = "Camera Above Ground",
+        Default = true,
         Callback = function(value)
                 Misc.UGCamAbove = value
         end,
 })
 
-
-MiscBox:AddLabel("Camera Above Ground: เปิด = กล้องลอยเหนือผิวดิน (มองรอบตัวบนผิว ใช้คู่กับ ESP) | ปิด (ค่าเริ่มต้น) = กล้องมุดลงตามตัว เห็นใต้ดินทันที | แนะนำปิดไว้ = กล้องคงอยู่บน Humanoid ระบบปืน/ViewModel ทำงานปกติ")
 MiscBox:AddToggle("UGLieFaceUp", {
         Text = "Lie Face Up (นอนหงาย)",
         Default = false,
         Callback = function(value)
                 Misc.UGLieFaceUp = value
-                if Misc.Underground and _G.MikoUG_ForceStop then
-                        -- v11: ไม่ได้สลับโหมดแล้ว (Ghost ชนะเสมอ) แต่รีสตาร์ตเพื่อให้
-                        -- ท่านอน/ท่ายืนของตัวที่ถือมีผลทันที
-                        pcall(_G.MikoUG_ForceStop)
-                end
         end,
 })
-
-MiscBox:AddLabel("Lie Face Up = จัดท่านอนหงายขณะมุด (client-only ไม่มีผลเซิร์ฟเวอร์) | ปิด = ท่ายืนปกติ")
 
 MiscBox:AddToggle("UGWalk", {
         Text = "WASD Walk (เดินตามกล้อง)",
@@ -13053,14 +11956,6 @@ MiscBox:AddToggle("UGWalk", {
                 Misc.UGWalk = value
         end,
 })
-
--- v6.2: label สถานะ Underground (อัปเดตจาก UpdateUnderground ผ่าน _G)
-local UGStatusLabel = MiscBox:AddLabel("Underground: OFF")
-_G.MikoUG_StatusSet = function(text)
-        pcall(function()
-                UGStatusLabel:SetText(tostring(text or ""))
-        end)
-end
 
 MiscBox:AddLabel("Spectator: ")
 
@@ -13763,12 +12658,6 @@ MenuGroup:AddButton("Unload", function()
         pcall(function()
                 if _G.MikoUG_ForceStop then
                         _G.MikoUG_ForceStop()
-                end
-        end)
-        -- v6.2: ปิด watchdog/จับเมาส์ของ Underground ด้วยตอน unload
-        pcall(function()
-                if _G.MikoUG_UnloadExtras then
-                        _G.MikoUG_UnloadExtras()
                 end
         end)
         RestoreMovementSounds()
@@ -14671,9 +13560,10 @@ local function UpdateEspMapFull()
                 return
         end
 
-                pcall(function()
-                cache.Markers.Visible = true
-        end)
+        -- ★ 2026-10-30: แก้ ESP map กระพริบตอนมุดดิน
+        -- เดิมบังคับ Markers.Visible = true ทุก 0.1 วิ ซึ่งสวนกับเกมที่ซ่อน markers
+        -- เมื่อผู้เล่นอยู่ต่ำ/ใต้ดิน สองฝั่งตีกันทุกเฟรมจนกระพริบรัวๆ
+        -- ตอนนี้ตั้งค่าครั้งเดียวตอนเปิดแมพ (EspMapFullDoOpen) แล้วปล่อยตามเกม
 
         local sizeReal = tonumber(cache.Map:GetAttribute("SizeReal"))
         if not sizeReal or sizeReal == 0 then
@@ -15004,7 +13894,6 @@ end
 SafeSync()
 task.defer(function()
         pcall(InitSilentAim)
-        print("[Miko] v9.4 PureStill loaded — แก้ยังโดนเตะ: ถือตัวจริงด้วย Anchored ไม่เขียน CFrame ทุกเฟรม ไม่สู้ controller เกม = เซิร์ฟเวอร์เห็นแค่คนยืนนิ่ง/เดินปกติ | ปล่อยถือทันทีถ้าเกมย้ายตัว จับใหม่เมื่อยืนหยุดบนพื้น | บล็อก Kick ทั้ง namecall + dot-call")
         pcall(function()
                 if Library and Library.Toggle then
                         Library:Toggle(true)
