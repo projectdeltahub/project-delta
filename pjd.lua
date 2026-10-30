@@ -10021,8 +10021,6 @@ Misc = {
         Underground = false,
         UndergroundDepth = 1,
         UndergroundSpeed = 1,
-        UGLieFaceUp = false,
-        UGWalk = true,
         EspMap = false,
         EspMapRange = 300,
         EspMapPlayers = true,
@@ -10076,8 +10074,6 @@ SyncMiscFromUI = function()
         toggle("FreeCam", "FreeCam")
         toggle("FreeCamFollow", "FreeCamFollow")
         toggle("Underground", "Underground")
-        toggle("UGLieFaceUp", "UGLieFaceUp")
-        toggle("UGWalk", "UGWalk")
         toggle("EspMap", "EspMap")
         toggle("EspMapPlayers", "EspMapPlayers")
         toggle("EspMapNpcs", "EspMapNpcs")
@@ -11358,6 +11354,11 @@ local stopUnderground = nil
 local savedHumanoid = nil
 local savedAutoRotate = true
 local savedCameraOffset = nil
+local savedCameraHeightOffset = nil
+local savedCameraWorldOffset = nil
+local savedRootHeight = nil
+local initialRootY = nil
+local savedCameraY = nil -- ความสูงกล้องจริง ณ ตอนเปิดมุดดิน (ล็อกมุมมองไว้ที่ระดับนี้)
 local lastChar = nil
 local lastGroundY = nil
 local lastYaw = 0
@@ -11368,35 +11369,142 @@ local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
 
--- ซ่อนตัวเองฝั่ง client ตอนมุดดิน (LocalTransparencyModifier ไม่ replicate ไป server)
--- กันตัว/เป้/อาวุธของเราบังกล้องเต็มจอ มองรอบตัวได้ปกติเหมือนยืนบนผิวดิน
-local UGHideLocalBody = function(char)
+-- Hide the local character and any gear welded to its torso, including gear
+-- that the game parents outside Character. Never modify replicated Transparency.
+local ugHiddenParts = {} -- [Instance] = { original modifier, change connection }
+local function UGHidePart(obj)
+        if not obj:IsA("BasePart") and not obj:IsA("Decal") then
+                return
+        end
+        if not ugHiddenParts[obj] then
+                local ok, oldValue = pcall(function()
+                        return obj.LocalTransparencyModifier
+                end)
+                if not ok then
+                        return
+                end
+                local saved = { Value = oldValue }
+                ugHiddenParts[obj] = saved
+                pcall(function()
+                        saved.Connection = obj:GetPropertyChangedSignal("LocalTransparencyModifier"):Connect(function()
+                                if active and obj.LocalTransparencyModifier ~= 1 then
+                                        obj.LocalTransparencyModifier = 1
+                                end
+                        end)
+                end)
+        end
+        pcall(function()
+                obj.LocalTransparencyModifier = 1
+        end)
+end
+
+local function UGRestorePart(obj, saved)
+        if saved.Connection then
+                saved.Connection:Disconnect()
+        end
+        pcall(function()
+                obj.LocalTransparencyModifier = saved.Value
+        end)
+        ugHiddenParts[obj] = nil
+end
+
+local function UGHideLocalBody(char)
         if not char then
                 return
         end
         for _, obj in ipairs(char:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                        obj.LocalTransparencyModifier = 1
-                elseif obj:IsA("Decal") then
-                        pcall(function()
-                                obj.LocalTransparencyModifier = 1
-                        end)
+                UGHidePart(obj)
+        end
+end
+
+local function UGHideAttachedGear(char)
+        local camera = workspace.CurrentCamera
+        local seen = {}
+        local queue = {}
+        local gear = {}
+        for _, name in ipairs({ "HumanoidRootPart", "UpperTorso", "LowerTorso", "Torso" }) do
+                local body = char:FindFirstChild(name)
+                if body and body:IsA("BasePart") then
+                        queue[#queue + 1] = body
+                        seen[body] = true
+                end
+        end
+        local i = 1
+        while i <= #queue do
+                local part = queue[i]
+                i = i + 1
+                local ok, connected = pcall(function()
+                        return part:GetConnectedParts(false)
+                end)
+                if ok then
+                        for _, other in ipairs(connected) do
+                                if not seen[other] and not other:IsDescendantOf(char)
+                                        and not other.Anchored and (not camera or not other:IsDescendantOf(camera)) then
+                                        seen[other] = true
+                                        local parent = other.Parent
+                                        local allowed = true
+                                        while parent and parent ~= workspace do
+                                                local name = parent.Name:lower()
+                                                if parent:IsA("Tool") or (parent:IsA("Model") and parent:FindFirstChildOfClass("Humanoid"))
+                                                        or name:find("weapon", 1, true) or name:find("gun", 1, true)
+                                                        or name:find("rifle", 1, true) then
+                                                        allowed = false
+                                                        break
+                                                end
+                                                parent = parent.Parent
+                                        end
+                                        if allowed then
+                                                gear[other] = true
+                                                queue[#queue + 1] = other
+                                                UGHidePart(other)
+                                                for _, child in ipairs(other:GetDescendants()) do
+                                                        if child:IsA("Decal") then
+                                                                gear[child] = true
+                                                                UGHidePart(child)
+                                                        end
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end
+        -- Some games draw a separate body/backpack rig under CurrentCamera.
+        -- Hide EVERYTHING under the camera while underground EXCEPT weapon/arms
+        -- branches (ปืนกับมือในมุมมองบุคคลที่หนึ่งต้องยังเห็นตามปกติ) — ไม่เดาชื่อ model
+        if camera then
+                for _, obj in ipairs(camera:GetDescendants()) do
+                        if obj:IsA("BasePart") or obj:IsA("Decal") then
+                                local node = obj
+                                local weaponPart = false
+                                while node and node ~= camera do
+                                        local name = node.Name:lower():gsub("[%s_%-]", "")
+                                        if node:IsA("Tool") or name:find("weapon", 1, true)
+                                                or name:find("rifle", 1, true) or name:find("gun", 1, true)
+                                                or name:find("pistol", 1, true) or name:find("viewmodel", 1, true)
+                                                or name:find("arms", 1, true) or name:find("hands", 1, true)
+                                                or name:find("scope", 1, true) then
+                                                weaponPart = true
+                                        end
+                                        node = node.Parent
+                                end
+                                if not weaponPart then
+                                        gear[obj] = true
+                                        UGHidePart(obj)
+                                end
+                        end
+                end
+        end
+        -- Restore gear immediately when it is detached or leaves the body model.
+        for obj, saved in pairs(ugHiddenParts) do
+                if not obj:IsDescendantOf(char) and not gear[obj] then
+                        UGRestorePart(obj, saved)
                 end
         end
 end
 
-local UGRestoreLocalBody = function(char)
-        if not char then
-                return
-        end
-        for _, obj in ipairs(char:GetDescendants()) do
-                if obj:IsA("BasePart") then
-                        obj.LocalTransparencyModifier = 0
-                elseif obj:IsA("Decal") then
-                        pcall(function()
-                                obj.LocalTransparencyModifier = 0
-                        end)
-                end
+local function UGRestoreLocalBody()
+        for obj, saved in pairs(ugHiddenParts) do
+                UGRestorePart(obj, saved)
         end
 end
 
@@ -11410,14 +11518,26 @@ local UGBindHideStep = function()
         if ugHideStepBound then
                 return
         end
+        -- priority 2147483000 = รันหลังกล้องของเกม/Roblox ทุกตัว (กล้องเกม FPS ส่วนใหญ่
+        -- เป็น Scriptable และมองข้าม Humanoid.CameraOffset) ทำให้ (1) การซ่อนตัวชนะแน่นอน
+        -- (2) ล็อกความสูงกล้องไว้ที่ระดับเดิมตอนเปิดมุดดิน = มุมมองอยู่ที่เดิม ไม่จมลงไปกับตัว
         local ok = pcall(function()
-                RunService:BindToRenderStep(UGHideStepName, Enum.RenderPriority.Last.Value + 10, function()
+                RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
                                 return
                         end
                         local c = LocalPlayer.Character
                         if c then
                                 UGHideLocalBody(c)
+                                UGHideAttachedGear(c)
+                        end
+                        local cam = workspace.CurrentCamera
+                        local h = c and c:FindFirstChildOfClass("Humanoid")
+                        if cam and savedCameraY and h and h.Health > 0 then
+                                local heightErr = savedCameraY - cam.CFrame.Position.Y
+                                if math.abs(heightErr) > 0.01 then
+                                        cam.CFrame = cam.CFrame + Vector3.new(0, heightErr, 0)
+                                end
                         end
                 end)
         end)
@@ -11466,16 +11586,12 @@ local function ProbeGround(root)
                 Vector3.new(0, -500, 0),
                 rayParams
         )
-        if hit then
+        if hit and hit.Normal.Y >= 0.5 then
                 local y = hit.Position.Y
-                if hit.Normal.Y < 0.5 then
-                        return false -- เพดาน/ผนังเอียง ไม่ใช่พื้น
+                if not lastGroundY or math.abs(y - lastGroundY) <= 12 then
+                        lastGroundY = y
+                        return true
                 end
-                if lastGroundY and math.abs(y - lastGroundY) > 12 then
-                        return false -- ผิวเด้งเกินไป = ขยะ ray ปฏิเสธ
-                end
-                lastGroundY = y
-                return true
         end
         if not lastGroundY then
                 -- ray ไม่เจอพื้นเลย ก็ยังมุด (สมมติใต้ตัว 3 สตัดคือผิวดิน)
@@ -11488,7 +11604,7 @@ stopUnderground = function()
         active = false
         local char = LocalPlayer.Character
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
-        UGRestoreLocalBody(char)
+        UGRestoreLocalBody()
         if ugSteppedConn then
                 pcall(function()
                         ugSteppedConn:Disconnect()
@@ -11514,6 +11630,11 @@ stopUnderground = function()
         end
         savedHumanoid = nil
         savedCameraOffset = nil
+        savedCameraHeightOffset = nil
+        savedCameraWorldOffset = nil
+        savedRootHeight = nil
+        initialRootY = nil
+        savedCameraY = nil
         if collideSaved then
                 for part, value in pairs(collideSaved) do
                         pcall(function()
@@ -11575,6 +11696,23 @@ UpdateUnderground = function(deltaTime)
                 savedHumanoid = humanoid
                 savedAutoRotate = humanoid.AutoRotate
                 savedCameraOffset = humanoid.CameraOffset
+                -- Roblox's default humanoid camera follows the root with a rig-dependent
+                -- height offset. Keep that original world-space offset when the root lies down.
+                local cameraHeight = 1.5
+                if humanoid.RigType == Enum.HumanoidRigType.R15 then
+                        if humanoid.AutomaticScalingEnabled then
+                                cameraHeight = cameraHeight + (root.Size.Y - 2) / 2
+                        else
+                                cameraHeight = 2
+                        end
+                end
+                savedCameraHeightOffset = Vector3.new(0, cameraHeight, 0)
+                savedCameraWorldOffset = root.CFrame:VectorToWorldSpace(savedCameraHeightOffset + savedCameraOffset)
+                initialRootY = root.Position.Y
+                local startCam = workspace.CurrentCamera
+                if startCam then
+                        savedCameraY = startCam.CFrame.Position.Y
+                end
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
@@ -11629,6 +11767,9 @@ UpdateUnderground = function(deltaTime)
 
         -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
         ProbeGround(root)
+        if savedRootHeight == nil then
+                savedRootHeight = initialRootY - lastGroundY
+        end
 
         if not printedGround and lastGroundY then
                 printedGround = true
@@ -11645,13 +11786,11 @@ UpdateUnderground = function(deltaTime)
 
         -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
         local dir = Vector3.zero
-        if Misc.UGWalk then
-                local ok, md = pcall(function()
-                        return humanoid.MoveDirection
-                end)
-                if ok and typeof(md) == "Vector3" then
-                        dir = md
-                end
+        local ok, md = pcall(function()
+                return humanoid.MoveDirection
+        end)
+        if ok and typeof(md) == "Vector3" then
+                dir = md
         end
 
         local speed = 16
@@ -11694,14 +11833,9 @@ UpdateUnderground = function(deltaTime)
         -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
         -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
         -- ผิวดินช่วง physics — ไม่งั้นคนอื่นเห็นตัวเราโผล่/จม/นอนเอียงสลับไปมา
-        local pose = nil
-        if Misc.UGLieFaceUp then
-                pose = CFrame.new(pos)
-                        * CFrame.Angles(0, lastYaw, 0)
-                        * CFrame.Angles(math.pi / 2, 0, 0)
-        else
-                pose = CFrame.new(pos) * CFrame.Angles(0, lastYaw, 0)
-        end
+        local pose = CFrame.new(pos)
+                * CFrame.Angles(0, lastYaw, 0)
+                * CFrame.Angles(math.pi / 2, 0, 0)
         ugLastPose = pose
         pcall(function()
                 root.AssemblyLinearVelocity = Vector3.zero
@@ -11709,12 +11843,12 @@ UpdateUnderground = function(deltaTime)
                 root.CFrame = pose
         end)
 
-        -- กล้องมุมปกติ: คง CameraSubject/CameraType ของเกมไว้ แล้วชดเชยความสูงด้วย
-        -- CameraOffset ให้กล้องอยู่ระดับเดิมเหมือนยืนบนผิวดินเสมอ ไม่บังคับกล้อง
-        -- ขึ้นไป 2.4 สตัดแบบเดิม (ไม่งั้นมองลงมาเจอเป้/ตัวเองบังจอเต็มไปหมด)
+        -- Preserve the original camera subject position relative to the ground, including
+        -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
         pcall(function()
-                local worldOffset = Vector3.new(0, lastGroundY - root.Position.Y, 0)
-                humanoid.CameraOffset = savedCameraOffset + root.CFrame:VectorToObjectSpace(worldOffset)
+                local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
+                humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
+                        - savedCameraHeightOffset
         end)
 end
 end)(); (function()
@@ -11840,10 +11974,10 @@ MiscBox:AddToggle("FastWalk", {
 
 MiscBox:AddSlider("FastWalkSpeed", {
         Text = "Fast Walk Speed",
-        Tooltip = "Speed multiplier (0.1 - 10)",
+        Tooltip = "Speed multiplier (0.1 - 3)",
         Default = 2.6,
         Min = 0.1,
-        Max = 10,
+        Max = 3,
         Rounding = 1,
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
@@ -11885,7 +12019,7 @@ MiscBox:AddToggle("Underground", {
 }):AddKeyPicker("UndergroundKeybind", {
         Default = "KeypadZero",
         Mode = "Toggle",
-        Text = "Underground (มุดดิน)",
+        Text = "Underground",
         SyncToggleState = true,
 })
 
@@ -11914,22 +12048,6 @@ MiscBox:AddSlider("UndergroundSpeed", {
                 if typeof(value) == "number" and value > 0 then
                         Misc.UndergroundSpeed = value
                 end
-        end,
-})
-
-MiscBox:AddToggle("UGLieFaceUp", {
-        Text = "Lie Face Up (นอนหงาย)",
-        Default = false,
-        Callback = function(value)
-                Misc.UGLieFaceUp = value
-        end,
-})
-
-MiscBox:AddToggle("UGWalk", {
-        Text = "WASD Walk (เดินตามกล้อง)",
-        Default = true,
-        Callback = function(value)
-                Misc.UGWalk = value
         end,
 })
 
