@@ -1,7 +1,9 @@
 --[[
         Miko Hub - Project Delta
         Obsidian UI
-        Build: 2026-10-30 (fix: ยิงไม่ออกหลังสับอาวุธ / ESP map กระพริบ / UG Speed 0.1-2 / UG Depth 0.1-1 / ปุ่มมุดดิน)
+        Build: 2026-10-30 v17 GunRepair4 (credits Made by Yuki)
+        v17 = v16 Auto Gun Repair พอร์ตกลับมาบนสคริปต์ใหม่: ตรวจ "คลิกแล้วไม่มีกระสุนออก"
+        → ซ่อม 4 ชั้นอัตโนมัติ + ปุ่ม Repair Gun Now + กันโดนเตะฝั่ง client (Kick block) + สัญญาณยิงจาก CreateBullet/remote ปืน
 ]]
 
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
@@ -376,6 +378,7 @@ local function ResolveSilentHitPart(value)
 end
 
 local InitSilentAim, SyncSilentAimFromUI
+local InitGunSignalNet
 
 local Misc
 local RestoreMovementSounds
@@ -1226,6 +1229,138 @@ SyncSilentAimFromUI = function()
         end
 end
 
+-- ═══════════════════════════════════════════════════════════════════
+-- v17 ชุดสัญญาณปืน: ใช้ร่วมกับระบบ Auto Gun Repair (ปอร์ตจาก v16)
+--   ถ้า _G.MikoGun_LastShotT ไม่อัปเดตหลังคลิก = ปืนค้างจริง → ซ่อมอัตโนมัติ
+-- ═══════════════════════════════════════════════════════════════════
+if _G.MikoGun_LastShotT == nil then
+        _G.MikoGun_LastShotT = os.clock()
+end
+_G.MikoGun_EquipRemotes = _G.MikoGun_EquipRemotes or {}
+
+local function IsGunActionName(text)
+        text = tostring(text or ""):lower()
+        if text == "" then
+                return false
+        end
+        return text:find("shoot", 1, true)
+                or text:find("shot", 1, true)
+                or text:find("fire", 1, true)
+                or text:find("gun", 1, true)
+                or text:find("bullet", 1, true)
+                or text:find("weapon", 1, true)
+                or text:find("rifle", 1, true)
+                or text:find("pistol", 1, true)
+                or text:find("attack", 1, true)
+                or text:find("melee", 1, true)
+                or text:find("swing", 1, true)
+                or text:find("reload", 1, true)
+                or text:find("ammo", 1, true)
+                or text:find("projectile", 1, true)
+                or text:find("damage", 1, true)
+                or text:find("hitreg", 1, true)
+                or text:find("trigger", 1, true)
+                or text:find("muzzle", 1, true)
+end
+
+local function MikoIsEquipName(text)
+        text = tostring(text or ""):lower()
+        if text == "" then
+                return false
+        end
+        for _, kw in ipairs({ "equip", "switch", "select", "holster", "draw", "slot", "hotbar", "inventory", "wield" }) do
+                if text:find(kw, 1, true) then
+                        return true
+                end
+        end
+        return false
+end
+
+local function MikoRecordEquipRemote(remote, method, ...)
+        -- ★ แก้บัคบรรทัด 10712 ของ v16 ("Cannot use '...' outside of a vararg function"):
+        --   เดิมเอา ... ไปใช้ข้างใน pcall(function() ... end) ซึ่งเป็น closure ซ้อนที่
+        --   ไม่ได้ประกาศ ... = คอมไพล์พังทั้งไฟล์ สคริปต์โหลดไม่ขึ้นเลย
+        --   วิธีแก้: freeze ... เป็น table ในตัว vararg ก่อน แล้วค่อยใช้ packed ข้างใน
+        local packed = table.pack(...)
+        pcall(function()
+                if typeof(remote) ~= "Instance" or not MikoIsEquipName(remote.Name) then
+                        return
+                end
+                local out = {}
+                local n = packed.n
+                for i = 1, math.min(n, 8) do
+                        local v = packed[i]
+                        local tv = typeof(v)
+                        if tv == "string" or tv == "number" or tv == "boolean" or tv == "Instance" then
+                                out[#out + 1] = v
+                        else
+                                out[#out + 1] = tostring(v)
+                        end
+                end
+                local hist = _G.MikoGun_EquipRemotes
+                hist[#hist + 1] = { remote = remote, method = method, args = out, t = os.clock() }
+                while #hist > 5 do
+                        table.remove(hist, 1)
+                end
+        end)
+end
+
+InitGunSignalNet = function()
+        -- ═════════════════════════════════════════════════════════════
+        -- v17: ติดตั้งครั้งเดียวตอนโหลดสคริปต์ (ไม่ผูกกับ FastWalk)
+        --   (a) กันโดนเตะฝั่ง client: เกมสั่ง LocalPlayer:Kick() ผ่าน LocalScript = ขวางได้
+        --       (server เรียก Kick เอง = ขวางไม่ได้ แต่ noclip/mุดดินไม่ถูกจับเพราะ v5 ส่งตำแหน่งปกติ)
+        --   (b) จับสัญญาณ "ยิงสำเร็จ" จาก remote ฝั่งปืน (shoot/fire/bullet/...) → _G.MikoGun_LastShotT
+        --   (c) จับ remote สวม/สลับอาวุธที่เกมยิงเอง เก็บ 5 รายการล่าสุด → _G.MikoGun_EquipRemotes
+        --       (ชั้นซ่อมที่ 3 ของ Auto Gun Repair: replay remote สวมอาวุธเมื่อจำลองปุ่มไม่ผ่าน)
+        -- ═════════════════════════════════════════════════════════════
+        if _G.MikoGunNetHooked then
+                return
+        end
+        _G.MikoGunNetHooked = true
+
+        local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
+                return fn
+        end
+
+        if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
+                pcall(function()
+                        local oldNamecall
+                        oldNamecall = hookmetamethod(game, "__namecall", wrap(function(self, ...)
+                                local mtd = getnamecallmethod()
+
+                                if mtd == "Kick" and self == LocalPlayer then
+                                        print("[Miko] Blocked LocalPlayer:Kick() (client-side kick)")
+                                        return nil
+                                end
+
+                                if mtd == "FireServer" or mtd == "InvokeServer" then
+                                        local okName, remoteName = pcall(function()
+                                                return tostring(self and self.Name or "")
+                                        end)
+                                        if okName and remoteName ~= "" and IsGunActionName(remoteName) then
+                                                _G.MikoGun_LastShotT = os.clock()
+                                        end
+                                        pcall(MikoRecordEquipRemote, self, mtd, ...)
+                                end
+
+                                return oldNamecall(self, ...)
+                        end))
+                end)
+        end
+
+        -- แบบ dot-call: LocalPlayer.Kick(LocalPlayer, "...") = ไม่ผ่าน __namecall
+        pcall(function()
+                if hookfunction and typeof(LocalPlayer.Kick) == "function" then
+                        local kickFunc = LocalPlayer.Kick
+                        hookfunction(kickFunc, wrap(function(self, ...)
+                                print("[Miko] Blocked LocalPlayer.Kick(self,...) (dot-call kick)")
+                                return nil
+                        end))
+                end
+        end)
+end
+
 InitSilentAim = function()
         if oldCreateBullet or not BulletModule or typeof(hookfunction) ~= "function" then
                 return
@@ -1384,6 +1519,8 @@ InitSilentAim = function()
         oldCreateBullet = originalCreateBullet
 
         hookfunction(BulletModule.CreateBullet, function(...)
+                -- v17: ทุกครั้งที่เกมสร้างกระสุน = สัญญาณ "ปืนยิงได้ปกติ" (ให้ระบบ Auto Gun Repair ใช้)
+                _G.MikoGun_LastShotT = os.clock()
                 local args = table.pack(...)
                 local ok, finalAim = pcall(ResolveCreateBulletAim, table.unpack(args, 1, args.n))
                 if not ok then
@@ -9978,6 +10115,7 @@ Misc = {
         FreeCam = false,
         FreeCamSpeed = 60,
         FreeCamFollow = false,
+        GunRepair = true,
         Underground = false,
         UndergroundDepth = 1,
         UndergroundSpeed = 1,
@@ -10040,6 +10178,7 @@ SyncMiscFromUI = function()
         toggle("UGCamAbove", "UGCamAbove")
         toggle("UGLieFaceUp", "UGLieFaceUp")
         toggle("UGWalk", "UGWalk")
+        toggle("GunRepair", "GunRepair")
         toggle("EspMap", "EspMap")
         toggle("EspMapPlayers", "EspMapPlayers")
         toggle("EspMapNpcs", "EspMapNpcs")
@@ -11302,6 +11441,279 @@ end
 
 end)(); (function()
 end)(); (function()
+-- ═══════════════════════════════════════════════════════════════════
+-- v17 AUTO GUN REPAIR — แก้ "ถือปืนได้แต่ยิงไม่ออก" (เวลาสับเป็นมีดแล้วสับกลับมาปืน)
+-- เกมนี้ไม่ใช้ Tool ของ Roblox (Backpack ว่าง — ปืนคือ Model:ViewModel ในกล้อง
+-- สลับมีด = เกมลบ ViewModel ทิ้ง) ตรวจจับอาการ: คลิกซ้ายแล้วไม่มีสัญญาณ "ยิงสำเร็จ"
+-- (CreateBullet / remote ฝั่งปืน) ภายใน 1.5 วิ = คลิกพัง 1 ครั้ง — นับเฉพาะถือปืนอยู่จริง
+-- ซ่อม 4 ชั้นเรียงลำดับ:
+--   (1) คืนสถานะ Humanoid ชั่วคราว (PlatformStand/Physics ค้างทำให้ flow สวมปืนตัน)
+--   (2) จำลองกด X/1 ให้เกมสร้าง ViewModel ใหม่เองผ่าน input ปกติ
+--   (3) replay remote สวมอาวุธล่าสุดที่เกมเคยยิงเอง (_G.MikoGun_EquipRemotes)
+--   (4) จำลองกด R รีโหลด กันแม็กฝั่ง client ค้าง 0
+-- + ปุ่ม "Repair Gun Now" ในแท็บ Misc กดซ่อมเองได้ทันที (หรือเรียก _G.MikoGunRepairNow())
+-- + ทุกขั้น print แจ้ง console (F9) เช็คได้ว่าซ่อมถึงชั้นไหน
+-- ═══════════════════════════════════════════════════════════════════
+do
+        local grLastClickT = 0
+        local grPendingT = nil
+        local grFailCount = 0
+        local grFirstFailT = 0
+        local grLastRepairT = 0
+        local grRepairing = false
+        local grLastVMState = nil
+        local MikoGunRepairNow
+
+        local function mikoIsViewModelInst(inst)
+                local ok, res = pcall(function()
+                        return typeof(inst) == "Instance" and inst:IsA("Model")
+                                and tostring(inst.Name):lower():find("viewmodel", 1, true) ~= nil
+                end)
+                return ok and res == true
+        end
+
+        local function mikoViewModelPresent()
+                local ok, res = pcall(function()
+                        local cam = workspace.CurrentCamera
+                        if not cam then
+                                return false
+                        end
+                        for _, ch in ipairs(cam:GetChildren()) do
+                                if mikoIsViewModelInst(ch) then
+                                        return true
+                                end
+                        end
+                        return false
+                end)
+                return ok and res == true
+        end
+
+        -- ถือปืนอยู่จริงไหม (เกมนี้ไม่มี Tool — ใช้ ViewModel + อนิเมชันถือปืนแทน)
+        -- อนิเมชัน fallback: เฉพาะไฟล์ "Idle" — ฟันมีด/วิ่งไม่นับ
+        local function mikoGunProbablyHeld()
+                if mikoViewModelPresent() then
+                        return true
+                end
+                local ok, res = pcall(function()
+                        local c = LocalPlayer.Character
+                        local h = c and c:FindFirstChildOfClass("Humanoid")
+                        if not h then
+                                return false
+                        end
+                        for _, tr in ipairs(h:GetPlayingAnimationTracks()) do
+                                if tr.Priority == Enum.AnimationPriority.Movement then
+                                        local nm = tostring(tr.Animation and tr.Animation.Name or ""):lower()
+                                        if nm:find("idle", 1, true) then
+                                                return true
+                                        end
+                                end
+                        end
+                        return false
+                end)
+                return ok and res == true
+        end
+
+        -- จำลองกดปุ่ม: VirtualInputManager (มีใน executor ส่วนใหญ่) → keypress/keyrelease
+        local function mikoSimKeyPress(keyEnum, keyName)
+                local sent = false
+                pcall(function()
+                        local vim = game:GetService("VirtualInputManager")
+                        if vim then
+                                vim:SendKeyEvent(true, keyEnum, false, game)
+                                task.wait(0.06)
+                                vim:SendKeyEvent(false, keyEnum, false, game)
+                                sent = true
+                        end
+                end)
+                if not sent then
+                        pcall(function()
+                                if type(keypress) == "function" and type(keyrelease) == "function" then
+                                        keypress(keyName)
+                                        task.wait(0.06)
+                                        keyrelease(keyName)
+                                        sent = true
+                                end
+                        end)
+                end
+                return sent
+        end
+
+        -- (1) คืนสถานะ Humanoid ชั่วคราวเพื่อให้ flow สวมปืนของเกมทำงาน
+        -- (เปิดเฉพาะสถานะที่โหมดมุดดินปิดไว้ — ระบบมุดจะบังคับ Physics ต่อเองในเฟรมถัดไป)
+        local function mikoNormalizeHumanoid(h)
+                pcall(function()
+                        if h.PlatformStand then
+                                h.PlatformStand = false
+                        end
+                        local st = Enum.HumanoidStateType
+                        for _, name in ipairs({ "GettingUp", "FallingDown", "Ragdoll" }) do
+                                local e = st[name]
+                                if e then
+                                        h:SetStateEnabled(e, true)
+                                end
+                        end
+                        h:ChangeState(st.Running)
+                end)
+        end
+
+        -- ตัวซ่อมหลัก (เรียกได้ทั้งอัตโนมัติ / ปุ่ม Repair Gun Now / console)
+        MikoGunRepairNow = function(reason)
+                if grRepairing then
+                        return false
+                end
+                grRepairing = true
+                task.spawn(function()
+                        local okR, errR = pcall(function()
+                                local nowT = os.clock()
+                                grLastRepairT = nowT
+                                grFailCount = 0
+                                grFirstFailT = 0
+                                grPendingT = nil
+                                local char = LocalPlayer.Character
+                                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                                if not hum or hum.Health <= 0 then
+                                        print("[Miko] v17 Repair: ตัวตาย/ไม่มี Humanoid - ข้ามการซ่อม")
+                                        return
+                                end
+                                print(string.format("[Miko] v17 Repair: เริ่มซ่อมปืน (%s) | ViewModel=%s | สถานะตัว=%s",
+                                        tostring(reason),
+                                        mikoViewModelPresent() and "มี" or "ไม่มี",
+                                        tostring(hum:GetState())))
+                                local savedAutoRotate = hum.AutoRotate
+                                -- (1) คืนสถานะ Humanoid ชั่วคราว
+                                mikoNormalizeHumanoid(hum)
+                                pcall(function()
+                                        hum.AutoRotate = true
+                                end)
+                                -- (2) จำลองกด X (ปุ่ม "ปืน กดตรงนี้เพื่อสลับ" ของเกม)
+                                local keyOk = mikoSimKeyPress(Enum.KeyCode.X, "x")
+                                if not keyOk then
+                                        print("[Miko] v17 Repair: จำลองปุ่มไม่ได้ (ไม่มี VirtualInputManager/keypress) - ไปชั้น replay remote")
+                                end
+                                task.wait(1.0)
+                                local gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
+                                local gotVM = mikoViewModelPresent()
+                                if not (gotShot or gotVM) then
+                                        -- อาจ toggle ยกปืนลงไปแล้ว → กด 1 (สล็อตปืน) ตามด้วย X
+                                        if keyOk then
+                                                mikoSimKeyPress(Enum.KeyCode.One, "1")
+                                                task.wait(0.7)
+                                                mikoSimKeyPress(Enum.KeyCode.X, "x")
+                                                task.wait(1.0)
+                                        end
+                                        gotVM = mikoViewModelPresent()
+                                        gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
+                                end
+                                -- (3) replay remote สวมอาวุธล่าสุดที่เกมเคยยิงเอง
+                                if not (gotShot or gotVM) then
+                                        pcall(function()
+                                                local hist = _G.MikoGun_EquipRemotes
+                                                if type(hist) == "table" and #hist > 0 then
+                                                        local entry = hist[#hist]
+                                                        local remote = entry.remote
+                                                        if typeof(remote) == "Instance" and remote.Parent then
+                                                                print("[Miko] v17 Repair: replay remote '" .. tostring(remote.Name) .. "' (" .. tostring(entry.method) .. ")")
+                                                                local args = entry.args or {}
+                                                                if entry.method == "InvokeServer" then
+                                                                        task.spawn(function()
+                                                                                pcall(function()
+                                                                                        remote:InvokeServer(unpack(args))
+                                                                                end)
+                                                                        end)
+                                                                else
+                                                                        task.spawn(function()
+                                                                                pcall(function()
+                                                                                        remote:FireServer(unpack(args))
+                                                                                end)
+                                                                        end)
+                                                                end
+                                                                task.wait(1.0)
+                                                                gotVM = mikoViewModelPresent()
+                                                                gotShot = (tonumber(_G.MikoGun_LastShotT) or 0) > nowT
+                                                        end
+                                                end
+                                        end)
+                                end
+                                -- (4) รีโหลดกระสุน (กันแม็กฝั่ง client ค้าง 0 หลังสลับอาวุธ)
+                                if gotVM and not gotShot then
+                                        mikoSimKeyPress(Enum.KeyCode.R, "r")
+                                        task.wait(0.8)
+                                end
+                                -- คืน AutoRotate (ระบบมุดดินจัดการส่วนอื่นต่อเองได้เลย)
+                                pcall(function()
+                                        hum.AutoRotate = savedAutoRotate
+                                end)
+                                print(string.format("[Miko] v17 Repair: จบ | ViewModel=%s | สัญญาณยิง=%s | ถ้ายังยิงไม่ได้: กด X หรือ 1 ที่คีย์บอร์ดเดี๋ยวนี้ (สถานะตัวปกติแล้ว) แล้วกด Repair Gun Now ซ้ำ",
+                                        gotVM and "มี" or "ไม่มี",
+                                        gotShot and "มี" or "ไม่มี"))
+                        end)
+                        if not okR then
+                                print("[Miko] v17 Repair error: " .. tostring(errR))
+                        end
+                        task.wait(0.5)
+                        grRepairing = false
+                end)
+                return true
+        end
+        _G.MikoGunRepairNow = MikoGunRepairNow
+
+        UserInputService.InputBegan:Connect(function(input, processed)
+                if processed then
+                        return
+                end
+                if input.UserInputType == Enum.UserInputType.MouseButton1
+                        or input.UserInputType == Enum.UserInputType.Touch then
+                        grLastClickT = os.clock()
+                        if grPendingT == nil then
+                                grPendingT = grLastClickT
+                        end
+                end
+        end)
+
+        RunService.Heartbeat:Connect(function()
+                if Library.Unloaded or Misc.GunRepair == false then
+                        return
+                end
+                local nowT = os.clock()
+
+                -- ยิงสำเร็จหลังคลิกล่าสุด = ปืนทำงานปกติ ล้างตัวนับพังทันที
+                if (tonumber(_G.MikoGun_LastShotT) or 0) >= (grLastClickT - 0.05) then
+                        grFailCount = 0
+                end
+
+                -- ViewModel กลับมา/หายไป (สลับอาวุธ/ซ่อมสำเร็จ) = เริ่มนับใหม่
+                local vmNow = mikoViewModelPresent()
+                if vmNow ~= grLastVMState then
+                        grLastVMState = vmNow
+                        grFailCount = 0
+                        grPendingT = nil
+                        grFirstFailT = 0
+                end
+
+                -- ตัดสินคลิกที่ค้าง: ผ่านไป 1.5 วิแล้วไม่มีกระสุนออก = คลิกพัง 1 ครั้ง
+                if grPendingT ~= nil and (nowT - grPendingT) >= 1.5 then
+                        local shotSince = (tonumber(_G.MikoGun_LastShotT) or 0) >= grPendingT
+                        if not shotSince and mikoGunProbablyHeld() then
+                                grFailCount += 1
+                                if grFirstFailT == 0 then
+                                        grFirstFailT = nowT
+                                end
+                                if grFailCount >= 4 and (nowT - grFirstFailT) <= 10
+                                        and (nowT - grLastRepairT) >= 8 and not grRepairing then
+                                        MikoGunRepairNow("อัตโนมัติ: คลิก 4 ครั้งไม่มีกระสุนออก")
+                                end
+                        end
+                        grPendingT = nil
+                end
+
+                -- ชุดคลิกพังเกิน 10 วิ = ล้าง (เริ่มนับใหม่ กันนับค้างจากรอบเก่า)
+                if grFirstFailT ~= 0 and (nowT - grFirstFailT) > 10 then
+                        grFailCount = 0
+                        grFirstFailT = 0
+                end
+        end)
+end
+
 ----------------------------------------------------------------
 -- Underground (มุดดิน) v5 — มุดใต้ผิวดินแล้วเดินด้วย WASD ได้จริง
 -- ห้าม anchor ตัวละครเด็ดขาด! (anchor = client หยุดส่งตำแหน่งไป server)
@@ -11929,6 +12341,33 @@ MiscBox:AddSlider("UndergroundSpeed", {
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
                         Misc.UndergroundSpeed = value
+                end
+        end,
+})
+
+-- v17: ระบบซ่อมปืน — ตรวจ "คลิกแล้วไม่มีกระสุนออก" (สลับมีด→ปืนแล้วยิงไม่ได้) แล้วซ่อมให้เอง
+MiscBox:AddToggle("GunRepair", {
+        Text = "Auto Gun Repair (ซ่อมปืนอัตโนมัติ)",
+        Tooltip = "คลิกยิง 4 ครั้งแล้วไม่มีกระสุนออก = ซ่อมให้เองอัตโนมัติ (แก้อาการสับมีดแล้วสับกลับมาปืนยิงไม่ได้)",
+        Default = true,
+        Callback = function(value)
+                Misc.GunRepair = value
+        end,
+})
+
+MiscBox:AddButton({
+        Text = "Repair Gun Now (ซ่อมปืนตอนนี้)",
+        Func = function()
+                if type(_G.MikoGunRepairNow) == "function" then
+                        _G.MikoGunRepairNow("ปุ่มมือ")
+                else
+                        pcall(function()
+                                Library:Notify({
+                                        Title = "Miko Hub",
+                                        Description = "ระบบซ่อมปืนยังไม่พร้อม ลองอีกครั้ง",
+                                        Time = 3,
+                                })
+                        end)
                 end
         end,
 })
@@ -13893,6 +14332,7 @@ end
 
 SafeSync()
 task.defer(function()
+        pcall(InitGunSignalNet) -- v17: กันโดนเตะฝั่ง client + จับสัญญาณยิง/สวมอาวุธ (ติดตั้งครั้งเดียว)
         pcall(InitSilentAim)
         pcall(function()
                 if Library and Library.Toggle then
