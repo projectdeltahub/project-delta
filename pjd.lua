@@ -11380,6 +11380,18 @@ local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
+-- ★ Camera fix 2026-10-31 (มุมกล้องล็อคตอนมุดดิน):
+-- เดิมสคริปต์ (1) ล็อกแกน Y ของกล้องไว้ที่ระดับ "ตอนเปิด" ทุกเฟรม และ
+-- (2) บังคับ root ให้หมุนตาม "ทิศเดิน" แบบนอนราบ ซึ่งกล้องของเกม FPS
+-- อ่าน orientation จาก root ไปคำนวณมุมมอง -> เมาส์หมุนไม่ได้ กล้องค้าง
+-- วิธีแก้: คุมกล้องเองทั้ง position + rotation แบบเดียวกับ FreeCam —
+-- เก็บ yaw/pitch จากเมาส์แล้วเขียน cam.CFrame ใน render step ที่
+-- priority สูงสุด (รันหลังกล้องของเกม จึงชนะทุกเฟรม)
+local ugViewYaw = 0      -- มุมหมุนซ้าย-ขวา (radians)
+local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
+local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
+local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
+local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
 -- Hide the local character and any gear welded to its torso, including gear
 -- that the game parents outside Character. Never modify replicated Transparency.
@@ -11556,13 +11568,37 @@ local UGBindHideStep = function()
                                         UGHideAttachedGear(c)
                                 end
                         end
+                        -- ★ Camera fix 2026-10-31: คุมกล้องทั้ง CFrame เองที่นี่
+                        -- (priority 2147483000 = รันหลังกล้องเกม/Roblox ทุกตัว
+                        --  จึงชนะทุกเฟรม ไม่ต้องสู้กับกล้องเกมอีกต่อไป)
+                        -- - ตำแหน่ง: ลอยเหนือผิวดิน "ปัจจุบัน" ตรงตัว (XZ ตาม root
+                        --  + ผิวดินล่าสุด + ระดับตาที่จำไว้ตอนเปิด)
+                        -- - มุม: yaw/pitch จากเมาส์ที่เราเก็บเอง -> หมุนมองรอบได้
+                        --  อิสระ แม้ root จะถูกบังคับเป็น pose นอนราบ
                         local cam = workspace.CurrentCamera
                         local h = c and c:FindFirstChildOfClass("Humanoid")
-                        if cam and savedCameraY and h and h.Health > 0 then
-                                local heightErr = savedCameraY - cam.CFrame.Position.Y
-                                if math.abs(heightErr) > 0.01 then
-                                        cam.CFrame = cam.CFrame + Vector3.new(0, heightErr, 0)
+                        local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
+                        if cam and r and h and h.Health > 0 and ugEyeHeightY and lastGroundY then
+                                -- GetMouseDelta คืนค่าเฉพาะตอนเมาส์ล็อคกลางจอ
+                                -- (โหมดเล่น FPS ปกติ) จึงไม่หมุนกล้องตอนชี้เมนู
+                                local delta = UserInputService:GetMouseDelta()
+                                if delta.X ~= 0 then
+                                        ugViewYaw -= delta.X * UG_MOUSE_SENS
                                 end
+                                if delta.Y ~= 0 then
+                                        ugViewPitch = math.clamp(
+                                                ugViewPitch - delta.Y * UG_MOUSE_SENS,
+                                                math.rad(-85), math.rad(85)
+                                        )
+                                end
+                                local eye = Vector3.new(
+                                        r.Position.X,
+                                        lastGroundY + ugEyeHeightY,
+                                        r.Position.Z
+                                )
+                                cam.CFrame = CFrame.new(eye)
+                                        * CFrame.Angles(0, ugViewYaw, 0)
+                                        * CFrame.Angles(ugViewPitch, 0, 0)
                         end
                 end)
         end)
@@ -11643,6 +11679,15 @@ stopUnderground = function()
                 ugHeartbeatConn = nil
         end
         UGUnbindHideStep()
+        -- ★ Camera fix: หยุดคุมกล้องทันที — เฟรมถัดไปกล้องของเกมกลับมา
+        -- ทำงานเองตามปกติ (ตัวถูกย้ายขึ้นผิวดินด้านล่างแล้ว กล้องจะตามเอง)
+        ugEyeHeightY = nil
+        if ugInputConn then
+                pcall(function()
+                        ugInputConn:Disconnect()
+                end)
+                ugInputConn = nil
+        end
         ugApplyPose = nil
         ugLastPose = nil
         if savedHumanoid and savedHumanoid.Parent then
@@ -11737,7 +11782,43 @@ UpdateUnderground = function(deltaTime)
                 local startCam = workspace.CurrentCamera
                 if startCam then
                         savedCameraY = startCam.CFrame.Position.Y
+                        -- ★ Camera fix: เริ่มมุมมองจากที่ผู้เล่นกำลังมองอยู่พอดี
+                        -- (กล้อง FPS ไม่มี roll จึงแยก yaw/pitch จาก LookVector ได้)
+                        local look = startCam.CFrame.LookVector
+                        ugViewPitch = math.asin(math.clamp(look.Y, -1, 1))
+                        ugViewYaw = math.atan2(-look.X, -look.Z)
                 end
+                ugEyeHeightY = nil -- รอ probe ผิวดินเฟรมแรกแล้วค่อยคำนวณ
+                if ugInputConn then
+                        ugInputConn:Disconnect()
+                        ugInputConn = nil
+                end
+                -- เผื่อโหมดที่เกมไม่ล็อคเมาส์ (เช่น third person): หมุนด้วย
+                -- คลิกขวาลาก เหมือนกล้อง Roblox ปกติ
+                ugInputConn = UserInputService.InputChanged:Connect(function(input)
+                        if not active or not input then
+                                return
+                        end
+                        if input.UserInputType ~= Enum.UserInputType.MouseMovement then
+                                return
+                        end
+                        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                                return -- ล็อคเมาส์อยู่แล้ว: GetMouseDelta จัดการเอง
+                        end
+                        if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+                                return
+                        end
+                        local d = input.Delta
+                        if d.X ~= 0 then
+                                ugViewYaw -= d.X * UG_MOUSE_SENS
+                        end
+                        if d.Y ~= 0 then
+                                ugViewPitch = math.clamp(
+                                        ugViewPitch - d.Y * UG_MOUSE_SENS,
+                                        math.rad(-85), math.rad(85)
+                                )
+                        end
+                end)
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
@@ -11797,6 +11878,20 @@ UpdateUnderground = function(deltaTime)
         if savedRootHeight == nil then
                 savedRootHeight = initialRootY - lastGroundY
         end
+        -- ★ Camera fix: ระดับตาเหนือผิวดิน = กล้องตอนเปิด − ผิวดินตอนเปิด
+        -- เก็บครั้งเดียวตอนเฟรมแรกที่รู้ผิวดิน แล้วเฟรมถัด ๆ ไปเอาไปบวกกับ
+        -- ผิวดิน "ปัจจุบัน" -> เดินขึ้นเนิน/ลงเนิน กล้องลอยตามผิวดินเสมอ
+        -- ไม่ย้อนกลับไปค้างที่ระดับตอนเปิดอีกต่อไป
+        if ugEyeHeightY == nil and lastGroundY then
+                if savedCameraY then
+                        ugEyeHeightY = savedCameraY - lastGroundY
+                else
+                        ugEyeHeightY = (initialRootY - lastGroundY) + 1.5
+                end
+                if ugEyeHeightY < 1 then
+                        ugEyeHeightY = 1 -- อย่าให้กล้องจมต่ำกว่าผิวดิน
+                end
+        end
 
         if not printedGround and lastGroundY then
                 printedGround = true
@@ -11837,7 +11932,13 @@ UpdateUnderground = function(deltaTime)
         local pos = root.Position + dir * speed * deltaTime
         pos = Vector3.new(pos.X, targetY, pos.Z)
 
-        if dir.Magnitude > 0.01 then
+        -- ★ Camera fix: หัน root ตามมุมมองที่เราคุมอยู่ (yaw จากกล้อง)
+        -- เดิมใช้ทิศเดิน MoveDirection -> ยืนนิ่ง = yaw ค้าง, เดิน = กล้องดีด
+        -- หันตามทิศเดิน (เกมอ่าน orientation ของ root ไปคิดกล้อง/ยิงต่อ)
+        if ugViewYaw ~= 0 or ugViewPitch ~= 0 then
+                lastYaw = ugViewYaw
+        elseif dir.Magnitude > 0.01 then
+                -- กล้องหายตอนเปิด (เก็บมุมไม่ได้) -> ใช้ทิศเดินแบบเดิมเป็น fallback
                 lastYaw = math.atan2(-dir.X, -dir.Z)
         end
 
@@ -14141,4 +14242,4 @@ pcall(function()
         end)
 end)
 
-end)()  
+end)()
