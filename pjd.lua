@@ -904,10 +904,22 @@ do
 local BulletModule
 local oldCreateBullet
 local AiZones = workspace:FindFirstChild("AiZones")
+local ugSilentUgPrinted = false -- print ครั้งเดียว: silent aim ยิงสำเร็จตอนมุดดิน
+local ugBulletRetry = 0    -- นับจำนวนครั้งลองหาโมดูล Bullet ซ้ำ (fix v4)
+local ugHookSeenPrinted = false -- พิมพ์ครั้งเดียว: เกมเรียก hook จริง (fix v4)
+local ugTargetPrinted = false -- พิมพ์ครั้งเดียว: silent aim ล็อกเป้าสำเร็จ (fix v4)
+local ugDiagCount = 0 -- นับช็อตมุดดินที่พิมพ์ค่า diagnostic (fix v8 - พิมพ์แค่ 5 ช็อตแรก)
+local ugSourceDumped = false -- [Miko][SRC] พิมพ์โค้ดเกมรอบ error FPS:1044 ครั้งเดียว (fix v8)
+local ugLiftPrinted = false -- พิมพ์ครั้งเดียวว่ายกตัวขึ้นเท่าไรตอนยิง (fix v8)
 
 pcall(function()
         BulletModule = require(ReplicatedStorage.Modules.FPS.Bullet)
 end)
+
+-- ★ Silent Aim fix v4: ถ้าพาธเดิมไม่ได้ผล ให้ไล่ค้นหาโมดูลทันทีที่โหลด
+if not (BulletModule and typeof(BulletModule.CreateBullet) == "function") then
+        pcall(FindBulletModuleDeep)
+end
 
 local function IsSilentAlive(character)
         if not character then
@@ -935,8 +947,75 @@ local function GetAiCharacters()
         return ai
 end
 
+-- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace (cache 1 วินาที) ใช้เมื่อ
+-- AiZones/Players ไม่เจอเป้า — หลักการเดียวกับ fallback ของ ScanNPCs
+local ugNpcFallbackCache = nil
+local ugNpcFallbackAt = 0
+local function GetSilentNpcFallback()
+        local now = os.clock()
+        if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 1 then
+                return ugNpcFallbackCache
+        end
+
+        local list = {}
+        local seen = {}
+        local cam = workspace.CurrentCamera
+        for _, obj in workspace:GetDescendants() do
+                if obj:IsA("Model") and not seen[obj] then
+                        local hum = obj:FindFirstChildOfClass("Humanoid")
+                        local root = obj:FindFirstChild("HumanoidRootPart")
+                        if hum and root and hum.Health > 0 then
+                                local isPlayerChar = false
+                                for _, pl in Players:GetPlayers() do
+                                        local ch = pl.Character
+                                        if ch and (obj == ch or obj:IsDescendantOf(ch)) then
+                                                isPlayerChar = true
+                                                break
+                                        end
+                                end
+                                if not isPlayerChar and not (cam and (obj == cam or obj:IsDescendantOf(cam))) then
+                                        seen[obj] = true
+                                        list[#list + 1] = obj
+                                end
+                        end
+                end
+        end
+
+        ugNpcFallbackCache = list
+        ugNpcFallbackAt = now
+        return list
+end
+
+-- ★ Silent Aim fix v4: ค้นหาโมดูล Bullet แบบไล่ค้นทั้ง ReplicatedStorage
+-- ใช้เมื่อพาธเดิม (Modules.FPS.Bullet) ไม่ตรงกับเกมปัจจุบัน
+local function FindBulletModuleDeep()
+        if BulletModule and typeof(BulletModule.CreateBullet) == "function" then
+                return true
+        end
+        BulletModule = nil
+        local found = nil
+        pcall(function()
+                for _, obj in ReplicatedStorage:GetDescendants() do
+                        if obj:IsA("ModuleScript") and obj.Name == "Bullet" then
+                                local okMod, mod = pcall(require, obj)
+                                if okMod and typeof(mod) == "table" and typeof(mod.CreateBullet) == "function" then
+                                        found = mod
+                                        break
+                                end
+                        end
+                end
+        end)
+        if found then
+                BulletModule = found
+                print("[Miko] Silent Aim: เจอโมดูล Bullet จากการค้นหาลึก")
+                return true
+        end
+        return false
+end
+
 local function GetSilentTarget(...)
         local closestTarget = nil
+        local closestOffset = Vector3.zero
         local closestDistance = SilentAim.FOV
 
         if not Camera then
@@ -952,8 +1031,23 @@ local function GetSilentTarget(...)
                 end
 
                 local hitPart = character:FindFirstChild(hitPartName)
+                local hitOffset = Vector3.zero
                 if not hitPart then
-                        return
+                        -- ★ Underground fix: ริกบางแบบ (AI) ไม่มี part "Head"
+                        -- โค้ดเดิมจะเงียบและไม่ล็อกเป้าเลย กระสุนจึงไปตาม crosshair
+                        -- (ตอนมุดดิน crosshair อยู่ระดับขา) -> เพิ่ม fallback ส่วนหัว
+                        hitPart = character:FindFirstChild("FaceHitBox")
+                                or character:FindFirstChild("HeadHitBox")
+                        if not hitPart then
+                                local root = character:FindFirstChild("HumanoidRootPart")
+                                if root then
+                                        hitPart = root
+                                        hitOffset = Vector3.new(0, 2.2, 0) -- เล็งจุดระดับหัว
+                                end
+                        end
+                        if not hitPart then
+                                return
+                        end
                 end
 
                 local screenPosition, onScreen = Camera:WorldToViewportPoint(hitPart.Position)
@@ -965,6 +1059,7 @@ local function GetSilentTarget(...)
                 if distance < closestDistance then
                         closestDistance = distance
                         closestTarget = hitPart
+                        closestOffset = hitOffset
                 end
         end
 
@@ -978,7 +1073,17 @@ local function GetSilentTarget(...)
                 end
         end
 
-        return closestTarget
+        -- ★ Silent Aim fix v4: ถ้า AiZones/Players ไม่เจอเป้าเลย ให้สแกน
+        -- workspace หาโมเดลที่มี Humanoid ยังมีชีวิต (หลักการเดียวกับ
+        -- fallback ของ NPC ESP) ไม่งั้น silent aim จะเงียบและกระสุนเดิน
+        -- ตาม crosshair ทั้งที่ผู้เล่นเปิดฟีเจอร์ไว้
+        if not closestTarget then
+                for _, character in GetSilentNpcFallback() do
+                        considerCharacter(character)
+                end
+        end
+
+        return closestTarget, closestOffset
 end
 
 local function SolveQuadratic(a, b, c)
@@ -1047,6 +1152,26 @@ local function GetAimLook(aimPart)
         end
 
         return Vector3.new(0, 0, -1)
+end
+
+-- ★ Underground fix v7: สรุปกลไกที่พิสูจน์ได้จากผลทุกรอบ — เกมคำนวณการยิง
+-- จาก "position ใน finalAim" (ต้องเป็นจุดที่มองเห็นเป้าตรง ๆ) แล้วบินตาม
+-- LookVector พร้อมแรงโน้มถ่วงของเกม ถ้า position อยู่ใต้ผิวดิน ray ของเกม
+-- จะติดดิน (error FPS:1044 ทุกนัด) แล้วตกไปยิงตาม crosshair = โดนขา
+-- ฟังก์ชันนี้คืน "จุดระดับตาเหนือผิวดิน" ที่ hook ใช้เป็นจุดยิง (UG fix v7)
+local function GetUndergroundEyeOrigin()
+        if not (Misc and Misc.Underground) then
+                return nil
+        end
+        local getEye = _G.MikoUG_GetEyeInfo
+        if typeof(getEye) ~= "function" then
+                return nil
+        end
+        local ok, eye = pcall(getEye)
+        if ok and typeof(eye) == "Vector3" then
+                return eye
+        end
+        return nil
 end
 
 local function ForceAmmoPenetration(ammo)
@@ -1267,12 +1392,38 @@ InitGunSignalNet = function()
 end
 
 InitSilentAim = function()
-        if oldCreateBullet or not BulletModule or typeof(hookfunction) ~= "function" then
+        if oldCreateBullet then
+                return
+        end
+        if not (BulletModule and typeof(BulletModule.CreateBullet) == "function") then
+                -- ★ Silent Aim fix v4: โมดูลยังหาไม่เจอ -> ลองใหม่อัตโนมัติ 10 ครั้ง
+                ugBulletRetry += 1
+                if ugBulletRetry <= 10 then
+                        if ugBulletRetry == 1 then
+                                print("[Miko] Silent Aim: ยังหาโมดูล Bullet ไม่เจอ - จะลองใหม่อัตโนมัติ")
+                        end
+                        if ugBulletRetry >= 2 then
+                                FindBulletModuleDeep()
+                        end
+                        task.delay(2, function()
+                                pcall(InitSilentAim)
+                        end)
+                else
+                        print("[Miko] Silent Aim: หาโมดูล Bullet ไม่เจอ (ลอง 10 ครั้งแล้ว) - hook ติดตั้งไม่ได้")
+                end
                 return
         end
 
-        oldCreateBullet = hookfunction(BulletModule.CreateBullet, function(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
+        -- ★ Silent Aim fix v4: ดึง body ของ hook ออกมาเป็นฟังก์ชันตั้งชื่อ
+        -- เพื่อติดตั้งได้หลายวิธี (hookfunction / table replace / namecall)
+        local function ugSilentWrapper(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
+
+                -- ★ Silent Aim fix v4: พิสูจน์ว่าเกมเรียก hook ของเราจริง
+                if not ugHookSeenPrinted then
+                        ugHookSeenPrinted = true
+                        print("[Miko] CreateBullet hook ACTIVE - เกมเรียกใช้ hook แล้ว")
+                end
 
                 local ammoFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
                 local ammo = ammoFolder and ammoType and ammoFolder:FindFirstChild(ammoType)
@@ -1373,25 +1524,161 @@ InitSilentAim = function()
 
                 local finalAim = aimPart
 
+                -- ★ Underground fix v7: โมเดลสรุปจากผลทุกรอบ + error FPS:1044 ในคอนโซลผู้เล่น
+                -- เกมคำนวณการยิงจาก "position ใน finalAim" — ถ้า position อยู่ใต้ผิวดิน ray
+                -- ของเกมจะติดดิน (attempt to index nil with 'y' ทุกนัด) แล้วตกไปยิงตาม
+                -- crosshair ซึ่งจากใต้ดิน = เข้าขาเสมอ จึงต้องส่ง position ระดับตาเหนือผิวดิน
+                -- (ส่วนการเล็งปกติไม่ถูกแตะต้องเลย)
+                local ugChar = LocalPlayer and LocalPlayer.Character
+                local ugRoot = ugChar and (ugChar:FindFirstChild("HumanoidRootPart") or ugChar.PrimaryPart)
+
+                -- ★ UG fix v12: ทุกการยิงตอนมุดดิน = ยกตัวขึ้น "ยืน" เหนือผิวดินชั่วขณะ "แบบล่องหน"
+                -- (เกมตรวจการยิงที่ตำแหน่งผู้ยิง ณ เวลากระสุนถึงเป้า — v9/v10 ยกแวบเดียว พอกระสุน
+                --  ถึงเป้าตัวกลับลงใต้ดินแล้ว = เส้นตรวจโดนดิน = กระสุนทะลุตัว จึงต้องค้างยืนช่วงสั้น ๆ)
+                -- v12 ทำให้ไม่มีใครเห็นการยกตัว: ตัว/ป้าย/เอฟเฟกต์ถูกซ่อนหมด + Anchored กัน replicate
+                --  ขึ้นเซิร์ฟเวอร์ (ถ้ายิงไม่เข้า = เกมตรวจฝั่งเซิร์ฟเวอร์ ปิดด้วย _G.MikoUG_StealthServer = false)
+                local ugActivePre = (Misc and Misc.Underground) and true or false
+                if ugActivePre then
+                    pcall(function()
+                        if _G.MikoUG_SurfaceNow then
+                            _G.MikoUG_SurfaceNow()
+                        end
+                    end)
+                end
+
                 if SilentAim.Enabled then
-                        local target = GetSilentTarget(model, model2, model3, aimPart)
-                        if target and ammo then
+                        local target, targetOffset = GetSilentTarget(model, model2, model3, aimPart)
+                        if target then
+                                -- ★ Silent Aim fix v4: พิมพ์ครั้งเดียวว่าล็อกเป้าอะไร
+                                if not ugTargetPrinted then
+                                        ugTargetPrinted = true
+                                        print("[Miko] Silent Aim: ล็อกเป้า " .. (target.Parent and target.Parent.Name or "?") .. " -> " .. target.Name)
+                                end
+                                -- ★ Underground fix v7 (มุดดินแล้วโดนขา — แก้รอบที่ 7):
+                                -- v6 ส่ง position = root ใต้ดิน → ray ของเกมติดดิน → error FPS:1044 ทุกนัด
+                                -- → เกม fallback ยิงตาม crosshair จากใต้ดิน = โดนขา ส่วนเส้นที่เห็น
+                                -- "เลยหัวไปนิด" มาจาก entryComp ที่ยกจุดเล็งสูงเกิน
+                                -- → v7: position = ระดับตาเหนือผิวดิน + สูตรเดียวกับยืนปกติ (prediction
+                                -- + drop วัดจากจุดตา) ตัด entryComp ออกทั้งหมด
+                                local ugActive = (Misc and Misc.Underground) and true or false
+                                if ugActive then
+                                    if not ugSilentUgPrinted then
+                                        ugSilentUgPrinted = true
+                                        print("[Miko] Silent Aim: มุดดิน - ยิงเข้าหัวแบบตัวล่องหน ตัวไม่โผล่ให้ใครเห็นรวมถึงเซิร์ฟเวอร์ (UG fix v12) | เวลายกตัว: _G.MikoUG_HoldTime = 0.45 | ถ้ายิงไม่เข้าให้ปิด stealth: _G.MikoUG_StealthServer = false")
+                                    end
+                                    -- ★ UG fix v8: พิมพ์โค้ดเกมรอบ error FPS:1044 ครั้งเดียว เพื่อแก้ตรงจุดรอบหน้า
+                                    if not ugSourceDumped then
+                                        ugSourceDumped = true
+                                        pcall(function()
+                                            local ugSrc, ugSrcName = nil, nil
+                                            local ugModules = ReplicatedStorage:FindFirstChild("Modules")
+                                            local ugFps = ugModules and ugModules:FindFirstChild("FPS")
+                                            local ugCands = {}
+                                            if ugFps then
+                                                if ugFps:IsA("ModuleScript") then
+                                                    ugCands[#ugCands + 1] = { ugFps, "Modules.FPS" }
+                                                end
+                                                local ugB = ugFps:FindFirstChild("Bullet")
+                                                if ugB and ugB:IsA("ModuleScript") then
+                                                    ugCands[#ugCands + 1] = { ugB, "Modules.FPS.Bullet" }
+                                                end
+                                            end
+                                            for _, ugC in ugCands do
+                                                local okS, ugS = pcall(function() return ugC[1].Source end)
+                                                if okS and type(ugS) == "string" and #ugS > 0 then
+                                                    ugSrc, ugSrcName = ugS, ugC[2] .. " (.Source)"
+                                                    break
+                                                end
+                                                if typeof(decompile) == "function" then
+                                                    local okD, ugD = pcall(decompile, ugC[1])
+                                                    if okD and type(ugD) == "string" and #ugD > 0 then
+                                                        ugSrc, ugSrcName = ugD, ugC[2] .. " (decompile)"
+                                                        break
+                                                    end
+                                                end
+                                            end
+                                            if type(ugSrc) ~= "string" or #ugSrc == 0 then
+                                                print("[Miko][SRC] อ่าน Source ไม่ได้ทั้ง .Source และ decompile (ข้าม)")
+                                                return
+                                            end
+                                            print("[Miko][SRC] ได้โค้ดจาก " .. tostring(ugSrcName))
+                                            local ugSrcLines = string.split(ugSrc:gsub("\r\n", "\n"), "\n")
+                                            print("[Miko][SRC] บรรทัดรวม:", #ugSrcLines)
+                                            for i = 1036, math.min(1052, #ugSrcLines) do
+                                            print(("[Miko][SRC] %d| %s"):format(i, ugSrcLines[i]))
+                                            end
+                                            for i = 2738, math.min(2750, #ugSrcLines) do
+                                            print(("[Miko][SRC] %d| %s"):format(i, ugSrcLines[i]))
+                                            end
+                                            local ugHits = 0
+                                            for i, ugLn in ugSrcLines do
+                                            if ugHits < 8 and (ugLn:find("CreateBullet") or ugLn:find("RangedWeaponDefault")) then
+                                                ugHits += 1
+                                                print(("[Miko][SRC] hit %d| %s"):format(i, ugLn))
+                                            end
+                                            end
+                                        end)
+                                        end
+                                end
+
+                                -- ★ UG fix v11: สูตรเล็งแบบ "ยืนปกติ" ทั้งสองโหมด — ตอนยิงมุดดิน ตัวถูกยกขึ้นยืน
+                                -- เหนือผิวดินจริงแล้ว (SurfaceNow) จึงใช้คณิตชุดเดิมที่พิสูจน์ว่าโดนหัว ไม่ต้อง
+                                -- ชดเชย eye-origin/AimLower/Position อีกต่อไป (ตัวที่ทำให้เพี้ยนมาตั้งแต่ v7)
                                 local origin = GetAimOrigin(aimPart)
+                                    or (Camera and Camera.CFrame.Position)
+
                                 if origin then
+
+                                    local aimPoint = target.Position + targetOffset
+
+                                    if ammo then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
                                         ammo:SetAttribute("Drag", 0)
 
-                                        local targetPosition = SilentAim.Prediction
-                                                and PredictTarget(target, origin, projectileSpeed, acceleration)
-                                                or target.Position
-                                        local vertical = ProjectileDrop(origin, targetPosition, projectileSpeed, acceleration)
-                                        finalAim = {
-                                                CFrame = CFrame.new(origin, targetPosition + vertical),
-                                        }
+                                        if SilentAim.Prediction then
+                                            aimPoint = PredictTarget(target, origin, projectileSpeed, acceleration) + targetOffset
+                                        end
+                                        aimPoint = aimPoint + ProjectileDrop(origin, aimPoint, projectileSpeed, acceleration)
+                                    end
+
+                                    -- ★ UG fix v11: diagnostic เฉพาะช็อตมุดดิน (5 นัดแรก) — los=clear = เส้นยิงจาก
+                                    -- ตัวที่ยืนอยู่เหนือผิวดินมองเห็นเป้าตรง ๆ ไม่มีอะไรบัง
+                                    if ugActive and ugDiagCount < 5 then
+                                        ugDiagCount += 1
+                                        local ugLosText = "clear"
+                                        pcall(function()
+                                            local ugLosParams = RaycastParams.new()
+                                            ugLosParams.FilterType = Enum.RaycastFilterType.Exclude
+                                            local ugLosList = {}
+                                            if LocalPlayer.Character then
+                                                ugLosList[#ugLosList + 1] = LocalPlayer.Character
+                                            end
+                                            local ugLosModel = target:FindFirstAncestorOfClass("Model")
+                                            if ugLosModel then
+                                                ugLosList[#ugLosList + 1] = ugLosModel
+                                            end
+                                            ugLosParams.FilterDescendantsInstances = ugLosList
+                                            local ugLosHit = workspace:Raycast(origin, aimPoint - origin, ugLosParams)
+                                            if ugLosHit then
+                                                ugLosText = "BLOCKED:" .. ugLosHit.Instance.Name
+                                            end
+                                        end)
+                                        print(string.format(
+                                            "[Miko] UG v12 #%d: origin=(%.1f, %.1f, %.1f) aim=(%.1f, %.1f, %.1f) dist=%.1f los=%s stealth=%s",
+                                            ugDiagCount,
+                                            origin.X, origin.Y, origin.Z,
+                                            aimPoint.X, aimPoint.Y, aimPoint.Z,
+                                            (aimPoint - origin).Magnitude, ugLosText, tostring(_G.MikoUG_StealthServer ~= false)
+                                        ))
+                                    end
+
+                                    finalAim = {
+                                        CFrame = CFrame.new(origin, aimPoint),
+                                    }
 
                                         if Misc and Misc.WallPenetration then
-                                                finalAim = ResolveWallbangAim(finalAim, targetPosition + vertical)
+                                                finalAim = ResolveWallbangAim(finalAim, aimPoint)
                                         end
 
                                         return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
@@ -1400,12 +1687,51 @@ InitSilentAim = function()
                 end
 
                 -- Wallbang without silent aim: fire from past walls along aim line
+                -- (Underground: finalAim = aimPart ดั้งเดิมของเกม การเล็งปกติไม่ถูก
+                -- แทรกแซง ส่วนการแก้ "ยิงโดนขา" ทำใน silent aim branch ด้านบนเท่านั้น)
                 if Misc and Misc.WallPenetration then
-                        finalAim = ResolveWallbangAim(aimPart, nil)
+                        finalAim = ResolveWallbangAim(finalAim, nil)
                 end
 
                 return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
-        end)
+        end
+
+        -- ★ Silent Aim fix v4: ติดตั้ง hook แบบมี fallback 3 ชั้น เพราะ
+        -- executor บางตัว (เช่น Solara) hookfunction อาจไม่รองรับ/ไม่ผล
+        local ugInstallMsg = nil
+
+        if typeof(hookfunction) == "function" then
+                local okHook, hooked = pcall(hookfunction, BulletModule.CreateBullet, ugSilentWrapper)
+                if okHook and typeof(hooked) == "function" then
+                        oldCreateBullet = hooked
+                        ugInstallMsg = "hookfunction"
+                end
+        end
+
+        if not ugInstallMsg then
+                -- ชั้นสำรอง 1: แทนที่ฟิลด์ CreateBullet ในตารางโมดูล (จับ dot-call)
+                oldCreateBullet = BulletModule.CreateBullet
+                BulletModule.CreateBullet = ugSilentWrapper
+                ugInstallMsg = "table replace"
+
+                -- ชั้นสำรอง 2: แยก __namecall จับ colon-call (BulletModule:CreateBullet)
+                if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
+                        pcall(function()
+                                local wrapFn = typeof(newcclosure) == "function" and newcclosure or function(fn)
+                                        return fn
+                                end
+                                local oldNamecall
+                                oldNamecall = hookmetamethod(game, "__namecall", wrapFn(function(self, ...)
+                                        if self == BulletModule and getnamecallmethod() == "CreateBullet" then
+                                                return ugSilentWrapper(self, ...)
+                                        end
+                                        return oldNamecall(self, ...)
+                                end))
+                        end)
+                end
+        end
+
+        print("[Miko] Silent Aim: hook ติดตั้งสำเร็จ (" .. ugInstallMsg .. ")")
 end
 
 end
@@ -11391,6 +11717,8 @@ local ugViewYaw = 0      -- มุมหมุนซ้าย-ขวา (radians
 local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
 local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
 local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
+local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัวยังถูกยกขึ้น "ยืน" เหนือผิวดินช่วงยิง
+local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
 local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
 -- Hide the local character and any gear welded to its torso, including gear
@@ -11400,6 +11728,7 @@ local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเ
 --   connect/disconnect + signal dispatch จำนวนมากต่อเฟรมจน FPS ตกหนัก
 --   การซ่อนใช้การ re-assert ใน BindToRenderStep (รันหลังกล้อง) แทน ซึ่งชนะอยู่แล้ว
 local ugHiddenParts = {} -- [Instance] = { Value = LocalTransparencyModifier เดิม }
+local ugGhostFx = {} -- ★ UG fix v12: [Instance] = Enabled เดิม (ป้ายชื่อ/เอฟเฟกต์ที่ปิดชั่วคราวช่วง hold)
 local function UGHidePart(obj)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
@@ -11525,6 +11854,18 @@ local function UGRestoreLocalBody()
         end
 end
 
+-- ★ UG fix v12: คืนป้ายชื่อ/เอฟเฟกต์ที่ถูกปิดช่วง hold (ยืนยิงแบบล่องหน)
+local function UGRestoreGhostFx()
+        for obj, saved in pairs(ugGhostFx) do
+                if obj.Parent then
+                        pcall(function()
+                                obj.Enabled = saved
+                        end)
+                end
+                ugGhostFx[obj] = nil
+        end
+end
+
 -- แก้บัคเห็นตัวเองบังจอ: TransparencyController ของ Roblox รันที่ RenderPriority.Camera
 -- (200) และล้าง LocalTransparencyModifier ที่เราเซ็ตไว้ก่อนหน้าทุกเฟรม ทำให้ตัว/เป้
 -- โผล่มาบังครึ่งจอล่างตอนกล้องถูกชดเชยขึ้นไปเหนือหัวตอนมุดดิน ต้องเซ็ตซ้ำ "หลัง"
@@ -11567,6 +11908,35 @@ local UGBindHideStep = function()
                                         UGHideLocalBody(c)
                                         UGHideAttachedGear(c)
                                 end
+                        end
+                        -- ★ UG fix v11: กดปุ่มยิงค้าง = "ยืน" เหนือผิวดินตลอดช่วงยิง (เมาส์ล็อคกลางจอเท่านั้น
+                        -- จึงไม่เด้งขึ้นตอนคลิกเมนู) ปล่อยปุ่มแล้วค่อยจมกลับหลังหมดเวลา hold
+                        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
+                            and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+                            local holdTime = tonumber(_G.MikoUG_HoldTime) or 0.45
+                            ugHoldUntil = tick() + (holdTime < 0.1 and 0.1 or holdTime)
+                        end
+                        -- ★ UG fix v12: ช่วง hold ตัวถูกยกขึ้น "ยืน" เหนือผิวดินเบื้องหลัง (ยิงแบบล่องหน)
+                        -- ตัวปกติถูกซ่อนด้วย LTM ทุกเฟรมอยู่แล้ว แต่ป้ายชื่อ/เลือด (BillboardGui/
+                        -- SurfaceGui) กับเอฟเฟกต์ (ParticleEmitter/Beam/Trail) ยังลอย/พ่นให้เห็นช่วง
+                        -- ยืน จึงปิดทิ้งระหว่าง hold แล้วคืนค่าเดิมทันทีที่หมด hold
+                        if c then
+                            if tick() < ugHoldUntil then
+                                for _, obj in ipairs(c:GetDescendants()) do
+                                    if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
+                                        or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
+                                        or obj:IsA("Trail") then
+                                        if ugGhostFx[obj] == nil then
+                                            ugGhostFx[obj] = obj.Enabled
+                                        end
+                                        if obj.Enabled then
+                                            obj.Enabled = false
+                                        end
+                                    end
+                                end
+                            elseif next(ugGhostFx) ~= nil then
+                                UGRestoreGhostFx()
+                            end
                         end
                         -- ★ Camera fix 2026-10-31: คุมกล้องทั้ง CFrame เองที่นี่
                         -- (priority 2147483000 = รันหลังกล้องเกม/Roblox ทุกตัว
@@ -11663,9 +12033,18 @@ end
 
 stopUnderground = function()
         active = false
+        ugHoldUntil = 0 -- ★ UG fix v11: ปิดโหมด = ล้าง hold ทันที
         local char = LocalPlayer.Character
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
         UGRestoreLocalBody()
+        -- ★ UG fix v12: คืนป้าย/เอฟเฟกต์ช่วง hold + ปลด anchor กันค้าง (ปิดโหมดขณะยืนยิง)
+        UGRestoreGhostFx()
+        if ugStealthAnchored then
+                ugStealthAnchored = false
+                pcall(function()
+                        root.Anchored = false
+                end)
+        end
         if ugSteppedConn then
                 pcall(function()
                         ugSteppedConn:Disconnect()
@@ -11728,6 +12107,65 @@ stopUnderground = function()
         printedGround = false
 end
 _G.MikoUG_ForceStop = stopUnderground
+
+-- ★ Underground → Gun bridge: คืนตำแหน่ง "ระดับตา" เหนือผิวดินปัจจุบัน
+-- (UG fix v7: hook ใช้ค่านี้เป็น "position จุดยิง" ที่ส่งให้เกม — ต้องเป็น
+-- จุดเหนือผิวดินเสมอ ไม่งั้น ray ของเกมติดดินแล้วตกไปยิงตาม crosshair)
+_G.MikoUG_GetEyeInfo = function()
+        if not active or not lastGroundY or not ugEyeHeightY then
+                return nil
+        end
+        local c = LocalPlayer.Character
+        local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
+        if not r then
+                return nil
+        end
+        return Vector3.new(r.Position.X, lastGroundY + ugEyeHeightY, r.Position.Z)
+end
+
+-- ★ UG fix v11: เด้งขึ้น "ยืน" เหนือผิวดินทันที (hook ยิงเรียกก่อนสร้างกระสุนทุกนัด)
+-- ยกค้างไว้ช่วงสั้น ๆ (default 0.45 วิ — ปรับสดได้: _G.MikoUG_HoldTime) ให้เกม/เซิร์ฟเวอร์
+-- เห็นตัวละครเหนือผิวดินจริง ระบบยืนยันการยิงถึงนับว่าโดน (แก้อาการกระสุนทะลุตัว)
+_G.MikoUG_SurfaceNow = function()
+        if not active or Library.Unloaded or (Misc and Misc.FreeCam) then
+                return
+        end
+        local holdTime = tonumber(_G.MikoUG_HoldTime) or 0.45
+        if holdTime < 0.1 then
+                holdTime = 0.1
+        end
+        ugHoldUntil = tick() + holdTime
+        local c = LocalPlayer.Character
+        local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
+        if r and lastGroundY and savedRootHeight then
+                -- ★ UG fix v12: ล็อกการ replicate ก่อนยกตัว (StealthServer) — anchor ฝั่ง client
+                -- ไม่มีทางส่งตำแหน่ง "ยืน" ขึ้นเซิร์ฟเวอร์/ผู้เล่นอื่น (เซิร์ฟเวอร์เห็นตัวใต้ดินเสมอ
+                -- ตัวจึงไม่โผล่จากมุมมองใครเลย) แต่เกมฝั่ง client ที่คำนวณ/ตรวจการยิงเห็นตัวยืน
+                -- จนกระสุนถึงเป้า = นับ hit ถ้าเกมตรวจ hit ฝั่งเซิร์ฟเวอร์ (ยิงไม่เข้า) ให้ปิด:
+                -- _G.MikoUG_StealthServer = false
+                local ugStealth = _G.MikoUG_StealthServer
+                if ugStealth == nil then
+                        ugStealth = true
+                        _G.MikoUG_StealthServer = true
+                end
+                if ugStealth and not r.Anchored then
+                        ugStealthAnchored = true
+                        pcall(function()
+                                r.Anchored = true
+                        end)
+                end
+                ugLastPose = CFrame.new(Vector3.new(
+                        r.Position.X,
+                        lastGroundY + savedRootHeight,
+                        r.Position.Z
+                )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                pcall(function()
+                        r.AssemblyLinearVelocity = Vector3.zero
+                        r.AssemblyAngularVelocity = Vector3.zero
+                        r.CFrame = ugLastPose
+                end)
+        end
+end
 
 UpdateUnderground = function(deltaTime)
         if typeof(deltaTime) ~= "number" or deltaTime ~= deltaTime or deltaTime <= 0 then
@@ -11862,7 +12300,16 @@ UpdateUnderground = function(deltaTime)
                                 r.AssemblyLinearVelocity = Vector3.zero
                                 r.AssemblyAngularVelocity = Vector3.zero
                                 if ugLastPose then
-                                        r.CFrame = ugLastPose
+                                    -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
+                                    -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
+                                    if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+                                        ugLastPose = CFrame.new(Vector3.new(
+                                            r.Position.X,
+                                            lastGroundY + savedRootHeight,
+                                            r.Position.Z
+                                        )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                                    end
+                                    r.CFrame = ugLastPose
                                 end
                         end)
                 end
@@ -11928,6 +12375,28 @@ UpdateUnderground = function(deltaTime)
                 ugSpeedMult = 2
         end
         speed = speed * ugSpeedMult
+        -- ★ UG fix v11: ช่วง hold = ตัว "ยืน" เหนือผิวดินจริง (ขยับ XZ ต่อได้ตามปกติ)
+        -- ข้ามการบังคับโพสนอนใต้ดินชั่วคราว หมดเวลา hold แล้วค่อยจมกลับลงเอง
+        if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+            local holdPos = root.Position + dir * speed * deltaTime
+            holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
+            ugLastPose = CFrame.new(holdPos)
+                * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+            pcall(function()
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                root.CFrame = ugLastPose
+            end)
+        return
+        end
+        -- ★ UG fix v12: หมด hold = ปลด anchor กลับสู่การ replicate ปกติทันที — เซิร์ฟเวอร์
+        -- ไม่เคยเห็นตำแหน่ง "ยืน" เลยตลอดช่วงยิง (ตัวจึงไม่โผล่จากมุมมองใครแม้แต่คนเดียว)
+        if ugStealthAnchored then
+            ugStealthAnchored = false
+            pcall(function()
+                root.Anchored = false
+            end)
+        end
 
         local pos = root.Position + dir * speed * deltaTime
         pos = Vector3.new(pos.X, targetY, pos.Z)
