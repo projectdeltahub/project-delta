@@ -947,16 +947,14 @@ local function GetAiCharacters()
         return ai
 end
 
--- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace (cache 1 วินาที) ใช้เมื่อ
--- AiZones/Players ไม่เจอเป้า — หลักการเดียวกับ fallback ของ ScanNPCs
+-- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace ใช้เมื่อ AiZones/Players ไม่เจอเป้า
+-- ★ FPS fix 2026-11-01: ย้ายการสแกนออกจาก "สายยิง" — เดิมทุกนัดที่ไม่เจอเป้าจะ
+-- workspace:GetDescendants() ทั้งแมพ "ใน hook ยิง" (แมพใหญ่ = FPS ตกหนัก/เกมค้าง
+-- เวลากดยิงรัว) ตอนนี้ background task สแกนล่วงหน้าทุก 2.5 วิ เฉพาะตอน Silent Aim
+-- เปิด แล้วตอนยิงใช้แคชอย่างเดียว (เป้าที่ตายแล้วถูก IsSilentAlive กรองทิ้งตามเดิม)
 local ugNpcFallbackCache = nil
 local ugNpcFallbackAt = 0
-local function GetSilentNpcFallback()
-        local now = os.clock()
-        if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 1 then
-                return ugNpcFallbackCache
-        end
-
+local function BuildSilentNpcFallback()
         local list = {}
         local seen = {}
         local cam = workspace.CurrentCamera
@@ -980,11 +978,29 @@ local function GetSilentNpcFallback()
                         end
                 end
         end
-
-        ugNpcFallbackCache = list
-        ugNpcFallbackAt = now
         return list
 end
+
+-- ตอนยิง: ใช้แคชเท่านั้น ไม่สแกนในสายยิงอีกต่อไป
+local function GetSilentNpcFallback()
+        if ugNpcFallbackCache then
+                return ugNpcFallbackCache
+        end
+        return {}
+end
+
+task.spawn(function()
+        while Library.Unloaded ~= true do
+                if SilentAim.Enabled and (os.clock() - ugNpcFallbackAt) >= 2.5 then
+                        local okFallback, list = pcall(BuildSilentNpcFallback)
+                        if okFallback and type(list) == "table" then
+                                ugNpcFallbackCache = list
+                                ugNpcFallbackAt = os.clock()
+                        end
+                end
+                task.wait(1)
+        end
+end)
 
 -- ★ Silent Aim fix v4: ค้นหาโมดูล Bullet แบบไล่ค้นทั้ง ReplicatedStorage
 -- ใช้เมื่อพาธเดิม (Modules.FPS.Bullet) ไม่ตรงกับเกมปัจจุบัน
@@ -2077,10 +2093,17 @@ local LastCrateScan = 0
 local LastLandmineScan = 0
 local LastExtractionScan = 0
 local LastCrateLabelRefresh = 0
-local CrateScanInterval = 4
-local LandmineScanInterval = 2
+local CrateScanInterval = 6
+local LandmineScanInterval = 4
 local CrateLabelRefreshInterval = 0.15
-local ExtractionScanInterval = 0.75
+local ExtractionScanInterval = 2
+-- ★ FPS fix 2026-11-01: ช่วงสแกน + debounce ของ DescendantAdded — เดิมตอนยิง
+-- (เอฟเฟกต์กระแทก/ตัวเลขดาเมจ/BillboardGui spawn รัว ๆ) หรือตอนศพเกิดทีเดียว
+-- หลายชิ้น จะบังคับสแกน workspace ทั้งแมพแบบ sync ในลูปเรนเดอร์ทุกเฟรมจน
+-- FPS ตกหนัก/เกมค้าง ตอนนี้การสแกนใหม่แบบบังคับจะเกิดเร็วสุดหลัง spawn
+-- สุดท้ายหยุดตาม delay ด้านล่าง (รวบทุก trigger ที่เกิดรัว ๆ เป็นสแกนเดียว)
+local ExtractionRescanDelay = 1
+local LandmineRescanDelay = 1.5
 local ExtractionDescendantHook = false
 local LandmineDescendantHook = false
 
@@ -5945,7 +5968,9 @@ EnsureExtractionDescendantHook = function()
                         return
                 end
                 if obj:IsA("ProximityPrompt") or obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                        LastExtractionScan = 0
+                        -- ★ FPS fix: debounce — เดิมตั้ง 0 ให้สแกนแมพทั้งใบทันทีทุกครั้งที่ GUI เกิด
+                        -- (ตอนยิง ตัวเลขดาเมจ/ป้าย spawn ทุกนัด = สแกนซ้ำจนเกมค้าง)
+                        LastExtractionScan = tick() - ExtractionScanInterval + ExtractionRescanDelay
                 end
         end)
 end
@@ -6386,7 +6411,9 @@ local function EnsureLandmineDescendantHook()
                                 or name:find("pressure", 1, true)
                                 or LooksLikeDiscMinePart(obj)
                         then
-                                LastLandmineScan = 0
+                                -- ★ FPS fix: debounce — เดิมตั้ง 0 ให้สแกนแมพทั้งใบทันทีทุกครั้ง
+                                -- (เปลือกกระสุน/เอฟเฟกต์รูปทรงจานแบนก็ trigger ทุกนัดที่ยิง)
+                                LastLandmineScan = tick() - LandmineScanInterval + LandmineRescanDelay
                         end
                 end
         end)
@@ -9489,9 +9516,10 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- watchdog: สแกนซ้ำทุก 1 วิ (fullScan มี ScanBusy กันสแกนซ้อนอยู่แล้ว)
+    -- watchdog: สแกนซ้ำทุก 3 วิ (★ FPS fix 2026-11-01: เดิมทุก 1 วิ = สแกนแมพ
+    -- ทั้งใบตลอดเวลา; ของใหม่ยังถูกจับสด ๆ ผ่าน workspace.DescendantAdded อยู่)
     if now >= NextWatchdog then
-        NextWatchdog = now + 1
+        NextWatchdog = now + 3
         fullScan()
     end
 
@@ -13705,269 +13733,6 @@ MiscBox:AddSlider("UndergroundSpeed", {
                 end
         end,
 })
-
-----------------------------------------------------------------
--- ★ Anti-Drown v14 (ไม่จมน้ำตาย) — เพิ่มตามคำขอ: "ทำให้เวลามุดลงน้ำไม่มีวันจมน้ำตาย"
--- โมดูลอิสระในบล็อก do..end ของตัวเอง ทำงานตลอดเวลา ไม่มี toggle
--- และไม่แตะระบบอื่นแม้แต่บรรทัดเดียว:
---  (1) สแกนหาสถานะออกซิเจนของเกม (attribute / NumberValue / IntValue
---      ชื่อคล้าย oxygen/o2/air/breath/drown/lungs บน Player, Character
---      และโฟลเดอร์ stats) แล้วล็อคไว้ที่ค่าเต็มตลอด — เกมที่นับออกซิเจน
---      ฝั่ง client จะไม่มีวันลดเลย
---  (2) ถ้าหัวจมอยู่ใต้ผิวน้ำจริง ๆ แล้วเลือดถูกหัก (เกมบางเกมหักเลือด
---      แทนการมีออกซิเจน) จะฟื้นเลือดส่วนที่หายทันทีทุกครั้ง
---  การตรวจ "ใต้น้ำ" ใช้วิธีเดียวกับ WalkOnWater: raycast หาผิวน้ำ
---  Terrain (Material = Water) + fallback หา part ชื่อ water/ocean
---  * ถ้ายังจมน้ำตายได้ = เกมตรวจจมน้ำฝั่งเซิร์ฟเวอร์ล้วน ๆ — console
---    พิมพ์สิ่งที่ล็อคได้เสมอ เอาผลไป dump หาตัวจัดการออกซิเจนต่อได้
-----------------------------------------------------------------
-do
-        local ADOxPatterns = { "oxygen", "o2", "air", "breath", "drown", "lungs" }
-        local ADOxLocked = {} -- [key] = { kind, obj, name, full, printed }
-        local ADWaterParts = {} -- cache part น้ำ (ชื่อ water/ocean) สแกนใหม่ทุก 3 วิ
-        local ADLastScan = 0
-        local ADLastPartScan = 0
-        local ADLastChar = nil
-        local ADLastHealth = nil
-        local ADLastGuardPrint = 0
-        local ADSubmergedNow = false -- ★ v15: อยู่ใต้น้ำอยู่ไหมตอนนี้ (ให้ guard ต่อเฟรมใช้)
-
-        local ADWaterRay = RaycastParams.new()
-        ADWaterRay.FilterType = Enum.RaycastFilterType.Exclude
-        ADWaterRay.IgnoreWater = false
-
-        local function ADNameMatch(name)
-                if typeof(name) ~= "string" or name == "" then
-                        return false
-                end
-                local lower = name:lower()
-                if lower:find("hair", 1, true) then
-                        return false -- กันชื่อ Hair เข้า pattern "air"
-                end
-                for _, pat in ipairs(ADOxPatterns) do
-                        if lower:find(pat, 1, true) then
-                                return true
-                        end
-                end
-                return false
-        end
-
-        local function ADTrack(kind, obj, name, current)
-                local key = kind .. "|" .. obj:GetFullName() .. "|" .. name
-                local rec = ADOxLocked[key]
-                if not rec then
-                        rec = { kind = kind, obj = obj, name = name, full = current, printed = false }
-                        ADOxLocked[key] = rec
-                end
-                if typeof(current) == "number" and current > rec.full then
-                        rec.full = current -- ค่าเต็ม = ค่าสูงสุดที่เคยเห็น (กันจับตอนโดนลดไปแล้ว)
-                end
-        end
-
-        local function ADScanOxygen()
-                local player = Players.LocalPlayer
-                local char = player and player.Character
-                local containers = {}
-                if player then
-                        containers[#containers + 1] = player
-                        for _, cname in ipairs({ "stats", "Stats", "leaderstats", "Data", "PlayerData", "playerstats", "Status", "values", "Values" }) do
-                                local folder = player:FindFirstChild(cname)
-                                if folder then
-                                        containers[#containers + 1] = folder
-                                end
-                        end
-                end
-                if char then
-                        containers[#containers + 1] = char
-                        -- ★ v15: บางเกมเก็บ Oxygen เป็น attribute บน Humanoid
-                        local adHum = char:FindFirstChildOfClass("Humanoid")
-                        if adHum then
-                                containers[#containers + 1] = adHum
-                        end
-                        for _, cname in ipairs({ "stats", "Stats", "Data", "Status", "values", "Values" }) do
-                                local folder = char:FindFirstChild(cname)
-                                if folder then
-                                        containers[#containers + 1] = folder
-                                end
-                        end
-                end
-                for _, obj in ipairs(containers) do
-                        for name, value in pairs(obj:GetAttributes()) do
-                                if typeof(value) == "number" and ADNameMatch(name) then
-                                        ADTrack("attr", obj, name, value)
-                                end
-                        end
-                        for _, child in ipairs(obj:GetChildren()) do
-                                if (child:IsA("NumberValue") or child:IsA("IntValue")) and ADNameMatch(child.Name) then
-                                        ADTrack("value", child, child.Name, child.Value)
-                                end
-                        end
-                end
-        end
-
-        local function ADApplyLocks()
-                for key, rec in pairs(ADOxLocked) do
-                        local obj = rec.obj
-                        if not obj.Parent then
-                                ADOxLocked[key] = nil -- รีสแกนจะเจอใหม่เอง (เช่นตอนรีสปอว์น)
-                        else
-                                local current
-                                if rec.kind == "attr" then
-                                        current = obj:GetAttribute(rec.name)
-                                else
-                                        current = obj.Value
-                                end
-                                if typeof(current) == "number" then
-                                        if current > rec.full then
-                                                rec.full = current
-                                        elseif current < rec.full then
-                                                if rec.kind == "attr" then
-                                                        obj:SetAttribute(rec.name, rec.full)
-                                                else
-                                                        obj.Value = rec.full
-                                                end
-                                        end
-                                        if not rec.printed then
-                                                rec.printed = true
-                                                print(string.format(
-                                                        "[Miko] Anti-Drown: ล็อคออกซิเจน %q (%s) = %g ตลอดกาล",
-                                                        rec.name, rec.kind == "attr" and "attribute" or "Value", rec.full
-                                                ))
-                                        end
-                                end
-                        end
-                end
-        end
-
-        local function ADFindWaterSurface(rootPos, headY)
-                local player = Players.LocalPlayer
-                local char = player and player.Character
-                ADWaterRay.FilterDescendantsInstances = { char, workspace.CurrentCamera }
-                for _, dy in ipairs({ 6, 30, 80 }) do
-                        local origin = Vector3.new(rootPos.X, rootPos.Y + dy, rootPos.Z)
-                        local hit = workspace:Raycast(origin, Vector3.new(0, -240, 0), ADWaterRay)
-                        if hit and hit.Instance:IsA("Terrain") and hit.Material == Enum.Material.Water
-                                and hit.Position.Y > headY then
-                                return hit.Position.Y
-                        end
-                end
-                if tick() - ADLastPartScan >= 3 then
-                        ADLastPartScan = tick()
-                        ADWaterParts = {}
-                        for _, obj in ipairs(workspace:GetDescendants()) do
-                                if obj:IsA("BasePart") then
-                                        local lower = obj.Name:lower()
-                                        if obj.Material == Enum.Material.Water
-                                                or lower:find("water", 1, true) or lower:find("ocean", 1, true) then
-                                                ADWaterParts[#ADWaterParts + 1] = obj
-                                        end
-                                end
-                        end
-                end
-                for _, obj in ipairs(ADWaterParts) do
-                        if obj.Parent then
-                                local topY = obj.Position.Y + obj.Size.Y / 2
-                                local flat = (Vector2.new(rootPos.X, rootPos.Z) - Vector2.new(obj.Position.X, obj.Position.Z)).Magnitude
-                                if topY > headY and flat <= math.max(obj.Size.X, obj.Size.Z) / 2 + 8 then
-                                        return topY
-                                end
-                        end
-                end
-                return nil
-        end
-
-        local function ADTick()
-                local now = tick()
-                local player = Players.LocalPlayer
-                local char = player and player.Character
-                local hum = char and char:FindFirstChildOfClass("Humanoid")
-                local head = char and char:FindFirstChild("Head")
-                local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
-
-                if now - ADLastScan >= 2 then
-                        ADLastScan = now
-                        ADScanOxygen()
-                end
-                ADApplyLocks()
-
-                if char ~= ADLastChar then
-                        ADLastChar = char
-                        ADLastHealth = hum and hum.Health or nil
-                end
-
-                -- จมจริง = หัวอยู่ต่ำกว่าผิวน้ำ
-                local submerged = false
-                if head and root then
-                        local waterY = ADFindWaterSurface(root.Position, head.Position.Y)
-                        if waterY and head.Position.Y < waterY - 0.3 then
-                                submerged = true
-                        end
-                end
-                -- ★ v15: สถานะ Swimming ของเอนจิน = กำลังว่าย/จมอยู่ในน้ำ (บางเกมเริ่ม
-                -- หักเลือดตั้งแต่ลอยผิวน้ำ หัวยังไม่จม) นับรวมด้วยเพื่อไม่พลาด
-                if not submerged and hum then
-                        local okSwim, adState = pcall(function()
-                                return hum:GetState()
-                        end)
-                        if okSwim and adState == Enum.HumanoidStateType.Swimming then
-                                submerged = true
-                        end
-                end
-                ADSubmergedNow = submerged
-
-                -- เกราะใต้น้ำ: ห้ามเลือดลดขณะหัวจมอยู่ใต้ผิวน้ำ
-                if submerged and hum and hum.Health > 0 and ADLastHealth and hum.Health < ADLastHealth then
-                        local was = hum.Health
-                        local target = math.min(ADLastHealth, hum.MaxHealth or ADLastHealth)
-                        if target > was then
-                                hum.Health = target
-                                if now - ADLastGuardPrint >= 3 then
-                                        ADLastGuardPrint = now
-                                        print(string.format("[Miko] Anti-Drown: ห้ามหักเลือดใต้น้ำ %.0f -> %.0f", was, target))
-                                end
-                        end
-                end
-                -- ★ v15: ขณะอยู่ใต้น้ำ จำเกณฑ์เลือดไว้ที่ "สูงสุดล่าสุด" เท่านั้น (ไม่ให้
-                -- เกณฑ์ลดลงตามเลือดที่โดนหาระหว่าง tick ไม่งั้นเลือดไหลลงเรื่อย ๆ
-                -- จนตายทั้งที่ guard ทำงานอยู่)
-                if hum and submerged then
-                        if ADLastHealth == nil or hum.Health > ADLastHealth then
-                                ADLastHealth = hum.Health
-                        end
-                else
-                        ADLastHealth = hum and hum.Health or nil
-                end
-        end
-
-        -- ★ v15: เกราะเลือดต่อเฟรม (Heartbeat) — ADTick รันทุก 0.1 วิ อาจช้ากว่า
-        -- ดาเมจจมน้ำของเกม ขณะหัวจมใต้น้ำ (ADSubmergedNow) จะคืนเลือดทันทีทุกเฟรม
-        local ADHeartConn = RunService.Heartbeat:Connect(function()
-                if Library.Unloaded then
-                        ADHeartConn:Disconnect()
-                        return
-                end
-                if not ADSubmergedNow then
-                        return
-                end
-                local adPlayer = Players.LocalPlayer
-                local adChar = adPlayer and adPlayer.Character
-                local adHum = adChar and adChar:FindFirstChildOfClass("Humanoid")
-                if adHum and adHum.Health > 0 and ADLastHealth and adHum.Health < ADLastHealth then
-                        local adTarget = math.min(ADLastHealth, adHum.MaxHealth or ADLastHealth)
-                        if adTarget > adHum.Health then
-                                adHum.Health = adTarget
-                        end
-                end
-        end)
-        task.spawn(function()
-                print("[Miko] Anti-Drown ON: ล็อคออกซิเจน + ห้ามหักเลือดใต้น้ำ = ไม่มีวันจมน้ำตาย")
-                while Library.Unloaded ~= true do
-                        pcall(ADTick)
-                        task.wait(0.1)
-                end
-        end)
-end
-
 
 MiscBox:AddLabel("Spectator: ")
 
