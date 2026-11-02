@@ -11765,7 +11765,6 @@ local lastYaw = 0
 local printedGround = false
 local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
 local ugLastPose = nil
-local ugLastVel = Vector3.zero -- ★ Anti speed-kick 2026-11-02: velocity ล่าสุดที่ re-assert ทุกจุดของเฟรมให้ "ตรงกับการเคลื่อนที่จริง" (เดิมเขียน velocity = 0 ทั้งที่ตัวเดินไปเรื่อย ๆ = เซิร์ฟเวอร์เห็นลายเซ็น speed hack สะสมจนเตะ)
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
@@ -12218,7 +12217,6 @@ stopUnderground = function()
         end
         ugApplyPose = nil
         ugLastPose = nil
-        ugLastVel = Vector3.zero
         if savedHumanoid and savedHumanoid.Parent then
                 pcall(function()
                         savedHumanoid.AutoRotate = savedAutoRotate
@@ -12270,59 +12268,6 @@ stopUnderground = function()
                                 hum:ChangeState(Enum.HumanoidStateType.Running)
                         end
                 end)
-                -- ★ Anti warp-back 2026-11-02: ตอนเปิดมุดดิน สคริปต์ re-assert CFrame ทุกเฟรม
-                -- (Stepped+Heartbeat) จึงบังคำสั่งแก้ตำแหน่งจากเกม/เซิร์ฟเวอร์ได้ตลอด พอปิด
-                -- คำสั่งที่ค้าง/มาสายจะล้ำหน้าได้ทีเดียว = ตัววาปกลับไปจุดเก่าทันทีที่ปิด (บางที)
-                -- เฝ้าตำแหน่ง 1.2 วิหลังปิด: ถ้าตัวถูกดึงกระชากเกินการเดิน/ตกปกติ หรือไหลกลับ
-                -- แนวนอนทั้งที่ไม่ได้กดเดิน จะดึงกลับมาไว้ที่ผู้เล่นอยู่จริง (เดิน/ตก/กระโดด
-                -- ปกติขยับต่อเฟรมน้อยกว่างบมาก จึงไม่โดนรบกวน)
-                do
-                        local guardChar = char
-                        local guardYaw = yaw
-                        local guardPos = root.Position
-                        local anchorPos = root.Position
-                        local guardStart = tick()
-                        local guardLast = guardStart
-                        task.spawn(function()
-                                while tick() - guardStart < 1.2 do
-                                        task.wait()
-                                        local now = tick()
-                                        local gdt = now - guardLast
-                                        guardLast = now
-                                        local gc = LocalPlayer.Character
-                                        if gc ~= guardChar or Library.Unloaded then
-                                                return
-                                        end
-                                        local ghum = gc and gc:FindFirstChildOfClass("Humanoid")
-                                        local groot = gc and (gc:FindFirstChild("HumanoidRootPart") or gc.PrimaryPart)
-                                        if not groot or not ghum or ghum.Health <= 0 then
-                                                return
-                                        end
-                                        if Misc.Underground or Misc.UndergroundFaceDown or Misc.FreeCam then
-                                                return
-                                        end
-                                        local gpos = groot.Position
-                                        local moving = ghum.MoveDirection.Magnitude > 0.05
-                                        local gstep = (gpos - guardPos).Magnitude
-                                        local gdriftXZ = (Vector3.new(gpos.X, 0, gpos.Z)
-                                                - Vector3.new(anchorPos.X, 0, anchorPos.Z)).Magnitude
-                                        if gstep > 3 + 300 * gdt or (not moving and gdriftXZ > 3) then
-                                                -- โดนดึงจากฝั่งเกม/เซิร์ฟเวอร์ -> คืนตำแหน่งที่ผู้เล่นอยู่จริง
-                                                pcall(function()
-                                                        groot.Anchored = false
-                                                        groot.CFrame = CFrame.new(guardPos)
-                                                                * CFrame.Angles(0, guardYaw, 0)
-                                                        groot.AssemblyLinearVelocity = Vector3.zero
-                                                end)
-                                        else
-                                                guardPos = gpos
-                                                if moving then
-                                                        anchorPos = gpos
-                                                end
-                                        end
-                                end
-                        end)
-                end
         end
         lastGroundY = nil
         lastChar = nil
@@ -12519,8 +12464,7 @@ UpdateUnderground = function(deltaTime)
                         --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
                         --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
                         pcall(function()
-                                -- ★ Anti speed-kick: re-assert velocity ตรงกับการเคลื่อนที่จริง (ไม่ใช่ 0)
-                                r.AssemblyLinearVelocity = ugLastVel
+                                r.AssemblyLinearVelocity = Vector3.zero
                                 r.AssemblyAngularVelocity = Vector3.zero
                                 if ugLastPose then
                                     -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
@@ -12605,10 +12549,8 @@ UpdateUnderground = function(deltaTime)
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            -- ★ Anti speed-kick: ช่วง hold ยังขยับ XZ ตาม input อยู่  velocity ต้องตรงกับที่เดิน
-            ugLastVel = Vector3.new(dir.X * speed, 0, dir.Z * speed)
             pcall(function()
-                root.AssemblyLinearVelocity = ugLastVel
+                root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
             end)
@@ -12624,20 +12566,7 @@ UpdateUnderground = function(deltaTime)
         end
 
         local pos = root.Position + dir * speed * deltaTime
-        -- ★ Anti speed-kick 2026-11-02: จำกัดการแก้แกน Y ต่อเฟรมไม่ให้เกินงบความเร็วเดิน
-        -- (speed * deltaTime) — เดิม ProbeGround ยอมให้ผิวดินเปลี่ยนทีเดียวสูงสุด 12 สตัด
-        -- แล้ว CFrame ตามทันทีในเฟรมเดียว = เซิร์ฟเวอร์เห็นตัวเทเลพอร์ตกระชาก ๆ ระหว่าง
-        -- เดินใต้ดิน สะสมทีละจุดจนโดนเตะ speed hack ตอนนี้ตัวจะไล่ตามผิวดินใหม่
-        -- ทีละนิดแบบเดินจริง (กล้องไม่กระทบ — กล้องใช้ lastGroundY ตรง ๆ ไม่ได้อ่าน
-        -- ตำแหน่ง root)
-        local maxYStep = speed * deltaTime
-        local yStep = targetY - root.Position.Y
-        if yStep > maxYStep then
-                yStep = maxYStep
-        elseif yStep < -maxYStep then
-                yStep = -maxYStep
-        end
-        pos = Vector3.new(pos.X, root.Position.Y + yStep, pos.Z)
+        pos = Vector3.new(pos.X, targetY, pos.Z)
 
         -- ★ Camera fix: หัน root ตามมุมมองที่เราคุมอยู่ (yaw จากกล้อง)
         -- เดิมใช้ทิศเดิน MoveDirection -> ยืนนิ่ง = yaw ค้าง, เดิน = กล้องดีด
@@ -12674,11 +12603,8 @@ UpdateUnderground = function(deltaTime)
                 -- ★ 2026-11-01: คว่ำหน้าลงดินเหมือน Underground Face Down — หมุน -90° แทน +90° (หงายหน้า)
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        -- ★ Anti speed-kick: ส่ง velocity ให้ตรงกับการเคลื่อนที่จริงของเฟรมนี้
-        -- (แกนนอน = ทิศเดิน, แกนดิ่ง = อัตราไล่ผิวดินจริงต่อเฟรม แบบเดินลงเนิน)
-        ugLastVel = Vector3.new(dir.X * speed, yStep / deltaTime, dir.Z * speed)
         pcall(function()
-                root.AssemblyLinearVelocity = ugLastVel
+                root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = pose
         end)
@@ -12728,7 +12654,6 @@ local lastYaw = 0
 local printedGround = false
 local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
 local ugLastPose = nil
-local ugLastVel = Vector3.zero -- ★ Anti speed-kick 2026-11-02: velocity ล่าสุดที่ re-assert ทุกจุดของเฟรมให้ "ตรงกับการเคลื่อนที่จริง" (เดิมเขียน velocity = 0 ทั้งที่ตัวเดินไปเรื่อย ๆ = เซิร์ฟเวอร์เห็นลายเซ็น speed hack สะสมจนเตะ)
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
@@ -13194,7 +13119,6 @@ stopUnderground = function()
         end
         ugApplyPose = nil
         ugLastPose = nil
-        ugLastVel = Vector3.zero
         if savedHumanoid and savedHumanoid.Parent then
                 pcall(function()
                         savedHumanoid.AutoRotate = savedAutoRotate
@@ -13246,59 +13170,6 @@ stopUnderground = function()
                                 hum:ChangeState(Enum.HumanoidStateType.Running)
                         end
                 end)
-                -- ★ Anti warp-back 2026-11-02: ตอนเปิดมุดดิน สคริปต์ re-assert CFrame ทุกเฟรม
-                -- (Stepped+Heartbeat) จึงบังคำสั่งแก้ตำแหน่งจากเกม/เซิร์ฟเวอร์ได้ตลอด พอปิด
-                -- คำสั่งที่ค้าง/มาสายจะล้ำหน้าได้ทีเดียว = ตัววาปกลับไปจุดเก่าทันทีที่ปิด (บางที)
-                -- เฝ้าตำแหน่ง 1.2 วิหลังปิด: ถ้าตัวถูกดึงกระชากเกินการเดิน/ตกปกติ หรือไหลกลับ
-                -- แนวนอนทั้งที่ไม่ได้กดเดิน จะดึงกลับมาไว้ที่ผู้เล่นอยู่จริง (เดิน/ตก/กระโดด
-                -- ปกติขยับต่อเฟรมน้อยกว่างบมาก จึงไม่โดนรบกวน)
-                do
-                        local guardChar = char
-                        local guardYaw = yaw
-                        local guardPos = root.Position
-                        local anchorPos = root.Position
-                        local guardStart = tick()
-                        local guardLast = guardStart
-                        task.spawn(function()
-                                while tick() - guardStart < 1.2 do
-                                        task.wait()
-                                        local now = tick()
-                                        local gdt = now - guardLast
-                                        guardLast = now
-                                        local gc = LocalPlayer.Character
-                                        if gc ~= guardChar or Library.Unloaded then
-                                                return
-                                        end
-                                        local ghum = gc and gc:FindFirstChildOfClass("Humanoid")
-                                        local groot = gc and (gc:FindFirstChild("HumanoidRootPart") or gc.PrimaryPart)
-                                        if not groot or not ghum or ghum.Health <= 0 then
-                                                return
-                                        end
-                                        if Misc.Underground or Misc.UndergroundFaceDown or Misc.FreeCam then
-                                                return
-                                        end
-                                        local gpos = groot.Position
-                                        local moving = ghum.MoveDirection.Magnitude > 0.05
-                                        local gstep = (gpos - guardPos).Magnitude
-                                        local gdriftXZ = (Vector3.new(gpos.X, 0, gpos.Z)
-                                                - Vector3.new(anchorPos.X, 0, anchorPos.Z)).Magnitude
-                                        if gstep > 3 + 300 * gdt or (not moving and gdriftXZ > 3) then
-                                                -- โดนดึงจากฝั่งเกม/เซิร์ฟเวอร์ -> คืนตำแหน่งที่ผู้เล่นอยู่จริง
-                                                pcall(function()
-                                                        groot.Anchored = false
-                                                        groot.CFrame = CFrame.new(guardPos)
-                                                                * CFrame.Angles(0, guardYaw, 0)
-                                                        groot.AssemblyLinearVelocity = Vector3.zero
-                                                end)
-                                        else
-                                                guardPos = gpos
-                                                if moving then
-                                                        anchorPos = gpos
-                                                end
-                                        end
-                                end
-                        end)
-                end
         end
         lastGroundY = nil
         lastChar = nil
@@ -13495,8 +13366,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
                         --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
                         pcall(function()
-                                -- ★ Anti speed-kick: re-assert velocity ตรงกับการเคลื่อนที่จริง (ไม่ใช่ 0)
-                                r.AssemblyLinearVelocity = ugLastVel
+                                r.AssemblyLinearVelocity = Vector3.zero
                                 r.AssemblyAngularVelocity = Vector3.zero
                                 if ugLastPose then
                                     -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
@@ -13581,10 +13451,8 @@ UpdateUndergroundFaceDown = function(deltaTime)
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            -- ★ Anti speed-kick: ช่วง hold ยังขยับ XZ ตาม input อยู่  velocity ต้องตรงกับที่เดิน
-            ugLastVel = Vector3.new(dir.X * speed, 0, dir.Z * speed)
             pcall(function()
-                root.AssemblyLinearVelocity = ugLastVel
+                root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
             end)
@@ -13600,20 +13468,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
         end
 
         local pos = root.Position + dir * speed * deltaTime
-        -- ★ Anti speed-kick 2026-11-02: จำกัดการแก้แกน Y ต่อเฟรมไม่ให้เกินงบความเร็วเดิน
-        -- (speed * deltaTime) — เดิม ProbeGround ยอมให้ผิวดินเปลี่ยนทีเดียวสูงสุด 12 สตัด
-        -- แล้ว CFrame ตามทันทีในเฟรมเดียว = เซิร์ฟเวอร์เห็นตัวเทเลพอร์ตกระชาก ๆ ระหว่าง
-        -- เดินใต้ดิน สะสมทีละจุดจนโดนเตะ speed hack ตอนนี้ตัวจะไล่ตามผิวดินใหม่
-        -- ทีละนิดแบบเดินจริง (กล้องไม่กระทบ — กล้องใช้ lastGroundY ตรง ๆ ไม่ได้อ่าน
-        -- ตำแหน่ง root)
-        local maxYStep = speed * deltaTime
-        local yStep = targetY - root.Position.Y
-        if yStep > maxYStep then
-                yStep = maxYStep
-        elseif yStep < -maxYStep then
-                yStep = -maxYStep
-        end
-        pos = Vector3.new(pos.X, root.Position.Y + yStep, pos.Z)
+        pos = Vector3.new(pos.X, targetY, pos.Z)
 
         -- ★ Camera fix: หัน root ตามมุมมองที่เราคุมอยู่ (yaw จากกล้อง)
         -- เดิมใช้ทิศเดิน MoveDirection -> ยืนนิ่ง = yaw ค้าง, เดิน = กล้องดีด
@@ -13651,11 +13506,8 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 * CFrame.Angles(0, lastYaw, 0)
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        -- ★ Anti speed-kick: ส่ง velocity ให้ตรงกับการเคลื่อนที่จริงของเฟรมนี้
-        -- (แกนนอน = ทิศเดิน, แกนดิ่ง = อัตราไล่ผิวดินจริงต่อเฟรม แบบเดินลงเนิน)
-        ugLastVel = Vector3.new(dir.X * speed, yStep / deltaTime, dir.Z * speed)
         pcall(function()
-                root.AssemblyLinearVelocity = ugLastVel
+                root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = pose
         end)
