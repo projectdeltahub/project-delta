@@ -38,6 +38,15 @@
 --     เปิดเมนูใหม่ = เปิดตาม (เช็คเฉพาะตอนสถานะเมนู "เปลี่ยน" ดังนั้นกด Delete
 --     เก็บเฉพาะหน้าต่าง project-delta ได้เหมือนเดิม) กดปุ่ม Unload = ปลด project-delta ด้วย
 --     ทั้งหมดผ่าน MikoPDWindow ที่เราแทรกโค้ดดึงออกมาตอนโหลดซอร์ส
+-- ★ 2026-11-03 v34 (สลับ 2 UI แบบเรียลไทม์สมูด): แก้จาก v33 ที่ UI ที่สองบางทีตามช้า
+-- [ต้นตอ] v33 ซิงก์ด้วยลูปสำรวจทุก 0.15 วิ = ดีเลสุ่ม 0-150ms ตามจังหวะกดปุ่ม
+--   แถม fade ของหน้าต่าง project-delta ใช้ 0.4 วิ ขณะที่เมนู Miko โผล่/หายทันที
+-- [1] hook ตรงที่ Library.Toggle ของเมนู Miko = กด RightShift ปุ๊บ หน้าต่าง project-delta
+--     เปิด/ปิดตามในเฟรมเดียวกัน (เรียลไทม์ ไม่มีดีเล)
+-- [2] จูน TweenSpeed ของ project-delta จาก 0.4 -> 0.15 วิ (Quad) = fade จบไว เกือบพร้อมเมนู
+-- [3] ลูปสำรอง 0.05 วิ เหลือไว้: ปลด project-delta ตอนกด Unload + รีทาย sync ถ้ากดปุ่มรัว
+--     (ตอนหน้าต่างยัง tween อยู่ Open จะถูกข้าม = จดสถานะไว้รีทายให้แน่ใจว่าตรงกัน)
+-- กด Delete เก็บเฉพาะหน้าต่าง project-delta ยังได้เหมือนเดิม
 local MikoRealPrint = print
 local MikoRealWarn = warn
 pcall(function()
@@ -16052,6 +16061,8 @@ local ProjectDeltaScriptUrl = "https://raw.githubusercontent.com/projectdeltahub
 local ProjectDeltaLoader = {
         Loaded = false,
         Loading = false,
+        PendingSync = nil,
+        ToggleHooked = false,
 }
 
 -- toast ล่างจอ: แจ้งสถานะการโหลด (Obsidian Notify ถูกปิดเสียงไว้ทั้งตัวจึงต้องทำเอง)
@@ -16094,11 +16105,58 @@ local function ShowProjectDeltaToast(message, seconds)
 end
 
 
--- ★ 2026-11-03 v33: ซิงก์จับคู่ 2 UI — ปิดเมนู Miko (RightShift) = หน้าต่าง Project Delta
--- ปิดตาม, เปิดเมนูใหม่ = เปิดตาม (เช็คเฉพาะตอนสถานะเมนู Miko "เปลี่ยน" เท่านั้น
--- ดังนั้นกด Delete เก็บเฉพาะหน้าต่าง Project Delta ยังได้ตามปกติ)
--- กดปุ่ม Unload ในเมนู Miko = ปลด Project Delta ออกตามไปด้วย
+-- ★ 2026-11-03 v34: สลับ 2 UI แบบเรียลไทม์สมูด — hook ตรงปุ่ม RightShift (0ms)
+-- + จูน fade หน้าต่าง Project Delta จาก 0.4s เหลือ 0.15s ให้จบไวเท่เมนู Miko
+-- + ลูปสำรอง 0.05s ไว้ปลด project-delta ตอน Unload และรีทายถ้ากดปุ่มรัว
 local ProjectDeltaSyncStarted = false
+
+-- จูนความเร็ว animation ของ UI Project Delta (เดิม 0.4s Exponential = ช้ากว่าเมนู Miko)
+local function ProjectDeltaApplySpeed()
+        pcall(function()
+                local pdLib = (getgenv and getgenv() or _G).Library
+                if pdLib then
+                        pdLib.TweenSpeed = 0.15
+                        pdLib.TweenStyle = Enum.EasingStyle.Quad
+                end
+        end)
+end
+
+-- ซิงก์ทันที: เรียกทุกครั้งที่เมนู Miko ถูกเปิด/ปิด (ผ่าน hook ปุ่ม = เรียลไทม์)
+local function ProjectDeltaSyncNow()
+        pcall(function()
+                local pdWindow = (getgenv and getgenv() or _G).MikoPDWindow
+                if pdWindow and type(pdWindow.Open) == "function" then
+                        local mikoShown = (Library.Toggled == true)
+                        if pdWindow.Visible ~= mikoShown then
+                                pcall(function()
+                                        pdWindow.Open()
+                                end)
+                        end
+                        -- ถ้าตอนนั้นยัง tween อยู่ Open จะถูกข้าม = จดไว้ให้ลูปสำรองรีทาย
+                        if pdWindow.Visible ~= mikoShown and pdWindow.Tweening then
+                                ProjectDeltaLoader.PendingSync = mikoShown
+                        else
+                                ProjectDeltaLoader.PendingSync = nil
+                        end
+                end
+        end)
+end
+
+-- hook ตรงที่ Library.Toggle ของเมนู Miko = ทุกครั้งที่กด RightShift ซิงก์เลย ไม่ต้องรอลูป
+local function ProjectDeltaInstallToggleHook()
+        if ProjectDeltaLoader.ToggleHooked then
+                return
+        end
+        local oldToggle = Library.Toggle
+        if type(oldToggle) ~= "function" then
+                return
+        end
+        ProjectDeltaLoader.ToggleHooked = true
+        Library.Toggle = function(self, value)
+                oldToggle(self, value)
+                ProjectDeltaSyncNow()
+        end
+end
 
 local function StartProjectDeltaSync()
         if ProjectDeltaSyncStarted then
@@ -16108,7 +16166,7 @@ local function StartProjectDeltaSync()
         task.spawn(function()
                 local lastMikoShown = nil
                 while ProjectDeltaLoader.Loaded do
-                        task.wait(0.15)
+                        task.wait(0.05)
                         local stopLoop = false
                         pcall(function()
                                 local pdEnv = (getgenv and getgenv() or _G)
@@ -16132,16 +16190,21 @@ local function StartProjectDeltaSync()
 
                                 local pdWindow = pdEnv.MikoPDWindow
                                 if pdWindow and type(pdWindow.Open) == "function" then
-                                        -- ซิงก์เฉพาะตอนสถานะเมนู Miko เปลี่ยน (edge-triggered)
-                                        -- = กด Delete ปิดเฉพาะหน้าต่าง Project Delta เองไม่โดนเปิดคืน
-                                        local mikoShown = (Library.Toggled == true)
-                                        if lastMikoShown ~= nil and mikoShown ~= lastMikoShown then
-                                                local pdShown = (pdWindow.Visible == true)
-                                                if pdShown ~= mikoShown then
+                                        -- รีทายที่ค้างจากตอนกดรัว (Open โดนข้ามเพราะยัง tween อยู่)
+                                        if ProjectDeltaLoader.PendingSync ~= nil and not pdWindow.Tweening then
+                                                local pdDesired = ProjectDeltaLoader.PendingSync
+                                                ProjectDeltaLoader.PendingSync = nil
+                                                if pdWindow.Visible ~= pdDesired then
                                                         pcall(function()
                                                                 pdWindow.Open()
                                                         end)
                                                 end
+                                        end
+
+                                        -- กันเหนียว: สถานะเมนูเปลี่ยนโดยไม่ผ่าน hook = ซิงก์ตาม
+                                        local mikoShown = (Library.Toggled == true)
+                                        if lastMikoShown ~= nil and mikoShown ~= lastMikoShown then
+                                                ProjectDeltaSyncNow()
                                         end
                                         lastMikoShown = mikoShown
                                 end
@@ -16153,6 +16216,8 @@ local function StartProjectDeltaSync()
                 ProjectDeltaSyncStarted = false
         end)
 end
+
+
 
 MiscBox:AddDivider()
 MiscBox:AddToggle("LoadProjectDelta", {
@@ -16205,6 +16270,8 @@ MiscBox:AddToggle("LoadProjectDelta", {
                         ProjectDeltaLoader.Loading = false
                         if ok then
                                 ProjectDeltaLoader.Loaded = true
+                                ProjectDeltaApplySpeed()
+                                ProjectDeltaInstallToggleHook()
                                 StartProjectDeltaSync()
                                 ShowProjectDeltaToast("Project Delta script loaded! (ปิดเมนู Miko = ปิดทั้ง 2 UI)", 5)
                         else
