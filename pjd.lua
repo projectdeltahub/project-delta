@@ -4,6 +4,27 @@
         Build: 2026-08-17bn (credits Made by Yuki)
 ]]
 
+-- ★ 2026-11-02 v29 (F9 เงียบสนิท — ตามที่ผู้ใช้ขอ): ไม่พิมพ์อะไรขึ้นคอนโซล F9 เลย
+-- ทั้งตัวอักษรขาว ([Miko] ... / [Miko][SRC] ...) ข้อความตอนเปิด/ปิดมุดดิน และแบนเนอร์ทุกบรรทัด
+-- (ปิดที่ปากท่อตัวเดียว = เงียบทั้งไฟล์ ไม่ต้องไล่แก้ print ทีละจุด)
+-- ส่วน error แดงของเกม (FPS:1044) ปิดต้นตอแยกที่สายยิงด้านล่าง: คืนค่า CreateBullet
+-- ให้ครบทุกเส้นทาง ห้ามคืน nil เด็ดขาด (เกมอ่าน v88.y ทันทีที่ได้ค่ากลับ = แดงทุกครั้ง)
+-- ถ้าอยากเห็นข้อความ debug อีกครั้ง: ตั้ง _G.MikoVerbose = true ก่อนรันสคริปต์
+local MikoRealPrint = print
+local MikoRealWarn = warn
+pcall(function()
+        print = function(...)
+                if _G.MikoVerbose == true then
+                        MikoRealPrint(...)
+                end
+        end
+        warn = function(...)
+                if _G.MikoVerbose == true then
+                        MikoRealWarn(...)
+                end
+        end
+end)
+
 local repo = "https://raw.githubusercontent.com/deividcomsono/Obsidian/main/"
 local UI_CACHE_FOLDER = "Miko Hub"
 
@@ -270,6 +291,107 @@ pcall(function()
 end)
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
+
+-- ★ 2026-11-01 v21 (Error Hunter): จากภาพคอนโซลล่าสุด error ใหม่ล้นจอ
+-- ":14781: attempt to index nil with 'Disconnect'" 2939 ครั้ง = มีโค้ดตัวไหนสักตัว
+-- พัง "ทุกเฟรม" ตอนเรียก :Disconnect() บนค่า nil — สคริปต์เราปลอดภัย (ทุกจุด Disconnect
+-- ในไฟล์นี้มี if เช็ค nil + pcall ครบแล้ว) ดังนั้นตัวพังคือ [ก] hook __namecall ที่ v20
+-- ติดตั้ง (ครอบการเรียกเมธอด "ทุกครั้ง" ของทั้งเกม เสี่ยงชนโค้ดเกมเอง) หรือ [ข] สคริปต์
+-- ของเกมเอง crash ทุกเฟรม — ถ้าเป็นกรณี [ข] และโค้ดที่พังอยู่ในสายคอมแบต = นี่คือสาเหตุ
+-- ที่ "ยิงโดนแต่ดาเมจไม่เข้า" ด้วย (สายส่งดาเมจ crash ก่อนส่ง remote ถึง server)
+-- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
+-- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
+-- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
+print("[Miko] v30 (ตัดของหนัก แก้เกมค้าง): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — ถอดระบบวินิจฉัยยุคตามดาเมจ (v23-v26) ที่หนักเครื่องออกทั้งชุด เหลือแกนมุดดิน + จุดยิงล่องหน = เบาลงมาก ยิงต่อเนื่องไม่ค้าง")
+-- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
+-- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
+-- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
+-- ลอยใต้ดินไม่มีวันโดนอะไรและไม่มีวันจบ = งานจำลองค้างสะสมทุกเฟรมจนเกมค้าง
+-- v28 แก้โดย hook ฟังก์ชันจุดยิงของเกม "เฉพาะตอนมุดดิน" ให้กระสุนเริ่มที่ระดับตา
+-- เหนือผิวดิน = แก้ที่ "ข้อมูลจุดยิง" อย่างเดียว ตัวละครไม่ขยับแม้นิดเดียว
+-- ไม่มีอะไรเห็น ไม่มีอะไรส่งขึ้นเซิร์ฟเวอร์ (ต่างจาก v12-v26 ที่ยกตัวจริงขึ้น)
+-- ถ้าอยากกลับไปยกตัวตอนยิงแบบเดิม: พิมพ์ _G.MikoUG_NoPopUp = false ในคอนโซล
+_G.MikoUG_NoPopUp = true
+-- ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12 (กันไว้สำหรับเส้นอื่นที่ยังยกตัว)
+_G.MikoUG_StealthServer = true
+_G.MikoUG2_StealthServer = true
+task.delay(4, function()
+        local ugRoots = {}
+        local function ugAddRoot(ugInst, ugLabel)
+                if ugInst then
+                        ugRoots[#ugRoots + 1] = { ugInst, ugLabel }
+                end
+        end
+        pcall(function() ugAddRoot(ReplicatedStorage, "ReplicatedStorage") end)
+        pcall(function() ugAddRoot(game:GetService("ReplicatedFirst"), "ReplicatedFirst") end)
+        pcall(function() ugAddRoot(game:GetService("StarterGui"), "StarterGui") end)
+        pcall(function() ugAddRoot(game:GetService("StarterPack"), "StarterPack") end)
+        pcall(function() ugAddRoot(game:GetService("StarterPlayer"), "StarterPlayer") end)
+        pcall(function() ugAddRoot(LocalPlayer and LocalPlayer:FindFirstChild("PlayerGui"), "PlayerGui") end)
+        pcall(function() ugAddRoot(LocalPlayer and LocalPlayer:FindFirstChild("PlayerScripts"), "PlayerScripts") end)
+        pcall(function() ugAddRoot(LocalPlayer and LocalPlayer:FindFirstChildOfClass("Backpack"), "Backpack") end)
+        pcall(function() ugAddRoot(LocalPlayer and LocalPlayer.Character, "Character") end)
+        pcall(function() ugAddRoot(workspace, "workspace") end)
+        pcall(function() ugAddRoot(Lighting, "Lighting") end)
+
+        local ugErrLine = 14781
+        local ugScanCount = 0
+        local ugFound = 0
+        local ugTop3 = {} -- สคริปต์ยาวสุด 3 อันดับ (ไว้เทียบตอนไม่เจอตัวตรง)
+        for _, ugR in ipairs(ugRoots) do
+                local okDesc, ugDescs = pcall(function()
+                        return ugR[1]:GetDescendants()
+                end)
+                if okDesc and type(ugDescs) == "table" then
+                        for _, ugObj in ipairs(ugDescs) do
+                                local ugClass = ugObj.ClassName
+                                if ugClass == "ModuleScript" or ugClass == "LocalScript" or ugClass == "Script" then
+                                        ugScanCount += 1
+                                        local okSrc, ugSrc = pcall(function()
+                                                return ugObj.Source
+                                        end)
+                                        if okSrc and type(ugSrc) == "string" and #ugSrc > 0 then
+                                                local ugNorm = ugSrc:gsub("\r\n", "\n")
+                                                local ugLines = string.split(ugNorm, "\n")
+                                                local ugTotal = #ugLines
+                                                table.insert(ugTop3, { ugTotal, ugObj.Name .. " (" .. ugClass .. ")" })
+                                                table.sort(ugTop3, function(a, b)
+                                                        return a[1] > b[1]
+                                                end)
+                                                if #ugTop3 > 3 then
+                                                        table.remove(ugTop3)
+                                                end
+                                                if ugTotal >= ugErrLine and ugFound < 6 then
+                                                        ugFound += 1
+                                                        local ugPath = ugObj.Name
+                                                        local ugWalk, ugDepth = ugObj, 0
+                                                        while ugWalk.Parent and ugDepth < 8 do
+                                                                ugWalk = ugWalk.Parent
+                                                                ugPath = ugWalk.Name .. "/" .. ugPath
+                                                                ugDepth += 1
+                                                        end
+                                                        print(("[Miko] v21 scan: เจอตัวต้องสงสัย #%d = %s (%s) รวม %d บรรทัด @ %s"):format(
+                                                                ugFound, ugObj.Name, ugClass, ugTotal, ugPath))
+                                                        print("[Miko] v21 scan: บรรทัด 14781 มีคำ Disconnect ในตัว = "
+                                                                .. tostring(ugLines[ugErrLine]:lower():find("disconnect", 1, true) ~= nil))
+                                                        for j = ugErrLine - 3, math.min(ugTotal, ugErrLine + 3) do
+                                                                print(("[Miko] v21 %s%d| %s"):format(j == ugErrLine and ">>" or "  ", j, ugLines[j]))
+                                                        end
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end
+        print("[Miko] v21 scan: ตรวจแล้ว " .. ugScanCount .. " สคริปต์ — เจอตัวที่ยาวถึงบรรทัด 14781 = " .. ugFound .. " ตัว")
+        for ugRank, ugRec in ipairs(ugTop3) do
+                print(("[Miko] v21 scan: สคริปต์ยาวสุดอันดับ %d = %s (%d บรรทัด)"):format(ugRank, ugRec[2], ugRec[1]))
+        end
+        if ugFound == 0 then
+                print("[Miko] v21 scan: ไม่มีสคริปต์เกมฝั่ง client ยาวถึง 14781 — error น่าจะมาจาก chunk ที่ loadstring (สคริปต์อื่นในเครื่อง/ตัวเอง) สังเกตด้วยว่าพอปิด logger v20 แล้ว error :14781 เบาลงไหม")
+        end
+end)
 
 local function AttachOverlayGui(gui)
         if not gui then
@@ -909,7 +1031,7 @@ local ugBulletRetry = 0    -- นับจำนวนครั้งลอง�
 local ugHookSeenPrinted = false -- พิมพ์ครั้งเดียว: เกมเรียก hook จริง (fix v4)
 local ugTargetPrinted = false -- พิมพ์ครั้งเดียว: silent aim ล็อกเป้าสำเร็จ (fix v4)
 local ugDiagCount = 0 -- นับช็อตมุดดินที่พิมพ์ค่า diagnostic (fix v8 - พิมพ์แค่ 5 ช็อตแรก)
-local ugSourceDumped = false -- [Miko][SRC] พิมพ์โค้ดเกมรอบ error FPS:1044 ครั้งเดียว (fix v8)
+local ugSourceDumped = true -- ★ 2026-11-02 v30: ปิดดัมพ์ [Miko][SRC] ตลอด (งาน decompile/สแกนซอร์สหนักตอนยิงนัดแรก ไม่จำเป็นแล้ว)
 local ugLiftPrinted = false -- พิมพ์ครั้งเดียวว่ายกตัวขึ้นเท่าไรตอนยิง (fix v8)
 
 pcall(function()
@@ -947,14 +1069,16 @@ local function GetAiCharacters()
         return ai
 end
 
--- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace ใช้เมื่อ AiZones/Players ไม่เจอเป้า
--- ★ FPS fix 2026-11-01: ย้ายการสแกนออกจาก "สายยิง" — เดิมทุกนัดที่ไม่เจอเป้าจะ
--- workspace:GetDescendants() ทั้งแมพ "ใน hook ยิง" (แมพใหญ่ = FPS ตกหนัก/เกมค้าง
--- เวลากดยิงรัว) ตอนนี้ background task สแกนล่วงหน้าทุก 2.5 วิ เฉพาะตอน Silent Aim
--- เปิด แล้วตอนยิงใช้แคชอย่างเดียว (เป้าที่ตายแล้วถูก IsSilentAlive กรองทิ้งตามเดิม)
+-- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace (cache 1 วินาที) ใช้เมื่อ
+-- AiZones/Players ไม่เจอเป้า — หลักการเดียวกับ fallback ของ ScanNPCs
 local ugNpcFallbackCache = nil
 local ugNpcFallbackAt = 0
-local function BuildSilentNpcFallback()
+local function GetSilentNpcFallback()
+        local now = os.clock()
+        if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 1 then
+                return ugNpcFallbackCache
+        end
+
         local list = {}
         local seen = {}
         local cam = workspace.CurrentCamera
@@ -978,29 +1102,11 @@ local function BuildSilentNpcFallback()
                         end
                 end
         end
+
+        ugNpcFallbackCache = list
+        ugNpcFallbackAt = now
         return list
 end
-
--- ตอนยิง: ใช้แคชเท่านั้น ไม่สแกนในสายยิงอีกต่อไป
-local function GetSilentNpcFallback()
-        if ugNpcFallbackCache then
-                return ugNpcFallbackCache
-        end
-        return {}
-end
-
-task.spawn(function()
-        while Library.Unloaded ~= true do
-                if SilentAim.Enabled and (os.clock() - ugNpcFallbackAt) >= 2.5 then
-                        local okFallback, list = pcall(BuildSilentNpcFallback)
-                        if okFallback and type(list) == "table" then
-                                ugNpcFallbackCache = list
-                                ugNpcFallbackAt = os.clock()
-                        end
-                end
-                task.wait(1)
-        end
-end)
 
 -- ★ Silent Aim fix v4: ค้นหาโมดูล Bullet แบบไล่ค้นทั้ง ReplicatedStorage
 -- ใช้เมื่อพาธเดิม (Modules.FPS.Bullet) ไม่ตรงกับเกมปัจจุบัน
@@ -1271,6 +1377,895 @@ local function IsWorldWallPart(part)
         return not IsHumanoidPart(part)
 end
 
+-- ★ 2026-11-01 v14 (ยิงโดนคนเปิดมุดดิน): หมุดนิรนาม "บนแนว crosshair ของกล้อง"
+-- จาก log ผู้เล่น: error FPS:1044 = "attempt to index nil with 'y'" คือเกมยิง ray
+-- ตามแนวเล็งแล้ว "ไม่โดนอะไรเลย" (nil) แล้วไปอ่าน .y ของผลลัพธ์ = พัง
+-- → เกม fallback ยิงตาม crosshair = พลาดทุกนัด
+-- ตอนเปิด Face Down กล้องจมอยู่ใต้ผิวดิน แนวมองระดับพื้นวิ่งอยู่ใน "โพรงใต้ดิน"
+-- ที่ว่างเปล่า ray จึงไม่เจอทั้งภูเขาทั้งตึก = nil ทุกนัด (v13 เดิมวางหมุดตามแนว
+-- กระสุนใต้ดินใกล้เป้า แต่ ray ของเกมวิ่งตามแนว "กล้อง" ไม่ใช่แนวกระสุน จึงไม่โดน
+-- หมุดและยัง nil เหมือนเดิม)
+-- วิธีแก้ v14: วาง Part ล่องหน (CanQuery=true, CanCollide=true, CanTouch=false)
+-- บนแนวมองกล้อง "เลยเป้าออกไป 15 หน่วย" — ray ตาม crosshair ของเกมจะโดนหมุดนี้
+-- ไม่คืน nil และเพราะอยู่ไกลกว่าหัวเป้า กระสุนจะโดนหัวเป้าก่อนเสมอ
+-- (CanCollide=true เพราะ ray ของเกมอาจตั้ง RespectCanCollide แล้วข้าม part ที่
+--  CanCollide=false ทิ้ง — สาเหตุที่หมุดรุ่น v13 ไม่เวิร์ก)
+-- สร้างฝั่ง client คนอื่น/เซิร์ฟเวอร์ไม่เห็น และเลื่อนตามกล้องตลอดช่วง hold ยิง
+local ugBuriedAnchor = nil
+local ugAnchorAheadDist = nil
+local function ugGetBuriedAnchor()
+        if ugBuriedAnchor and ugBuriedAnchor.Parent then
+                return ugBuriedAnchor
+        end
+        local part = Instance.new("Part")
+        part.Name = "MikoUGBuriedRayAnchor"
+        part.Size = Vector3.new(8, 8, 8)
+        part.Transparency = 1
+        part.Anchored = true
+        part.CanCollide = true
+        part.CanTouch = false
+        part.CanQuery = true
+        part.CastShadow = false
+        part.Parent = workspace
+        ugBuriedAnchor = part
+        return part
+end
+
+local function ugSetBuriedAnchor(position, aheadDist)
+        local part = ugGetBuriedAnchor()
+        if part then
+                pcall(function()
+                        part.CFrame = CFrame.new(position)
+                end)
+                if typeof(aheadDist) == "number" then
+                        ugAnchorAheadDist = aheadDist
+                end
+        end
+end
+
+-- เลื่อนหมุดตามแนวมองกล้องปัจจุบัน (ลูปกล้อง UG/FD เรียกทุกเฟรมช่วง hold ยิง)
+_G.MikoUG_RefreshBuriedAnchor = function()
+        if not ugAnchorAheadDist or ugAnchorAheadDist <= 0 then
+                return
+        end
+        local part = ugGetBuriedAnchor()
+        local ugCam = workspace.CurrentCamera
+        if part and ugCam then
+                local ugLook = ugCam.CFrame.LookVector
+                if ugLook.Magnitude > 1e-4 then
+                        pcall(function()
+                                part.CFrame = CFrame.new(
+                                        ugCam.CFrame.Position + ugLook.Unit * ugAnchorAheadDist
+                                )
+                        end)
+                end
+        end
+end
+
+-- หมดช่วงยิง = เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่นเดินชนกล่องล่องหนโดยไม่รู้ตัว
+_G.MikoUG_ParkBuriedAnchorIfIdle = function()
+        if not ugAnchorAheadDist then
+                return
+        end
+        ugAnchorAheadDist = nil
+        local part = ugGetBuriedAnchor()
+        if part then
+                pcall(function()
+                        part.CFrame = CFrame.new(0, -5000, 0)
+                end)
+        end
+end
+
+-- ★ 2026-11-01 v15 (ยิงไม่โดนคนมุดดิน — จับต้นตอ error FPS:1044 ได้แล้ว):
+-- จากคอนโซลผู้เล่น (ภาพล่าสุด): "ทุกนัดที่ยิง" ตอนเปิดโหมดมุดดิน เกม crash ที่
+-- ReplicatedStorage.Modules.FPS:1044 "attempt to index nil with 'y'" — แม้แต่นัด
+-- ที่เป้าไม่ได้มุดดิน (buried=false) ก็ crash เหมือนกัน แสดงว่าไม่ใช่ปัญหา "เป้าใต้ดิน"
+-- แต่เป็นปัญหาที่ hook "แทนที่ finalAim ด้วยตารางใหม่ {CFrame=...} ซึ่งขาดฟิลด์
+-- ที่เกมอ่าน" (v7 เคยสรุปไว้แล้วว่าเกมอ่าน "position ใน finalAim") เกม crash
+-- กลางทางทุกนัดแล้ว fallback ยิงตาม crosshair จากปากกระบอกที่ลอยเหนือดิน
+-- = กระสุนลอยเหนือผิวดินทั้งนัด ไม่เคยดิ่งลงไปโดนคนมุดดินเลย
+-- v15 แก้โดย "คงโครงสร้างเดิมของ aimPart ไว้ทุกฟิลด์" แล้ว override เฉพาะ
+-- CFrame (แนวยิงเข้าหาเป้า) กับ Position (จุดเกิดกระสุนระดับตาเหนือผิวดิน —
+-- สูตร v7 ที่พิสูจน์แล้ว) โดยรักษารูปแบบข้อมูลเดิม (Vector3 หรือตาราง {x,y,z})
+-- เกมจะได้ struct ครบเหมือนเดิมทุกอย่าง ไม่ crash กระสุนออกตามแนวที่สั่งจริง
+-- จึงดิ่งลงใต้ดินไปโดนเป้าได้ (เกมทะลุดินได้ พิสูจน์แล้วตั้งแต่ยุค v7)
+local ugAimProxy = nil
+local function ugGetAimProxy()
+        if ugAimProxy and ugAimProxy.Parent then
+                return ugAimProxy
+        end
+        local part = Instance.new("Part")
+        part.Name = "MikoUGAimProxy"
+        part.Size = Vector3.new(0.4, 0.4, 0.4)
+        part.Transparency = 1
+        part.Anchored = true
+        part.CanCollide = false
+        part.CanTouch = false
+        -- CanQuery=false = ห้าม ray ทั้งของเกมและของสคริปต์โดน part นี้
+        -- (มันอยู่ตรงจุดเกิดกระสุน ถ้าโดน ray จะสแดชทันที)
+        part.CanQuery = false
+        part.CastShadow = false
+        part.Parent = workspace
+        ugAimProxy = part
+        return part
+end
+
+local function ugBuildAimOverride(aimPart, origin, aimPoint)
+        local aimCFrame = CFrame.new(origin, aimPoint)
+        -- เดิมเป็นตาราง: คัดลอกฟิลด์เดิมให้ครบ (เกมอ่านฟิลด์อื่นด้วย เช่น position)
+        if typeof(aimPart) == "table" then
+                local newAim = {}
+                for k, v in pairs(aimPart) do
+                        newAim[k] = v
+                end
+                -- struct บางแบบใช้ metatable __index ฟิลด์จึงไม่โผล่ตอน pairs — ดึงคีย์ยอดนิยมเพิ่ม
+                for _, k in {"CFrame", "Position", "position", "Origin", "origin", "Direction", "direction", "Look", "look", "Target", "target", "Aim", "aim"} do
+                        if newAim[k] == nil then
+                                local okV, v = pcall(function()
+                                        return aimPart[k]
+                                end)
+                                if okV and v ~= nil then
+                                        newAim[k] = v
+                                end
+                        end
+                end
+                newAim.CFrame = aimCFrame
+                -- จุดเกิดกระสุน = ระดับตาเหนือผิวดิน (รักษารูปแบบเดิมของฟิลด์)
+                local ugOldPos = newAim.Position
+                if typeof(ugOldPos) == "table" and type(ugOldPos.x) == "number" then
+                        newAim.Position = { x = origin.X, y = origin.Y, z = origin.Z }
+                elseif typeof(ugOldPos) == "Vector3" then
+                        newAim.Position = origin
+                end
+                local ugOldPos2 = newAim.position
+                if typeof(ugOldPos2) == "table" and type(ugOldPos2.x) == "number" then
+                        newAim.position = { x = origin.X, y = origin.Y, z = origin.Z }
+                elseif typeof(ugOldPos2) == "Vector3" then
+                        newAim.position = origin
+                end
+                return newAim
+        end
+        -- เดิมเป็น Part: ยืม part ล่องหนวางที่จุดยิงระดับตา หันเข้าเป้า
+        -- (เกมอ่าน .Position จุดเกิดกระสุน + .CFrame แนวยิง จาก part นี้แทน)
+        if typeof(aimPart) == "Instance" and aimPart:IsA("BasePart") then
+                local proxy = ugGetAimProxy()
+                if proxy then
+                        pcall(function()
+                                proxy.CFrame = aimCFrame
+                        end)
+                        return proxy
+                end
+        end
+        return { CFrame = aimCFrame, Position = origin, position = origin }
+end
+
+-- ★ 2026-11-01 v17 (อ่านซอร์สเกมจริงจาก dump ของผู้เล่น — เจอต้นตอที่แท้จริง 2 จุด):
+-- [1] FPS:1044 "attempt to index nil with 'y'" = เกมอ่าน v88.y.Value โดย v88 = ค่า
+--     return ตัวที่ 4 ของ Bullet:CreateBullet = RecoilPattern (ซอร์ส Bullet บรรทัด
+--     266-280: v83 = v76.RecoilPattern:FindFirstChild(tostring(หมายเลขนัดยิง)) —
+--     เมื่อหมายเลขนัดยิงเกินจำนวน pattern ที่ปืนมี = ได้ nil = crash) และมันเกิด
+--     "หลัง" กระสุนถูกยิงออกไปแล้ว ไม่เกี่ยวกับ aimPart ที่เราส่งเลยแม้แต่นิดเดียว
+-- [2] ทิศกระสุน = aimPart.CFrame.LookVector (เกมอ่านที่ Bullet บรรทัด 364) แต่
+--     "จุดเริ่ม ray ของกระสุน" = FunctionLibraryExtension:GetEstimatedCameraPosition
+--     (Bullet บรรทัด 382) ซึ่งตอนยิงตัวถูกยกขึ้น "เหนือผิวดิน" และเกมนี้กระสุน
+--     ทะลุ Terrain ไม่ได้ (โดนดิน = ตาย/เด้งทันที บรรทัด 544-591) ray จึงตายที่
+--     ผิวดินก่อนถึงหัวเป้ามุดดินทุกนัด = สาเหตุจริงที่ "ยิงเป้ามุดดินไม่เคยโดน"
+-- v17 แก้: hook GetEstimatedCameraPosition — เฉพาะนัดที่เป้าเป็น "คนมุดดิน"
+--     บังคับจุดเริ่ม ray ลงไป "ใต้ผิวดินข้างหัวเป้า" (ระดับเดียวกับหัวเป้า ถอยหลัง
+--     1-3 หน่วย = อยู่ในโพรงว่างใต้ดินตรงตัวเป้าพอดี) กระสุนวิ่งในโพรงเข้าหาหัว
+--     เป้า ไม่เจอดินเลย = โดน แล้วปลด hook ทันทีหลัง CreateBullet คืนค่า (กระสุน
+--     อ่านจุดเริ่มแค่ตอนสร้างครั้งเดียว ไม่กระทบนัดอื่น / คนยืนปกติเหมือนเดิมทุกอย่าง)
+local ugTick = tick
+local ugUnderRayUntil = 0
+local ugUnderRayOrigin = nil
+pcall(function()
+        local ugMods = ReplicatedStorage:FindFirstChild("Modules")
+        local ugFLE = ugMods and ugMods:FindFirstChild("FunctionLibraryExtension")
+        if ugFLE and ugFLE:IsA("ModuleScript") then
+                local ugFLEMod = require(ugFLE)
+                if type(ugFLEMod) == "table" and type(ugFLEMod.GetEstimatedCameraPosition) == "function" then
+                        local ugBypassEst = ugFLEMod.GetEstimatedCameraPosition
+                        local function ugNewGetEst(self, player)
+                                if ugUnderRayOrigin and ugTick() < ugUnderRayUntil then
+                                        return ugUnderRayOrigin
+                                end
+                                return ugBypassEst(self, player)
+                        end
+                        local ugEstDone = false
+                        if typeof(hookfunction) == "function" then
+                                local okEst, hookedEst = pcall(hookfunction, ugBypassEst, ugNewGetEst)
+                                if okEst and typeof(hookedEst) == "function" then
+                                        -- hookfunction แทนที่ตัวเดิมในตารางโมดูลแล้ว (เกมเรียกผ่านตาราง = เข้า hook เอง)
+                                        -- hookedEst = ตัวหลบ hook สำหรับเรียกของเดิมตรง ๆ (กัน recursion)
+                                        ugBypassEst = hookedEst
+                                        ugEstDone = true
+                                end
+                        end
+                        if not ugEstDone then
+                                ugFLEMod.GetEstimatedCameraPosition = ugNewGetEst
+                                ugEstDone = true
+                        end
+                        print("[Miko] UG v18: hook GetEstimatedCameraPosition (จุดเริ่ม ray กระสุน) ติดตั้งแล้ว")
+                end
+        end
+end)
+
+-- ★ 2026-11-01 v18 (ยิงโดนแล้ว "แต่ดาเมจไม่เข้า" — ตัดต้นตอ FPS:1044 ที่ยังเหลือ):
+-- จากภาพคอนโซลล่าสุด (14:59) error FPS:1044 ยังโผล่ "ทุกนัดที่ยิง" — จุดตายคือเกม
+-- อ่านค่า return ตัวที่ 4 ของ Bullet:CreateBullet (= RecoilPattern ของนัดยิงนั้น)
+-- ทันทีที่ได้ค่ากลับ (v88.y.Value) ถ้าเป็น nil = crash "attempt to index nil with 'y'"
+-- แล้วโค้ดส่วน "คิด/ส่งดาเมจ" ที่อยู่ถัดจากบรรทัดนั้นไม่เคยทำงาน = เห็นกระสุนปลิว
+-- ทรายโดน มาร์กขึ้น แต่เลือดเป้าไม่ลดเลย (ยิงโดนแต่ดาเมจไม่เข้า)
+-- ต้นตอ 3 ทางที่พบ (แก้ครบ): [1] NoRecoil เดิมแทนที่ "หมายเลขนัดยิง" (param ตัวที่ 9
+--     เป็นตัวเลข) ด้วยตาราง {0,0,0,0} → เกม FindFirstChild(tostring(ตาราง)) หาไม่เจอ
+--     → คืน nil ทุกนัด; [2] hook เก็บค่า return แค่ 4 ตัว (r1..r4) ถ้าเกมคืนมากกว่านั้น
+--     ตัวที่เกินหายหมด → nil; [3] เกมหา pattern นัดที่เกินจำนวนที่ปืนมีไม่เจอเอง
+-- v18 แก้: ห้ามแตะ param ตัวเลข + เก็บค่า return "ครบทุกตัว" (table.pack/unpack) +
+--     ถ้าค่าตัวที่ 4 เป็น nil เติม pattern จริงจากโฟลเดอร์ RecoilPattern ของปืน (หรือ
+--     ของสังเคราะห์ x/y = 0 ถ้าหาไม่เจอ) เกมอ่านต่อได้ = ดาเมจเข้าปกติทุกนัด
+-- ★ 2026-11-01 v19 (ยิงโดนแล้ว "ดาเมจไม่เข้า" — จากภาพคอนโซลล่าสุดเจอ error ตัวจริง):
+-- error เก่า FPS:1044 หายไปแล้ว (v18 ซ่อม RecoilPattern สำเร็จ) แต่เจอ error ใหม่
+-- "ทุกนัดที่ยิง": FPS:904 "invalid argument #2 to 'random' (interval is empty)"
+-- ใน RangedWeaponDefault = เกมเรียก math.random(ต่ำ, สูง) แต่ค่าที่คำนวณได้กลับด้าน
+-- (ต่ำ > สูง) ช่วงสุ่มจึงว่าง → เกม crash กลางขั้นตอน "คิด/ส่งดาเมจหลังกระสุนโดน"
+-- ทุกนัด = เห็น hit marker แต่เลือดเป้าไม่ลด (ยิงโดนแต่ดาเมจไม่เข้า)
+-- แนวโน้มต้นเขื่อม: ช็อตมุดดินบังคับทิศกระสุนลงใต้ดิน (เบี่ยงจากกล้องมาก) เกมคิดค่า
+-- spread/ความคลาดเคลื่อนจากมุมนั้นแล้วติดลบ → ช่วง random ว่าง
+-- v19 แก้: กันดาม math.random ทั่วเกม — ถ้าช่วงว่างให้สลับ a,b ให้เกมเอง (ช็อตไม่
+-- crash โค้ดส่วนดาเมจทำงานต่อจนดาเมจเข้า) พร้อมพิมพ์ "บรรทัดต้นทาง + ค่าจริง"
+-- ออกคอนโซล ถ้าดาเมจยังไม่เข้า ภาพบรรทัด [Miko] v19 random-guard จะชี้จุดแก้เชิงลึก
+if not _G.__MikoRandomGuard19 then
+        _G.__MikoRandomGuard19 = true
+        local ugOrigRandom = math.random
+        local ugGuardLogs = 0
+        local function ugSafeRandom(a, b)
+                if a == nil then
+                        if b == nil then
+                                return ugOrigRandom()
+                        end
+                        return ugOrigRandom(a, b)
+                end
+                if b == nil then
+                        if type(a) == "number" and a < 1 then
+                                ugGuardLogs += 1
+                                if ugGuardLogs <= 8 then
+                                        local ugSrc, ugLn = "?", "?"
+                                        if type(debug) == "table" and type(debug.info) == "function" then
+                                                local sC, lC = debug.info(2, "sl")
+                                                if lC then
+                                                        ugSrc, ugLn = tostring(sC or "?"), tostring(lC)
+                                                end
+                                        elseif type(debug) == "table" and type(debug.getinfo) == "function" then
+                                                local okG, ugInfo = pcall(debug.getinfo, 2, "Sl")
+                                                if okG and type(ugInfo) == "table" and ugInfo.currentline then
+                                                        ugSrc, ugLn = tostring(ugInfo.short_src or ugInfo.source or "?"), tostring(ugInfo.currentline)
+                                                end
+                                        end
+                                        print("[Miko] v19 random-guard #" .. ugGuardLogs
+                                                .. ": math.random(" .. tostring(a) .. ") ช่วงว่าง @ "
+                                                .. ugSrc .. ":" .. ugLn .. " -> ส่ง 1 แทน ช็อตไม่ crash")
+                                end
+                                return 1
+                        end
+                        return ugOrigRandom(a)
+                end
+                if type(a) == "number" and type(b) == "number" and a > b then
+                        ugGuardLogs += 1
+                        if ugGuardLogs <= 8 then
+                                local ugSrc, ugLn = "?", "?"
+                                if type(debug) == "table" and type(debug.info) == "function" then
+                                        local sC, lC = debug.info(2, "sl")
+                                        if lC then
+                                                ugSrc, ugLn = tostring(sC or "?"), tostring(lC)
+                                        end
+                                elseif type(debug) == "table" and type(debug.getinfo) == "function" then
+                                        local okG, ugInfo = pcall(debug.getinfo, 2, "Sl")
+                                        if okG and type(ugInfo) == "table" and ugInfo.currentline then
+                                                ugSrc, ugLn = tostring(ugInfo.short_src or ugInfo.source or "?"), tostring(ugInfo.currentline)
+                                        end
+                                end
+                                print("[Miko] v19 random-guard #" .. ugGuardLogs
+                                        .. ": math.random(" .. tostring(a) .. ", " .. tostring(b)
+                                        .. ") ช่วงว่าง @ " .. ugSrc .. ":" .. ugLn
+                                        .. " -> สลับ a,b ช็อตไม่ crash")
+                        end
+                        return ugOrigRandom(b, a)
+                end
+                return ugOrigRandom(a, b)
+        end
+        local ugGuardHooked = false
+        if typeof(hookfunction) == "function" then
+                local okH, origH = pcall(hookfunction, math.random, ugSafeRandom)
+                if okH and typeof(origH) == "function" then
+                        ugOrigRandom = origH -- ตัวจริงที่ hookfunction คืน (กันเรียกซ้ำเข้า hook ตัวเอง)
+                        ugGuardHooked = true
+                end
+        end
+        if not ugGuardHooked then
+                pcall(function()
+                        math.random = ugSafeRandom
+                end)
+        end
+        print("[Miko] v19: ติดตั้ง math.random guard แล้ว (แก้ FPS:904 'interval is empty' ที่ทำให้ยิงโดนแต่ดาเมจไม่เข้า)")
+end
+-- ★ 2026-11-01 v20 (guard แก้ FPS:904 สำเร็จ — ช็อตไม่ crash แล้ว แต่ดาเมจยังไม่เข้า):
+-- จากภาพคอนโซลล่าสุด: random-guard จับ math.random(u85*3, u85*5) ช่วงว่างได้ครบ
+-- (ค่า recoil ติดลบ -2.07/-3.45 = บั๊กของเกมเอง) ช็อตวิ่งต่อได้ทั้งเส้นทางแล้ว
+-- แต่ดาเมจยังไม่เข้า = มีตัวขวางอีกจุดในสาย "ส่งดาเมจเข้า server"
+-- v20 เพิ่ม 2 เครื่องมือหาจุดขวาง: [1] remote logger จับ FireServer/InvokeServer
+-- ทุกตัว (ชื่อ remote + args ย่อ) จะได้เห็นว่ายิงโดนแล้วเกม "ส่งอะไร" ไป server
+-- หรือไม่ส่งเลย [2] สแกนซอร์สเกมหาโค้ดส่วนดาเมจ (damage/humanoid/health/
+-- fireserver) ทั้ง FPS_main และ FPS_Bullet + รายชื่อโมดูลทั้งหมดใน Modules
+-- ★ v21: logger นี้ "ปิดค่าเริ่มต้น" — hook __namecall ครอบการเรียกเมธอดของเกมทุกครั้ง
+-- เสี่ยงเป็นตัวจุด error :14781 'Disconnect' ทุกเฟรม จะเปิดเฉพาะเมื่อตั้ง
+-- _G.MikoRemoteLogger = true ไว้บรรทัดแรกสุดก่อนรันสคริปต์
+if not _G.__MikoRemoteLogger20 and _G.MikoRemoteLogger == true then
+        _G.__MikoRemoteLogger20 = true
+        local ugRemoteSeen = {}
+        local function ugShortArg(ugV)
+                local ugT = typeof(ugV)
+                if ugT == "Instance" then
+                        return "Inst(" .. ugV.Name .. ")"
+                elseif ugT == "Vector3" then
+                        return string.format("V3(%.1f,%.1f,%.1f)", ugV.X, ugV.Y, ugV.Z)
+                elseif ugT == "CFrame" then
+                        return string.format("CF(%.1f,%.1f,%.1f)", ugV.X, ugV.Y, ugV.Z)
+                elseif ugT == "number" or ugT == "string" or ugT == "boolean" then
+                        return ugT .. "(" .. tostring(ugV) .. ")"
+                end
+                return tostring(ugT)
+        end
+        local function ugLogRemote(ugKind, ugRemote, ugArgs)
+                local ugName = "?"
+                pcall(function()
+                        ugName = ugRemote.Name
+                end)
+                local ugKey = ugKind .. ":" .. ugName
+                local ugCount = (ugRemoteSeen[ugKey] or 0) + 1
+                ugRemoteSeen[ugKey] = ugCount
+                if ugCount > 6 then
+                        return
+                end
+                local ugParts = {}
+                for i = 1, math.min(ugArgs.n or 0, 8) do
+                        ugParts[#ugParts + 1] = ugShortArg(ugArgs[i])
+                end
+                print("[Miko] v20 " .. ugKind .. ": " .. ugName
+                        .. " | args=" .. tostring(ugArgs.n or 0)
+                        .. " [" .. table.concat(ugParts, ", ") .. "]")
+        end
+        if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
+                local ugOkNC = pcall(function()
+                        local wrapFn = typeof(newcclosure) == "function" and newcclosure or function(ugFn)
+                                return ugFn
+                        end
+                        local ugOldNC
+                        ugOldNC = hookmetamethod(game, "__namecall", wrapFn(function(ugSelf, ...)
+                                local ugM = getnamecallmethod()
+                                if ugM == "FireServer" or ugM == "InvokeServer" then
+                                        pcall(ugLogRemote, ugM, ugSelf, table.pack(...))
+                                end
+                                return ugOldNC(ugSelf, ...)
+                        end))
+                end)
+                if ugOkNC then
+                        print("[Miko] v20: ติดตั้ง remote logger แล้ว (จับ FireServer/InvokeServer ทุกตัว — ดูว่ายิงโดนแล้วเกมส่งดาเมจหรือไม่)")
+                end
+        end
+end
+if not _G.__MikoRemoteLogger20 then
+        print("[Miko] v21: remote logger ปิดอยู่ (กัน hook ชนโค้ดเกม = ตัวที่สงสัยว่าจุด error :14781 'Disconnect') — ยิงทดสอบได้เลย ถ้าอยากเปิดดูว่าเกมส่ง remote ไหม ตั้ง _G.MikoRemoteLogger = true บรรทัดแรกสุดก่อนรัน")
+end
+-- ★ 2026-11-02 v30: ถอด v23 Inflict watch ออกทั้งบล็อก — hook __namecall อีกชั้นที่ครอบ
+-- “ทุกเมธอดของเกม” ตลอดเวลา (หนึ่งในผู้ต้องสงสัยหลักทำเกมค้าง) ยุคตามดาเมจจบไปแล้วตาม
+-- คำตัดสินของผู้ใช้ (เอาตัวนิ่ง ไม่ไล่ดาเมจ) โค้ดที่เหลืออ้าง _G.MikoV23_InflictLog
+-- ปลอดภัยเพราะใช้รูปแบบ (_G.MikoV23_InflictLog or {}) ได้ค่าว่างเสมอ
+-- ★ 2026-11-01 v25 (กั้นดาเมจรอ "ลงทะเบียน" + ยิงซ้ำอัตโนมัติ): ผล v24 จากคอนโซลล่าสุด
+-- นัดแรก FireProjectile:InvokeServer -> server ตอบ nil "ทุกนัด" แต่ลองซ้ำเอง 0.15 วิ
+-- (id เดิม ทิศเดิม) -> server ตอบ true "ทุกนัด" = server รับกระสุน แต่ "ช้ากว่า" ดาเมจ
+-- นัดใกล้ ๆ กระสุนโดนเป้าใน ~0.05 วิ ทั้งที่ server เพิ่งจดจำกระสุนตอน +0.15 วิ
+-- = ดาเมจไปถึง server "ก่อน" กระสุนถูกจดจำ -> server ทิ้งทุกนัด (ยิงโดน เลือดไม่ลด)
+-- v25 แก้ 2 ชั้น:
+--   [1] ดาเมจที่จะส่งตอน id ยังไม่ถูกจดจำ = กั้นไว้ก่อน (ไม่ยิงออก) พอ server ตอบ true
+--       ส่งดาเมจนัดนั้นออกทันที -> บรรทัด [Miko] v25 ส่งดาเมจที่รอไว้
+--   [2] ถ้าส่งแล้ว 0.6 วิ ยังไม่มีเลือดใครลดเลย = ส่งซ้ำอีกครั้ง -> [Miko] v25 ยิงซ้ำ
+-- นาฬิกาเลือด [Miko] v24 HP ยังเฝ้าทุกตัว: เลือดลดหลังส่งดาเมจ = เข้าจริง
+-- ถ้ากั้น/ยิงซ้ำแล้วยังไม่เข้าเลย = server ตรวจ "เส้นยิงจริง" เอง (ต้องยิงจากเหนือดิน
+-- เทียบกับนัดมุดดิน — ดูวิธีทดสอบในคำตอบของ Miko)
+-- ★ 2026-11-02 v30 (ตัดระบบวินิจฉัยหนัก v24-v26 ออกทั้งชุด — แก้ “ยิงได้ไม่กี่นัดเกมค้าง”):
+-- ของหนักที่ถอดออก (ยุคตามดาเมจที่เลิกไปแล้ว แต่ยังทำงานสะสมทุกนัดที่ยิง):
+--   [1] hook __namecall ครอบ “ทุกเมธอดของเกม” ตลอดเวลา (v24/v25 gate)
+--   [2] loop while true สแกน workspace:GetDescendants() ทุก 2 วิ เก็บ Humanoid ทั้งแมพ
+--       + ต่อ HealthChanged ทุกตัวไม่มีวันปลด (ยิ่งเล่นนานยิ่งอึด)
+--   [3] กั้นดาเมจค้างไว้ 1.5 วิ + ยิงซ้ำอัตโนมัติ (resend) + ลองลงทะเบียนซ้ำถึง 40 ครั้ง
+--   [4] v26 probe raycast ต่อทุก event
+-- เก็บไว้เฉพาะ v28 “จุดยิงล่องหน” (ตัวแก้ค้างตัวจริง): ตอนมุดดิน จุดเริ่มกระสุนของเกม
+-- ถูกชี้ขึ้นไปอยู่ระดับตา “เหนือผิวดิน” กระสุนบินปกติไม่เกิดในดิน ตัวละครไม่ขยับนิดเดียว
+if not _G.__MikoUG_EyeHook30 then
+        _G.__MikoUG_EyeHook30 = true
+        local ugEyeMod30 = nil
+        task.spawn(function()
+                pcall(function()
+                        ugEyeMod30 = require(game.ReplicatedStorage.Modules:WaitForChild("FunctionLibraryExtension", 10))
+                end)
+                if typeof(ugEyeMod30) == "table" and typeof(ugEyeMod30.GetEstimatedCameraPosition) == "function" then
+                        local ugOldEst30 = ugEyeMod30.GetEstimatedCameraPosition
+                        ugEyeMod30.GetEstimatedCameraPosition = function(...)
+                                if Misc and (Misc.Underground or Misc.UndergroundFaceDown) then
+                                        for _, getEye in ipairs({ _G.MikoUG_GetEyeInfo, _G.MikoUG2_GetEyeInfo }) do
+                                                if typeof(getEye) == "function" then
+                                                        local okEye, eye = pcall(getEye)
+                                                        if okEye and typeof(eye) == "Vector3" then
+                                                                return eye
+                                                        end
+                                                end
+                                        end
+                                end
+                                return ugOldEst30(...)
+                        end
+                end
+        end)
+end
+local ugPack = table.pack or function(...)
+        return { n = select("#", ...), ... }
+end
+local ugUnpack = table.unpack or unpack
+local ugRetPrinted = false
+local ugErrPrinted = false
+
+local function ugDescribeReturns(ugR)
+        local ugParts = {}
+        for i = 1, math.min(ugR.n or 0, 8) do
+                ugParts[#ugParts + 1] = (ugR[i] == nil) and "nil" or tostring(typeof(ugR[i]))
+        end
+        return tostring(ugR.n or 0) .. " ตัว [" .. table.concat(ugParts, ", ") .. "]"
+end
+
+local ugSynthPattern = nil
+local function ugGetSynthPattern()
+        if not ugSynthPattern then
+                local ugF = Instance.new("Folder")
+                ugF.Name = "MikoUG_RecoilPatternFallback"
+                local ugX = Instance.new("NumberValue")
+                ugX.Name = "x"
+                ugX.Value = 0
+                ugX.Parent = ugF
+                local ugY = Instance.new("NumberValue")
+                ugY.Name = "y"
+                ugY.Value = 0
+                ugY.Parent = ugF
+                ugSynthPattern = ugF
+        end
+        return ugSynthPattern
+end
+
+-- เติมค่า return ตัวที่ 4 ถ้าเป็น nil (RecoilPattern ที่เกมอ่านที่ FPS:1044) กัน crash
+local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shotNum)
+        if (ugR.n or 0) < 4 then
+                ugR.n = 4 -- เกมอ่านตัวที่ 4 เสมอ ถ้าไม่ครบต้องเติมให้ครบก่อน
+        end
+        if ugR[4] ~= nil then
+                return
+        end
+        local ugFolder = nil
+        for _, ugInst in { idk, model, model2, model3 } do
+                if ugFolder then
+                        break
+                end
+                if typeof(ugInst) == "Instance" then
+                        pcall(function()
+                                ugFolder = ugInst:FindFirstChild("RecoilPattern", true)
+                        end)
+                end
+        end
+        if not ugFolder then
+                local ugRW = ReplicatedStorage:FindFirstChild("RangedWeapons")
+                if ugRW then
+                        for _, ugInst in { model, model2, model3 } do
+                                if ugFolder then
+                                        break
+                                end
+                                if typeof(ugInst) == "Instance" and ugInst.Name then
+                                        pcall(function()
+                                                local ugTpl = ugRW:FindFirstChild(ugInst.Name)
+                                                if ugTpl then
+                                                        ugFolder = ugTpl:FindFirstChild("RecoilPattern", true)
+                                                end
+                                        end)
+                                end
+                        end
+                end
+        end
+        local ugPick = nil
+        if ugFolder then
+                local ugKids = ugFolder:GetChildren()
+                if type(shotNum) == "number" then
+                        for _, ugKid in ugKids do
+                                if ugKid.Name == tostring(shotNum) then
+                                        ugPick = ugKid
+                                        break
+                                end
+                        end
+                end
+                if not ugPick then
+                        for _, ugKid in ugKids do
+                                if ugKid:FindFirstChild("y") then
+                                        ugPick = ugKid
+                                        break
+                                end
+                        end
+                end
+                if not ugPick and #ugKids > 0 then
+                        ugPick = ugKids[1]
+                end
+        end
+        if not ugPick then
+                ugPick = ugGetSynthPattern()
+        end
+        ugR[4] = ugPick
+        if not ugRetPrinted then
+                ugRetPrinted = true
+                print("[Miko] UG v18: CreateBullet คืน pattern นัดยิง = nil (ต้นตอ FPS:1044 ที่ทำให้ดาเมจไม่เข้า) - เติม pattern ให้เกมอ่านต่อแล้ว ดาเมจจะเข้า | ของจริง: "
+                        .. (ugFolder and ugFolder:GetFullName() or "ไม่เจอโฟลเดอร์ RecoilPattern (ใช้ของสังเคราะห์ x/y=0)"))
+        end
+end
+
+-- ทางออกเดียวของทุกเส้นทางยิง: ซ่อมค่า + พิมพ์โครงสร้าง return ครั้งแรก + คืน "ครบทุกตัว"
+local function ugFinishCreateBullet(ugR, idk, model, model2, model3, shotNum)
+        ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shotNum)
+        if not ugRetPrinted then
+                ugRetPrinted = true
+                print("[Miko] UG v18: CreateBullet คืนค่า " .. ugDescribeReturns(ugR) .. " - ครบ เกมอ่านต่อได้ ไม่ crash FPS:1044")
+        end
+        return ugUnpack(ugR, 1, ugR.n)
+end
+
+-- ★ 2026-11-01 v16 (ยืมตัวจริง — ตัดต้นตอ FPS:1044 ให้ถึงราก):
+-- จากซอร์สเกมที่ dump ได้ (Miko_FPS_1044_dump.txt): RangedWeaponDefault เรียก
+-- Bullet:CreateBullet(u83.weapon, u83.worldModel, u83.viewModel, u83.aimPart, ...)
+-- และเกมอ่าน aimPart.CFrame "ตัวจริง" ตรง ๆ (เช่นบรรทัด 2744) — การส่งตาราง/part
+-- ปลอมแทน aimPart ทำให้ CreateBullet คืนค่าไม่ครบ เกมอ่าน .y ของ nil ทันทีที่
+-- บรรทัดถัดจาก CreateBullet ~17 บรรทัด (orig 1044) = crash ทุกนัด แล้ว fallback
+-- ยิงตาม crosshair = กระสุนลอยเหนือดิน ไม่เคยโดนคนมุดดิน
+-- v16 = ย้าย aimPart "ตัวจริง" ไปจุดยิงระดับตาเหนือผิวดิน หันเข้าหัวเป้า ยิงผ่าน
+-- CreateBullet เดิมด้วย instance ตัวจริง (เกมได้ข้อมูลถูกต้อง 100%) แล้วคืน
+-- CFrame เดิมทันทีใน call เดียวกัน — ไม่มีอะไรเห็น ไม่มีอะไรผิดปกติให้ตรวจจับ
+-- ★ 2026-11-01 v22 (Cube Punch — ตัวจริงที่ทำให้ "ยิงโดนแต่ดาเมจไม่เข้า"):
+-- จากคอนโซลล่าสุด Los=BLOCKED:Cube.197 + โค้ดเกมที่ dump ได้ (FPS_Bullet มีเงื่อนไข
+-- ClassName == "Model" แล้วค่อย ProjectileInflict:FireServer) สรุปสายดาเมจคือ:
+-- เกม raycast หา "ตัวที่กระสุนปะทะ" -> เอา hit.Instance ไล่หา Model ที่มี Humanoid
+-- -> ต้องผ่านเงื่อนไข Model เท่านั้นถึงจะยิง ProjectileInflict เข้า server = หักเลือด
+-- ปัญหา: คนมุดดินอยู่ "ในชั้นก้อนดินของแมพ" (Cube.NNN) เส้น ray ของเกมจากโพรง
+-- ใต้ดินเข้าหัวเป้า "ทะลุก้อนดินไม่ได้" = โดนก้อนดินแทนคนทุกนัด → hit.Instance เป็น
+-- ก้อนดิน ไม่ใช่ตัวละคร → เงื่อนไข Model ไม่ผ่าน → ไม่มีการส่งดาเมจเลย (เห็นเอฟเฟกต์
+-- กระสุนปะทะดิน แต่เลือดเป้าเดิมทุกครั้ง)
+-- v22 แก้: ก่อนยิงเป้ามุดดิน เดิน ray ของเราเอง 2 เส้น (จุดยิง->เป้า และกล้อง->เป้า)
+-- เก็บ "ทุก part ที่คั่นกลาง" (ยกเว้นตัวละครผู้เล่น) แล้วปิด CanQuery+CanTouch ชั่วคราว
+-- 1.2 วิ = ray ของเกมทะลุก้อนดินเข้าโดนตัวเป้าโดยตรง → hit.Instance เป็นของคน
+-- → ProjectileInflict ทำงาน → ดาเมจเข้า แล้วคืนค่าเดิมให้แมพอัตโนมัติ
+local ugCubeRestore = {}
+local ugCubeGen = 0
+local ugCubePrints = 0
+local ugTerrainPunched23 = false
+local ugBlockPrints23 = 0
+
+local function ugReleaseCubes(ugMyGen)
+        if ugMyGen and ugMyGen ~= ugCubeGen then
+                return -- นัดยิงใหม่เพิ่งเคลียร์ทับรายการ รอบเก่าห้ามปลดของรอบใหม่
+        end
+        for ugPart, ugRec in pairs(ugCubeRestore) do
+                pcall(function()
+                        if ugPart and ugPart.Parent then
+                                ugPart.CanQuery = ugRec.q
+                                ugPart.CanTouch = ugRec.t
+                        end
+                end)
+        end
+        ugCubeRestore = {}
+end
+
+local function ugClearShotPath(origin, aimPoint)
+        do return end -- ★ 2026-11-02 v30: ปิด Cube Punch (การ raycast หลายเส้น + สลับ CanQuery/CanTouch ต่อนัดยิง = หนักเครื่องสะสม) — ยุคตามดาเมจจบแล้ว
+        pcall(function()
+                ugCubeGen += 1
+                local ugMyGen = ugCubeGen
+                local ugCams = workspace.CurrentCamera
+                local ugStarts = { origin }
+                if ugCams then
+                        ugStarts[#ugStarts + 1] = ugCams.CFrame.Position
+                end
+                local ugCleared = 0
+                for _, ugFrom in ipairs(ugStarts) do
+                        local ugDir = aimPoint - ugFrom
+                        local ugTotal = ugDir.Magnitude
+                        if ugTotal >= 0.5 then
+                                ugDir = ugDir / ugTotal
+                                local ugExcl = {}
+                                local ugMyChar = LocalPlayer and LocalPlayer.Character
+                                if ugMyChar then
+                                        ugExcl[#ugExcl + 1] = ugMyChar
+                                end
+                                local ugParams = RaycastParams.new()
+                                ugParams.FilterType = Enum.RaycastFilterType.Exclude
+                                ugParams.FilterDescendantsInstances = ugExcl
+                                ugParams.IgnoreWater = true
+                                local ugPos = ugFrom
+                                local ugDone = 0
+                                for _ = 1, 32 do
+                                        local ugLeft = ugTotal - ugDone
+                                        if ugLeft <= 1 then
+                                                break
+                                        end
+                                        local ugHit = workspace:Raycast(ugPos, ugDir * ugLeft, ugParams)
+                                        if not ugHit then
+                                                break
+                                        end
+                                        local ugInst = ugHit.Instance
+                                        local ugModel = ugInst:FindFirstAncestorOfClass("Model")
+                                        if ugModel and ugModel:FindFirstChildOfClass("Humanoid") then
+                                                break -- ถึงตัวละคร (เป้า) แล้ว — ห้ามปิดอะไรต่อ
+                                        end
+                                        local ugSavedQ, ugSavedT
+                                        local ugIsTerrain23 = ugInst == workspace:FindFirstChildOfClass("Terrain")
+                                        local ugOkSet = pcall(function()
+                                                ugSavedQ = ugInst.CanQuery
+                                                ugSavedT = ugInst.CanTouch
+                                                ugInst.CanQuery = false
+                                                ugInst.CanTouch = false
+                                        end)
+                                        if ugOkSet then
+                                                if ugCubeRestore[ugInst] == nil then
+                                                        ugCubeRestore[ugInst] = { q = ugSavedQ, t = ugSavedT }
+                                                        ugCleared += 1
+                                                end
+                                                if ugIsTerrain23 and not ugTerrainPunched23 then
+                                                        ugTerrainPunched23 = true
+                                                        print("[Miko] v23: เส้นยิงขวางด้วย Terrain — ปิด CanQuery/CanTouch ของ Terrain ชั่วคราว 1.2 วิ ให้กระสุนทะลุผิวดินได้")
+                                                end
+                                        else
+                                                -- ปิด CanQuery ไม่ได้ = กระสุนของเกมจะตายที่ตัวนี้แน่ ๆ เดินต่อก็ไร้ความหมาย
+                                                if ugBlockPrints23 < 3 then
+                                                        ugBlockPrints23 += 1
+                                                        print("[Miko] v23: มีสิ่งกีดขวางปิด CanQuery ไม่ได้: " .. ugInst.Name .. " (" .. ugInst.ClassName .. ") @ ระยะ " .. string.format("%.1f", ugHit.Distance) .. " จากจุดยิง — นัดนี้กระสุนจะตายที่ตัวนี้")
+                                                end
+                                                break
+                                        end
+                                        ugDone += ugHit.Distance + 0.05
+                                        ugPos = ugFrom + ugDir * ugDone
+                                end
+                        end
+                end
+                if ugCleared > 0 and ugCubePrints < 6 then
+                        ugCubePrints += 1
+                        print("[Miko] UG v23 Cube Punch: ปิด CanQuery/CanTouch สิ่งกีดขวาง " .. ugCleared
+                                .. " ชิ้นตามเส้นยิง (คืนค่าอัตโนมัติใน 1.2 วิ) — ให้ ray ของเกมโดนตัวเป้าโดยตรง")
+                end
+                task.delay(1.2, function()
+                        ugReleaseCubes(ugMyGen)
+                end)
+        end)
+end
+
+local ugFireModePrints = 0
+local ugWatchPrints23 = 0
+local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern, origin, aimPoint, isBuriedShot)
+        if typeof(origin) ~= "Vector3" or typeof(aimPoint) ~= "Vector3"
+                or (aimPoint - origin).Magnitude < 0.5 then
+                -- ★ v18: คืนค่า "ครบทุกตัว" + ซ่อม pattern ถ้า nil (เดิม return ตรง ๆ ไม่ซ่อม)
+                return ugFinishCreateBullet(
+                        ugPack(oldCreateBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)),
+                        idk, model, model2, model3, recoilPattern
+                )
+        end
+        -- ★ v17: นัดเป้ามุดดิน = ย้าย "จุดเริ่ม ray ของเกม" ลงไปใต้ผิวดินข้างหัวเป้า
+        -- (ระดับเดียวกับหัวเป้า ถอยหลังเข้าหาเรา 1-3 หน่วย = โพรงว่างใต้ดินตรงตัวเป้า)
+        -- ray จะวิ่งในโพรงเข้าหาหัวเป้าโดยไม่เจอ Terrain เลย (เกมกระสุนทะลุดินไม่ได้
+        -- จุดเริ่มเหนือดิน = ตายที่ผิวดินทุกนัด) แล้วปลด hook ทันทีหลัง CreateBullet คืนค่า
+        if isBuriedShot then
+                local ugFlat = Vector3.new(aimPoint.X - origin.X, 0, aimPoint.Z - origin.Z)
+                if ugFlat.Magnitude > 0.05 then
+                        local ugBack = math.clamp(ugFlat.Magnitude * 0.5, 1, 3)
+                        origin = Vector3.new(
+                                aimPoint.X - ugFlat.Unit.X * ugBack,
+                                aimPoint.Y,
+                                aimPoint.Z - ugFlat.Unit.Z * ugBack
+                        )
+                else
+                        -- เป้าอยู่ใต้ตัวเราเป๊ะ ๆ: ถอยไปทางขวาของกล้องแทน (แนวนอน 2 หน่วย)
+                        local ugCam17 = workspace.CurrentCamera
+                        local ugRight = ugCam17 and ugCam17.CFrame.RightVector or Vector3.new(1, 0, 0)
+                        local ugRightFlat = Vector3.new(ugRight.X, 0, ugRight.Z)
+                        if ugRightFlat.Magnitude < 0.05 then
+                                ugRightFlat = Vector3.new(1, 0, 0)
+                        end
+                        origin = Vector3.new(
+                                aimPoint.X - ugRightFlat.Unit.X * 2,
+                                aimPoint.Y,
+                                aimPoint.Z - ugRightFlat.Unit.Z * 2
+                        )
+                end
+                ugUnderRayOrigin = origin
+                ugUnderRayUntil = ugTick() + 5
+                if ugFireModePrints < 3 then
+                        ugFireModePrints += 1
+                        print(string.format(
+                                "[Miko] UG v18 fire: จุดเริ่ม ray ใต้ดิน (%.1f, %.1f, %.1f) -> หัวเป้า (%.1f, %.1f, %.1f) กระสุนวิ่งในโพรงใต้ดิน",
+                                origin.X, origin.Y, origin.Z, aimPoint.X, aimPoint.Y, aimPoint.Z
+                        ))
+                end
+        end
+        -- ★ v22: ช็อตเป้ามุดดิน = เคลียร์ก้อนดิน/สิ่งกีดขวางตามเส้นยิงก่อนยิงทุกนัด
+        -- (เกม raycast เจอก้อนดินแทนตัวเป้า = hit ไม่ใช่ Model คน = ดาเมจไม่ถูกส่ง)
+        if isBuriedShot and typeof(origin) == "Vector3" and typeof(aimPoint) == "Vector3" then
+                ugClearShotPath(origin, aimPoint)
+        end
+        if typeof(aimPart) == "Instance" then
+                local ugCharFire = LocalPlayer and LocalPlayer.Character
+                -- ห้ามย้ายถ้าเป็นส่วนของตัวผู้เล่นเอง (กันตัวโผล่เหนือดินตอนยิง)
+                if not (ugCharFire and aimPart:IsDescendantOf(ugCharFire)) then
+                        local okMove, savedCFrame = pcall(function()
+                                local saved = aimPart.CFrame
+                                aimPart.CFrame = CFrame.new(origin, aimPoint)
+                                return saved
+                        end)
+                        if okMove and savedCFrame then
+                                if ugFireModePrints < 3 then
+                                        ugFireModePrints += 1
+                                        print("[Miko] UG v18 fire mode: ยืม aimPart ตัวจริง (" .. aimPart.Name .. ") หันเข้าเป้าชั่วขณะแล้วคืนค่าทันที")
+                                end
+                                local okFire, ugPacked = pcall(function()
+                                        return ugPack(oldCreateBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern))
+                                end)
+                                pcall(function()
+                                        aimPart.CFrame = savedCFrame
+                                end)
+                                ugUnderRayUntil = 0 -- ★ v17: ปลด hook ทันที (กระสุนอ่านจุดเริ่มจบใน call นี้แล้ว)
+                                -- ★ 2026-11-01 v23 (watchdog สายดาเมจ): จับเวลานัดมุดดิน — 0.8 วิ มี remote
+                                -- ดาเมจ (Inflict/Damage) ออกจากเครื่องเราไหม? ถ้าไม่มีเลย = ray ของเกมไม่ถึง
+                                -- ตัวเป้า (โดนดิน/ก้อนดินตายก่อน) ถ้ามี = เกมส่งดาเมจแล้วที่เหลือคือ server
+                                -- ปฏิเสธ (ดู args จากบรรทัด [Miko] v23 ดาเมจ เทียบกับนัดยิงเหนือดินปกติ)
+                                if isBuriedShot then
+                                        local ugShotT23 = ugTick()
+                                        local ugTgtName23 = "?"
+                                        pcall(function()
+                                                local ugTgtChar23 = aimPart and aimPart.Parent
+                                                ugTgtName23 = (ugTgtChar23 and ugTgtChar23.Name) or "?"
+                                        end)
+                                        task.delay(0.8, function()
+                                                pcall(function()
+                                                        if ugWatchPrints23 >= 10 then
+                                                                return
+                                                        end
+                                                        ugWatchPrints23 += 1
+                                                        local ugLog23 = _G.MikoV23_InflictLog or {}
+                                                        local ugFound23 = nil
+                                                        for i23 = #ugLog23, 1, -1 do
+                                                                if ugLog23[i23].t >= ugShotT23 then
+                                                                        ugFound23 = ugLog23[i23]
+                                                                else
+                                                                        break
+                                                                end
+                                                        end
+                                                        if ugFound23 then
+                                                                print("[Miko] v23 นัดมุดดิน (" .. ugTgtName23 .. "): เกมส่งดาเมจออกจริง -> " .. ugFound23.text
+                                                                        .. " — ถ้าเลือดเป้ายังไม่ลด = server ปฏิเสธนัดนี้ (ถ่ายภาพบรรทัดนี้ให้ครบ)")
+                                                        else
+                                                                print("[Miko] v23 นัดมุดดิน (" .. ugTgtName23 .. "): 0.8 วิ ไม่มี remote ดาเมจออกเลย = ray ของเกมยังไม่ถึงตัวเป้า (โดนดิน/ก้อนดินตายก่อน) — ลองยิงคนยืนปกติเหนือดิน 1 นัดแล้วดูบรรทัด [Miko] v23 ดาเมจ เทียบกัน")
+                                                        end
+                                                end)
+                                        end)
+                                end
+                                if okFire and ugPacked then
+                                        -- ★ v18: คืนค่า "ครบทุกตัว" (เดิมเก็บแค่ r1..r4 ตัวที่เกินหาย = nil ที่ FPS:1044)
+                                        return ugFinishCreateBullet(ugPacked, idk, model, model2, model3, recoilPattern)
+                                end
+                                -- ★ 2026-11-02 v29 (F9 เงียบสนิท — ตามที่ผู้ใช้ขอ): ห้ามคืน nil เด็ดขาด
+                                -- เกมอ่าน v88.y.Value ที่ FPS:1044 ทันทีที่ได้ค่ากลับ ถ้าคืน nil = error แดง
+                                -- "attempt to index nil with 'y'" ขึ้น F9 ทุกครั้ง → คืนชุดเต็มแทน
+                                -- (u85/u86 = 0 กระจายศูนย์ + pattern สังเคราะห์ x/y = 0) เกมอ่านต่อได้
+                                -- ทันที ไม่มี error แดงอีก (ของเดิมคืน nil แล้วให้เกมพังเอง)
+                                return ugFinishCreateBullet(
+                                        ugPack(0, 0, nil, ugGetSynthPattern()),
+                                        idk, model, model2, model3, recoilPattern
+                                )
+                        end
+                end
+        end
+        -- ย้ายตัวจริงไม่ได้ (ไม่ใช่ Instance/ตั้ง CFrame ไม่ได้) → struct สำรองแบบคงฟิลด์เดิม (v15)
+        if ugFireModePrints < 3 then
+                ugFireModePrints += 1
+                print("[Miko] UG v18 fire mode: struct สำรอง (typeof=" .. typeof(aimPart) .. ")")
+        end
+        local ugR = ugPack(oldCreateBullet(idk, model, model2, model3, ugBuildAimOverride(aimPart, origin, aimPoint), idk2, ammoType, tick, recoilPattern))
+        ugUnderRayUntil = 0 -- ★ v17: ปลด hook ทันที
+        -- ★ v18: คืนค่า "ครบทุกตัว" + ซ่อม pattern ถ้า nil
+        return ugFinishCreateBullet(ugR, idk, model, model2, model3, recoilPattern)
+end
+
+-- ★ v14: หา "คนมุดดิน" ในกรวยเล็ง (สำหรับยิงเล็งมือ ไม่ผ่าน Silent Aim)
+-- คืน aimPoint (พร้อม prediction/drop แล้ว) กับ part ของเป้า หรือ nil,nil
+-- เงื่อนไข: หัวเป้าต้องอยู่ "ใต้ผิวดินจริง" (ray ลงจากเหนือหัวเจอผิวดินก่อนหัว)
+local function ugFindBuriedTargetInCone(eyePos, lookDir)
+        if typeof(eyePos) ~= "Vector3" or typeof(lookDir) ~= "Vector3"
+                or lookDir.Magnitude < 1e-4 then
+                return nil, nil
+        end
+        lookDir = lookDir.Unit
+        local bestPart, bestOffset, bestDot = nil, Vector3.zero, math.cos(math.rad(7))
+        local function ugConsider(character)
+                if not character or not IsSilentAlive(character) then
+                        return
+                end
+                local ugHead = character:FindFirstChild("Head")
+                        or character:FindFirstChild("HeadHitBox")
+                        or character:FindFirstChild("FaceHitBox")
+                local ugOffset = Vector3.zero
+                if not ugHead then
+                        local ugRoot = character:FindFirstChild("HumanoidRootPart")
+                        if not ugRoot then
+                                return
+                        end
+                        ugHead = ugRoot
+                        ugOffset = Vector3.new(0, 2.2, 0) -- จุดระดับหัวจาก root
+                end
+                local ugTo = ugHead.Position - eyePos
+                local ugDist = ugTo.Magnitude
+                if ugDist < 2 or ugDist > 200 then
+                        return
+                end
+                local ugDot = ugTo.Unit:Dot(lookDir)
+                if ugDot < bestDot then
+                        return
+                end
+                -- ตรวจว่าหัวอยู่ใต้ผิวดินจริงไหม (ray ลงจากเหนือหัว ตัดตัวเรา/ตัวเป้า)
+                local ugSurfY = nil
+                pcall(function()
+                        local ugP = RaycastParams.new()
+                        ugP.FilterType = Enum.RaycastFilterType.Exclude
+                        local ugEx = {}
+                        if LocalPlayer.Character then
+                                ugEx[#ugEx + 1] = LocalPlayer.Character
+                        end
+                        ugEx[#ugEx + 1] = character
+                        ugP.FilterDescendantsInstances = ugEx
+                        ugP.IgnoreWater = true
+                        local ugHit = workspace:Raycast(
+                                Vector3.new(ugHead.Position.X, ugHead.Position.Y + 40, ugHead.Position.Z),
+                                Vector3.new(0, -160, 0),
+                                ugP
+                        )
+                        if ugHit then
+                                ugSurfY = ugHit.Position.Y
+                        end
+                end)
+                if not ugSurfY or ugHead.Position.Y >= ugSurfY - 0.15 then
+                        return -- หัวอยู่เหนือผิวดิน = คนยืนปกติ ไม่ใช่เป้ามุดดิน
+                end
+                bestDot = ugDot
+                bestPart = ugHead
+                bestOffset = ugOffset
+        end
+        for _, player in Players:GetPlayers() do
+                if player ~= LocalPlayer then
+                        ugConsider(player.Character)
+                end
+        end
+        for _, character in GetAiCharacters() do
+                ugConsider(character)
+        end
+        if not bestPart then
+                return nil, nil
+        end
+        -- prediction + drop ด้วยสูตรเดียวกับ silent aim (ค่า speed/drop ปกติของเกม)
+        local ugAim = bestPart.Position + bestOffset
+        local ugAccel, ugSpeed = 0, 1000
+        if SilentAim.Prediction then
+                ugAim = PredictTarget(bestPart, eyePos, ugSpeed, ugAccel) + bestOffset
+        end
+        ugAim = ugAim + ProjectileDrop(eyePos, ugAim, ugSpeed, ugAccel)
+        return ugAim, bestPart
+end
+
 -- Move bullet origin past walls so the shot has clear LoS (real damage, not fake client hits)
 local function ResolveWallbangAim(aimPart, forcedTargetPos)
         local origin = GetAimOrigin(aimPart)
@@ -1333,9 +2328,8 @@ local function ResolveWallbangAim(aimPart, forcedTargetPos)
         end
 
         if lastClearOrigin and hitPos then
-                return {
-                        CFrame = CFrame.new(lastClearOrigin, hitPos),
-                }
+                -- ★ v15: คงโครงสร้างเดิมของ aimPart (กัน error FPS:1044)
+                return ugBuildAimOverride(aimPart, lastClearOrigin, hitPos)
         end
 
         return aimPart
@@ -1435,6 +2429,12 @@ InitSilentAim = function()
         local function ugSilentWrapper(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
 
+                -- ★ v18: (ยกเลิก pre-check ของ v17 ที่เคย nil "หมายเลขนัดยิง" ทิ้ง) — การ nil
+                -- เลขไม่ช่วยเลย เพราะเกม FindFirstChild(tostring(nil)) ก็หาไม่เจอเหมือนเดิม
+                -- แถมเสี่ยง nil ทับหมายเลขที่ปืนจริงมี (โฟลเดอร์ที่เราตรวจกับที่เกมใช้ไม่จำเป็น
+                -- ต้องเป็นตัวเดียวกัน) → ปล่อยเลขผ่านทุกกรณี แล้วซ่อมที่ "ค่า return" แทน
+                -- (ugFinishCreateBullet เติม pattern ให้เกมอ่านต่อ ไม่ crash FPS:1044)
+
                 -- ★ Silent Aim fix v4: พิสูจน์ว่าเกมเรียก hook ของเราจริง
                 if not ugHookSeenPrinted then
                         ugHookSeenPrinted = true
@@ -1469,9 +2469,13 @@ InitSilentAim = function()
                                         end
                                 end
                                 zeroRecoil(recoilPattern, 0)
-                        else
-                                recoilPattern = { 0, 0, 0, 0 }
                         end
+                        -- ★ v18 (ต้นตอ "ยิงโดนแต่ดาเมจไม่เข้า" ทุกนัด): ห้ามแทนที่ recoilPattern
+                        -- ที่เป็น "ตัวเลข" ด้วยตาราง {0,0,0,0} อีกต่อไป — ตามซอร์ส Bullet (266-280)
+                        -- ตัวเลขนี้คือ "หมายเลขนัดยิง" ที่เกมใช้ FindFirstChild ในโฟลเดอร์ RecoilPattern
+                        -- ของปืน การแทนที่ด้วยตารางทำให้หาไม่เจอ = CreateBullet คืน pattern = nil =
+                        -- crash FPS:1044 ทุกนัด โค้ดส่วนส่งดาเมจหลังจากนั้นจึงไม่เคยทำงาน
+                        -- (ส่วนลดแรงพุ่งใช้การล้าง attribute ของ AmmoTypes ด้านล่างแทน ซึ่งพออยู่แล้ว)
 
                         -- Project Delta camera climb uses RecoilStrength / related AmmoTypes attrs
                         if ammo then
@@ -1554,7 +2558,9 @@ InitSilentAim = function()
                 -- v12 ทำให้ไม่มีใครเห็นการยกตัว: ตัว/ป้าย/เอฟเฟกต์ถูกซ่อนหมด + Anchored กัน replicate
                 --  ขึ้นเซิร์ฟเวอร์ (ถ้ายิงไม่เข้า = เกมตรวจฝั่งเซิร์ฟเวอร์ ปิดด้วย _G.MikoUG_StealthServer = false)
                 local ugActivePre = (Misc and (Misc.Underground or Misc.UndergroundFaceDown)) and true or false
-                if ugActivePre then
+                -- ★ v27: ยิงตอนมุดดิน = ไม่ยกตัวอีกต่อไป (ตัวนิ่ง ไม่เด้งขึ้น — ตามที่ผู้ใช้ขอ)
+                -- กลับไปยกตัวแบบเดิมได้: พิมพ์ _G.MikoUG_NoPopUp = false ในคอนโซล
+                if ugActivePre and _G.MikoUG_NoPopUp ~= true then
                     pcall(function()
                         if _G.MikoUG_SurfaceNow then
                             _G.MikoUG_SurfaceNow()
@@ -1589,52 +2595,173 @@ InitSilentAim = function()
                                     if not ugSourceDumped then
                                         ugSourceDumped = true
                                         pcall(function()
-                                            local ugSrc, ugSrcName = nil, nil
+                                            -- ★ v16: จับโครงสร้าง aimPart + โค้ดจุด crash + ดัมพ์เต็มลงไฟล์
+                                            local ugReport = {}
+                                            local function ugLog(s)
+                                                ugReport[#ugReport + 1] = tostring(s)
+                                            end
+                                            ugLog("=== aimPart ที่เกมส่งเข้า CreateBullet ===")
+                                            ugLog("typeof = " .. typeof(aimPart))
+                                            if typeof(aimPart) == "Instance" then
+                                                ugLog("Name = " .. aimPart.Name)
+                                                ugLog("ClassName = " .. aimPart.ClassName)
+                                                ugLog("Parent = " .. tostring(aimPart.Parent))
+                                                pcall(function()
+                                                    ugLog("Position = " .. tostring(aimPart.Position))
+                                                end)
+                                            elseif typeof(aimPart) == "table" then
+                                                for ugK, ugV in pairs(aimPart) do
+                                                    ugLog(("[%s] = %s : %s"):format(tostring(ugK), typeof(ugV), tostring(ugV)))
+                                                end
+                                            end
                                             local ugModules = ReplicatedStorage:FindFirstChild("Modules")
                                             local ugFps = ugModules and ugModules:FindFirstChild("FPS")
-                                            local ugCands = {}
+                                            -- ★ v20: รายชื่อโมดูลทั้งหมดใน ReplicatedStorage.Modules (หาโมดูลดาเมจ/คอมแบต)
+                                            if ugModules then
+                                                pcall(function()
+                                                    local ugModList = {}
+                                                    for _, ugKid in ugModules:GetDescendants() do
+                                                        if ugKid:IsA("ModuleScript") then
+                                                            ugModList[#ugModList + 1] = ugKid.Name
+                                                        end
+                                                    end
+                                                    ugLog("=== โมดูลทั้งหมดใน Modules (" .. #ugModList .. " ตัว): " .. table.concat(ugModList, ", ") .. " ===")
+                                                end)
+                                            end
+                                            local ugDumpTargets = {}
                                             if ugFps then
                                                 if ugFps:IsA("ModuleScript") then
-                                                    ugCands[#ugCands + 1] = { ugFps, "Modules.FPS" }
+                                                    ugDumpTargets[#ugDumpTargets + 1] = { ugFps, "FPS_main", "Miko_FPS_full_dump.txt" }
                                                 end
                                                 local ugB = ugFps:FindFirstChild("Bullet")
                                                 if ugB and ugB:IsA("ModuleScript") then
-                                                    ugCands[#ugCands + 1] = { ugB, "Modules.FPS.Bullet" }
+                                                    ugDumpTargets[#ugDumpTargets + 1] = { ugB, "FPS_Bullet(CreateBullet)", "Miko_FPS_Bullet_dump.txt" }
                                                 end
                                             end
-                                            for _, ugC in ugCands do
-                                                local okS, ugS = pcall(function() return ugC[1].Source end)
-                                                if okS and type(ugS) == "string" and #ugS > 0 then
-                                                    ugSrc, ugSrcName = ugS, ugC[2] .. " (.Source)"
-                                                    break
-                                                end
-                                                if typeof(decompile) == "function" then
-                                                    local okD, ugD = pcall(decompile, ugC[1])
-                                                    if okD and type(ugD) == "string" and #ugD > 0 then
-                                                        ugSrc, ugSrcName = ugD, ugC[2] .. " (decompile)"
-                                                        break
+                                            for _, ugT in ugDumpTargets do
+                                                local ugSrc = nil
+                                                pcall(function()
+                                                    ugSrc = ugT[1].Source
+                                                end)
+                                                if type(ugSrc) ~= "string" or #ugSrc == 0 then
+                                                    if typeof(decompile) == "function" then
+                                                        pcall(function()
+                                                            ugSrc = decompile(ugT[1])
+                                                        end)
                                                     end
                                                 end
+                                                if type(ugSrc) == "string" and #ugSrc > 0 then
+                                                    ugSrc = ugSrc:gsub("\r\n", "\n")
+                                                    if typeof(writefile) == "function" then
+                                                        pcall(function()
+                                                            writefile(ugT[3], ugSrc)
+                                                        end)
+                                                    end
+                                                    local ugLines = string.split(ugSrc, "\n")
+                                                    ugLog("=== " .. ugT[2] .. ": " .. #ugLines .. " lines (ไฟล์เต็ม: " .. ugT[3] .. ") ===")
+                                                    if ugT[2] == "FPS_main" then
+                                                        -- จุด crash: RangedWeaponDefault เริ่ม decomp 888 (orig 1001)
+                                                        -- error orig 1044 ≈ decomp ~931 = หลัง CreateBullet (decomp 914) ~17 บรรทัด
+                                                        for i = 880, math.min(1010, #ugLines) do
+                                                            ugLog(("%d| %s"):format(i, ugLines[i]))
+                                                        end
+                                                        -- ★ v19: error FPS:904 "interval is empty" = เกมเรียก math.random
+                                                        -- ด้วยช่วงว่าง — สแกนหา "ทุกจุดที่เรียก random" ทั้งไฟล์ เรียงจาก
+                                                        -- ใกล้บรรทัด 904 มากไปน้อย พร้อมบริบทรอบ ๆ ให้จับสาเหตุได้ทันที
+                                                        local ugRandHits = {}
+                                                        for i = 1, #ugLines do
+                                                            if ugLines[i]:lower():find("random", 1, true) then
+                                                                ugRandHits[#ugRandHits + 1] = i
+                                                            end
+                                                        end
+                                                        table.sort(ugRandHits, function(x, y)
+                                                            return math.abs(x - 904) < math.abs(y - 904)
+                                                        end)
+                                                        local ugRandShown = 0
+                                                        for _, i in ugRandHits do
+                                                            if ugRandShown >= 12 then
+                                                                break
+                                                            end
+                                                            ugRandShown += 1
+                                                            ugLog(("--- random #%d @ บรรทัด %d ---"):format(ugRandShown, i))
+                                                            for j = math.max(1, i - 2), math.min(#ugLines, i + 2) do
+                                                                ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
+                                                            end
+                                                        end
+                                                        if #ugRandHits > 12 then
+                                                            ugLog("(ยังมีจุดเรียก random อีก " .. (#ugRandHits - 12) .. " จุด — ดูได้จากไฟล์เต็ม)")
+                                                        end
+                                                    end
+                                                    -- ★ 2026-11-01 v23: ดัมพ์ลึกช่วง "ตัดสินว่าโดนอะไร" ของ FPS_Bullet
+                                                    -- (544-591 = กระสุนตายที่ดิน/ก้อนดิน, 593-594 = สาย Humanoid,
+                                                    --  614-616 = สาย Health + ProjectileInflict:FireServer)
+                                                    -- หมุดด้วยคำ FindFirstChild("Humanoid") กันเลขบรรทัดเหลื่อม
+                                                    if ugT[2] == "FPS_Bullet(CreateBullet)" then
+                                                        local ugHLine = nil
+                                                        for i = 1, #ugLines do
+                                                            if ugLines[i]:find("FindFirstChild(\"Humanoid\")", 1, true) then
+                                                                ugHLine = i
+                                                                break
+                                                            end
+                                                        end
+                                                        local ugA = ugHLine and math.max(1, ugHLine - 55) or 540
+                                                        local ugB = ugHLine and math.min(#ugLines, ugHLine + 38) or math.min(628, #ugLines)
+                                                        ugLog(("=== FPS_Bullet ช่วงตัดสิน hit (%d-%d)%s ==="):format(ugA, ugB, ugHLine and (" หมุด Humanoid ที่บรรทัด " .. ugHLine) or ""))
+                                                        for i = ugA, ugB do
+                                                            ugLog(("%d| %s"):format(i, ugLines[i]))
+                                                        end
+                                                        local ugFsHits = {}
+                                                        for i = 1, #ugLines do
+                                                            if ugLines[i]:lower():find("fireserver", 1, true) then
+                                                                ugFsHits[#ugFsHits + 1] = i
+                                                            end
+                                                        end
+                                                        for _, i in ugFsHits do
+                                                            ugLog(("--- FireServer @ บรรทัด %d (±6) ---"):format(i))
+                                                            for j = math.max(1, i - 6), math.min(#ugLines, i + 6) do
+                                                                ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
+                                                            end
+                                                        end
+                                                    end
+                                                    -- ★ v20: สแกนหา "โค้ดส่วนดาเมจ" ในทุกโมดูลที่อ่านได้
+                                                    -- (FPS_main + FPS_Bullet) — จุดที่เกมคิด/ส่งดาเมจจริง
+                                                    local ugScanWords = { { "damage", 8 }, { "fireserver", 8 }, { "humanoid", 4 }, { "health", 4 } }
+                                                    for _, ugSW in ugScanWords do
+                                                        local ugCount = 0
+                                                        for i = 1, #ugLines do
+                                                            if ugCount >= ugSW[2] then
+                                                                break
+                                                            end
+                                                            if ugLines[i]:lower():find(ugSW[1], 1, true) then
+                                                                ugCount += 1
+                                                                ugLog(("--- %s #%d @ %s บรรทัด %d ---"):format(ugSW[1], ugCount, ugT[2], i))
+                                                                for j = math.max(1, i - 1), math.min(#ugLines, i + 1) do
+                                                                    ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
+                                                                end
+                                                            end
+                                                        end
+                                                        if ugCount == 0 then
+                                                            ugLog("(ไม่เจอ '" .. ugSW[1] .. "' ใน " .. ugT[2] .. ")")
+                                                        end
+                                                    end
+                                                else
+                                                    ugLog("=== " .. ugT[2] .. ": อ่านไม่ได้ ===")
+                                                end
                                             end
-                                            if type(ugSrc) ~= "string" or #ugSrc == 0 then
-                                                print("[Miko][SRC] อ่าน Source ไม่ได้ทั้ง .Source และ decompile (ข้าม)")
-                                                return
+                                            local ugText = table.concat(ugReport, "\n")
+                                            local ugWrote = false
+                                            if typeof(writefile) == "function" then
+                                                pcall(function()
+                                                    writefile("Miko_FPS_1044_dump.txt", ugText)
+                                                    ugWrote = true
+                                                end)
                                             end
-                                            print("[Miko][SRC] ได้โค้ดจาก " .. tostring(ugSrcName))
-                                            local ugSrcLines = string.split(ugSrc:gsub("\r\n", "\n"), "\n")
-                                            print("[Miko][SRC] บรรทัดรวม:", #ugSrcLines)
-                                            for i = 1036, math.min(1052, #ugSrcLines) do
-                                            print(("[Miko][SRC] %d| %s"):format(i, ugSrcLines[i]))
+                                            print("[Miko][SRC] aimPart = " .. typeof(aimPart) .. (typeof(aimPart) == "Instance" and (" (" .. aimPart.Name .. " / " .. aimPart.ClassName .. ")") or ""))
+                                            for _, ugLn in ugReport do
+                                                print("[Miko][SRC] " .. ugLn)
                                             end
-                                            for i = 2738, math.min(2750, #ugSrcLines) do
-                                            print(("[Miko][SRC] %d| %s"):format(i, ugSrcLines[i]))
-                                            end
-                                            local ugHits = 0
-                                            for i, ugLn in ugSrcLines do
-                                            if ugHits < 8 and (ugLn:find("CreateBullet") or ugLn:find("RangedWeaponDefault")) then
-                                                ugHits += 1
-                                                print(("[Miko][SRC] hit %d| %s"):format(i, ugLn))
-                                            end
+                                            if ugWrote then
+                                                print("[Miko][SRC] v23: ยิงเป้ามุดดิน 3-4 นัด + ยิงคนยืนปกติเหนือดิน 1 นัด แล้วถ่ายภาพคอนโซลแท็บ Output (ติ๊กเฉพาะ Output): เอาบรรทัด [Miko] v23 นัดมุดดิน... ทั้งหมด + บรรทัด [Miko] v23 ดาเมจ... + บรรทัด [Miko][SRC] ตัวเลข 5xx ทั้งชุด + บอกด้วยว่าเลือดเป้าลดไหม")
                                             end
                                         end)
                                         end
@@ -1664,15 +2791,77 @@ InitSilentAim = function()
 
                                     local aimPoint = target.Position + targetOffset
 
+                                    -- ★ 2026-11-01 v14 (ยิงโดนคนเปิดมุดดิน — แก้ใหม่ทั้งชุด):
+                                    -- สาเหตุที่แท้จริงจากคลิปล่าสุด: v13 เดิม "ย้ายจุดเกิดกระสุนไปใต้ดินข้างหัวเป้า"
+                                    -- (ห่างตัวผู้ยิง 12+ หน่วย) เกมตรวจว่าจุดเกิดกระสุนต้องอยู่ใกล้ตัวผู้ยิง จึง
+                                    -- ปฏิเสธทุกนัด แล้ว fallback ยิงตาม crosshair จากปากกระบอกที่ยกขึ้นยืน = กระสุน
+                                    -- ลอยเหนือผิวดิน ไม่เคยดิ่งลงไปโดนเป้าเลย (ตรงตามคลิปที่ส่งมา)
+                                    -- v14 กลับไปใช้สูตรเดิมที่พิสูจน์แล้วว่า "UG ยิงโดนคนมุดดิน": จุดเกิดกระสุน =
+                                    -- ระดับตาเหนือผิวดิน (ใกล้ปากกระบอก) แล้วดิ่งเข้าหัวเป้า — กระสุนของเกมทะลุ
+                                    -- ดินได้ (พิสูจน์แล้วตั้งแต่ยุค v7 ยิงจากใต้ดินแล้วโดนขาคนยืน)
+                                    -- ส่วน "หมุดนิรนาม" ย้ายไปวาง "บนแนว crosshair ของกล้อง เลยเป้าออกไป 15 หน่วย"
+                                    -- เพราะกล้อง FD จมอยู่ใต้ผิวดิน แนวมองระดับพื้นวิ่งอยู่ในโพรงใต้ดินที่ว่างเปล่า
+                                    -- ray ของเกมจึงไม่เจออะไรเลย = error FPS:1044 ทุกนัด หมุดนี้ทำให้ ray มีของให้
+                                    -- โดน ไม่คืน nil และอยู่ไกลกว่าหัวเป้า = กระสุนโดนหัวเป้าก่อนเสมอ
+                                    local ugTgtBuried = false
+                                    local ugTgtSurfaceY = nil
+                                    pcall(function()
+                                        local ugTgtParams = RaycastParams.new()
+                                        ugTgtParams.FilterType = Enum.RaycastFilterType.Exclude
+                                        local ugTgtExcl = {}
+                                        if LocalPlayer.Character then
+                                            ugTgtExcl[#ugTgtExcl + 1] = LocalPlayer.Character
+                                        end
+                                        local ugTgtModel = target:FindFirstAncestorOfClass("Model")
+                                        if ugTgtModel then
+                                            ugTgtExcl[#ugTgtExcl + 1] = ugTgtModel
+                                        end
+                                        ugTgtParams.FilterDescendantsInstances = ugTgtExcl
+                                        ugTgtParams.IgnoreWater = true
+                                        local ugTgtHit = workspace:Raycast(
+                                            Vector3.new(aimPoint.X, aimPoint.Y + 40, aimPoint.Z),
+                                            Vector3.new(0, -160, 0),
+                                            ugTgtParams
+                                        )
+                                        -- ★ v14: เกณฑ์หลวมกว่าเดิม (0.3 -> 0.15) ตัวมุดดินลึกแค่ 0.1-1 หน่วยใต้ผิว
+                                        -- ถ้าใช้เกณฑ์ 0.3 เป้าที่จมตื้นจะไม่ถูกนับว่าอยู่ใต้ดินเลย
+                                        if ugTgtHit and aimPoint.Y < ugTgtHit.Position.Y - 0.15 then
+                                            ugTgtBuried = true
+                                            ugTgtSurfaceY = ugTgtHit.Position.Y
+                                        end
+                                    end)
+                                    
+                                    -- ★ v14: สูตรเดิมที่พิสูจน์แล้ว (prediction + drop) ใช้กับเป้าทุกประเภท ทั้งคนยืน
+                                    -- และคนมุดดิน — ห้ามย้ายจุดเกิดกระสุนหนีตัวผู้ยิงอีกต่อไป (ต้องอยู่ใกล้ปากกระบอก)
                                     if ammo then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
                                         ammo:SetAttribute("Drag", 0)
-
+                                    
                                         if SilentAim.Prediction then
                                             aimPoint = PredictTarget(target, origin, projectileSpeed, acceleration) + targetOffset
                                         end
                                         aimPoint = aimPoint + ProjectileDrop(origin, aimPoint, projectileSpeed, acceleration)
+                                    end
+                                    
+                                    -- ★ v14: เป้าใต้ดิน = วางหมุดนิรนามบนแนว crosshair ของกล้องเลยเป้าออกไป 15 หน่วย
+                                    -- กัน ray ตามแนวมองของกล้องจมดินคืน nil (error FPS:1044 -> fallback ยิงพลาด)
+                                    if ugTgtBuried then
+                                        pcall(function()
+                                            local ugCam = workspace.CurrentCamera
+                                            if ugCam then
+                                                local ugLook = ugCam.CFrame.LookVector
+                                                if ugLook.Magnitude > 1e-4 then
+                                                    local ugAhead = math.clamp(
+                                                        (aimPoint - ugCam.CFrame.Position).Magnitude + 15,
+                                                        25, 400
+                                                    )
+                                                    ugSetBuriedAnchor(
+                                                        ugCam.CFrame.Position + ugLook.Unit * ugAhead, ugAhead
+                                                    )
+                                                end
+                                            end
+                                        end)
                                     end
 
                                     -- ★ UG fix v11: diagnostic เฉพาะช็อตมุดดิน (5 นัดแรก) — los=clear = เส้นยิงจาก
@@ -1697,24 +2886,37 @@ InitSilentAim = function()
                                                 ugLosText = "BLOCKED:" .. ugLosHit.Instance.Name
                                             end
                                         end)
-                                        print(string.format(
-                                            "[Miko] UG v12 #%d: origin=(%.1f, %.1f, %.1f) aim=(%.1f, %.1f, %.1f) dist=%.1f los=%s stealth=%s",
-                                            ugDiagCount,
-                                            origin.X, origin.Y, origin.Z,
-                                            aimPoint.X, aimPoint.Y, aimPoint.Z,
-                                            (aimPoint - origin).Magnitude, ugLosText, tostring(_G.MikoUG_StealthServer ~= false)
-                                        ))
+                                    print(string.format(
+                                        "[Miko] UG v23 #%d: origin=(%.1f, %.1f, %.1f) aim=(%.1f, %.1f, %.1f) dist=%.1f buried=%s camY=%.1f los=%s stealth=%s arg=%s%s",
+                                        ugDiagCount,
+                                        origin.X, origin.Y, origin.Z,
+                                        aimPoint.X, aimPoint.Y, aimPoint.Z,
+                                        (aimPoint - origin).Magnitude, tostring(ugTgtBuried),
+                                        (workspace.CurrentCamera and workspace.CurrentCamera.CFrame.Position.Y or 0),
+                                        ugLosText, tostring(_G.MikoUG_StealthServer ~= false),
+                                        typeof(aimPart),
+                                        typeof(aimPart) == "table" and (aimPart.Position ~= nil and "+Position" or "-Position") or ""
+                                    ))
                                     end
 
-                                    finalAim = {
-                                        CFrame = CFrame.new(origin, aimPoint),
-                                    }
+                                    -- ★ v16 (จากซอร์สเกมที่ dump ได้): RangedWeaponDefault เรียก
+                                    -- Bullet:CreateBullet(weapon, worldModel, viewModel, aimPart, ...)
+                                    -- แล้วเกมอ่าน aimPart.CFrame "ตัวจริง" ตรง ๆ — การส่งตาราง/part
+                                    -- ปลอมทำให้ CreateBullet คืนค่าไม่ครบ เกมอ่าน .y ของ nil ทันที
+                                    -- หลัง CreateBullet ~17 บรรทัด = crash FPS:1044 ทุกนัด แล้ว
+                                    -- fallback ยิงตาม crosshair = กระสุนลอยเหนือดิน
+                                    -- → ห้ามส่งของปลอมอีกต่อไป: ใช้ "ยืมตัวจริง" ผ่าน ugFireBullet
+                                    finalAim = aimPart
+                                    local ugFireFrom, ugFireAt = origin, aimPoint
+                                    if Misc and Misc.WallPenetration and not ugTgtBuried then
+                                            finalAim = ResolveWallbangAim(finalAim, aimPoint)
+                                            if typeof(finalAim) == "table" and finalAim.CFrame then
+                                                    ugFireFrom = finalAim.CFrame.Position
+                                                    ugFireAt = ugFireFrom + finalAim.CFrame.LookVector * math.max((aimPoint - origin).Magnitude, 10)
+                                            end
+                                    end
 
-                                        if Misc and Misc.WallPenetration then
-                                                finalAim = ResolveWallbangAim(finalAim, aimPoint)
-                                        end
-
-                                        return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
+                                    return ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern, ugFireFrom, ugFireAt, ugTgtBuried == true)
                                 end
                         end
                 end
@@ -1726,19 +2928,75 @@ InitSilentAim = function()
                 -- กล้องจมดิน ยิงตาม crosshair จากใต้ดิน = กระสุนติดดินตายทุกนัด
                 -- จึงย้ายจุดยิงขึ้นระดับตาเหนือผิวดินแล้วยิงตามแนวมอง crosshair เดิม
                 -- (Underground เดิมไม่แตะเลย — กล้องอยู่เหนือดิน เล็งปกติได้อยู่แล้ว)
+                local ugConeUsed = false -- ★ v14: ธง "ช็อตนี้ดิ่งเข้าเป้ามุดดิน" (คุมการข้าม ResolveWallbangAim)
+                local ugFireFrom, ugFireAt = nil, nil -- ★ v16: จุดยิง/จุดเป้าสำหรับ ugFireBullet (ยืม aimPart ตัวจริง)
                 if Misc and Misc.UndergroundFaceDown and not Misc.Underground then
                         local ugEyeCross = GetUndergroundEyeOrigin()
                         if ugEyeCross then
-                                finalAim = {
-                                CFrame = CFrame.new(ugEyeCross, ugEyeCross + GetAimLook(aimPart) * 500),
-                                }
+                                -- ★ v14: ก่อนยิงตาม crosshair ลองหา "คนมุดดิน" ในกรวยเล็ง 7° ก่อน —
+                                -- ป้ายชื่อลอยเหนือผิวดิน ยิงตาม crosshair ตรง ๆ แล้วกระสุนจะลอยเหนือ
+                                -- ตัวเป้าไปทั้งนัด ถ้าเจอเป้ามุดดินให้ดิ่งเข้าหัวเป้าแทน พร้อมวางหมุด
+                                -- นิรนามบนแนว crosshair กัน ray ของเกมคืน nil
+                                -- (กันโกงเป้า: ถ้าแนว crosshair โดนตัว "คนยืนปกติ" ก่อน = ยิงตาม
+                                --  crosshair ปกติ ห้ามดึงไปหาเป้ามุดดินข้าง ๆ เด็ดขาด)
+                                local ugConeAim, ugConePart = nil, nil
+                                pcall(function()
+                                        local ugLookC = GetAimLook(aimPart)
+                                        if ugLookC and ugLookC.Magnitude > 1e-4 then
+                                                local ugGuardParams = RaycastParams.new()
+                                                ugGuardParams.FilterType = Enum.RaycastFilterType.Exclude
+                                                local ugGuardExcl = {}
+                                                if LocalPlayer.Character then
+                                                        ugGuardExcl[#ugGuardExcl + 1] = LocalPlayer.Character
+                                                end
+                                                ugGuardParams.FilterDescendantsInstances = ugGuardExcl
+                                                local ugGuardHit = workspace:Raycast(
+                                                        ugEyeCross, ugLookC.Unit * 200, ugGuardParams
+                                                )
+                                                if not (ugGuardHit and IsHumanoidPart(ugGuardHit.Instance)) then
+                                                        ugConeAim, ugConePart = ugFindBuriedTargetInCone(ugEyeCross, ugLookC)
+                                                end
+                                        end
+                                end)
+                                if ugConeAim and ugConePart then
+                                        ugConeUsed = true
+                                        pcall(function()
+                                                local ugCam = workspace.CurrentCamera
+                                                if ugCam then
+                                                        local ugLook = ugCam.CFrame.LookVector
+                                                        if ugLook.Magnitude > 1e-4 then
+                                                                local ugAhead = math.clamp(
+                                                                        (ugConeAim - ugCam.CFrame.Position).Magnitude + 15,
+                                                                        25, 400
+                                                                )
+                                                                ugSetBuriedAnchor(
+                                                                        ugCam.CFrame.Position + ugLook.Unit * ugAhead, ugAhead
+                                                                )
+                                                        end
+                                                end
+                                        end)
+                                        -- ★ v16: ยืม aimPart ตัวจริง (ugFireBullet) แทน struct ปลอม
+                                        ugFireFrom, ugFireAt = ugEyeCross, ugConeAim
+                                else
+                                        ugFireFrom, ugFireAt = ugEyeCross, ugEyeCross + GetAimLook(aimPart) * 500
+                                end
                         end
                 end
-                if Misc and Misc.WallPenetration then
+                -- ★ v14: ช็อต cone-aim เป้าใต้ดินห้ามผ่าน ResolveWallbangAim — เส้นยิงดิ่งลง
+                -- ใต้ผิวดิน ray เดินหากำแพงใต้ดินไม่เจอแล้วย้ายจุดยิงเสียเอง
+                if Misc and Misc.WallPenetration and not ugConeUsed then
                         finalAim = ResolveWallbangAim(finalAim, nil)
                 end
+                -- ★ v16: ช็อตมุดดิน (FD) = ยืม aimPart ตัวจริงยิง ไม่ส่ง struct ปลอม
+                if ugFireFrom and ugFireAt then
+                        return ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern, ugFireFrom, ugFireAt, ugConeUsed == true)
+                end
 
-                return oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)
+                -- ★ v18: คืนค่าครบทุกตัว + ซ่อม pattern ถ้า nil (กัน FPS:1044 ทุกเส้นทางยิง)
+                return ugFinishCreateBullet(
+                        ugPack(oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)),
+                        idk, model, model2, model3, recoilPattern
+                )
         end
 
         -- ★ Silent Aim fix v4: ติดตั้ง hook แบบมี fallback 3 ชั้น เพราะ
@@ -2093,17 +3351,10 @@ local LastCrateScan = 0
 local LastLandmineScan = 0
 local LastExtractionScan = 0
 local LastCrateLabelRefresh = 0
-local CrateScanInterval = 6
-local LandmineScanInterval = 4
+local CrateScanInterval = 4
+local LandmineScanInterval = 2
 local CrateLabelRefreshInterval = 0.15
-local ExtractionScanInterval = 2
--- ★ FPS fix 2026-11-01: ช่วงสแกน + debounce ของ DescendantAdded — เดิมตอนยิง
--- (เอฟเฟกต์กระแทก/ตัวเลขดาเมจ/BillboardGui spawn รัว ๆ) หรือตอนศพเกิดทีเดียว
--- หลายชิ้น จะบังคับสแกน workspace ทั้งแมพแบบ sync ในลูปเรนเดอร์ทุกเฟรมจน
--- FPS ตกหนัก/เกมค้าง ตอนนี้การสแกนใหม่แบบบังคับจะเกิดเร็วสุดหลัง spawn
--- สุดท้ายหยุดตาม delay ด้านล่าง (รวบทุก trigger ที่เกิดรัว ๆ เป็นสแกนเดียว)
-local ExtractionRescanDelay = 1
-local LandmineRescanDelay = 1.5
+local ExtractionScanInterval = 0.75
 local ExtractionDescendantHook = false
 local LandmineDescendantHook = false
 
@@ -5968,9 +7219,7 @@ EnsureExtractionDescendantHook = function()
                         return
                 end
                 if obj:IsA("ProximityPrompt") or obj:IsA("BillboardGui") or obj:IsA("TextLabel") then
-                        -- ★ FPS fix: debounce — เดิมตั้ง 0 ให้สแกนแมพทั้งใบทันทีทุกครั้งที่ GUI เกิด
-                        -- (ตอนยิง ตัวเลขดาเมจ/ป้าย spawn ทุกนัด = สแกนซ้ำจนเกมค้าง)
-                        LastExtractionScan = tick() - ExtractionScanInterval + ExtractionRescanDelay
+                        LastExtractionScan = 0
                 end
         end)
 end
@@ -6411,9 +7660,7 @@ local function EnsureLandmineDescendantHook()
                                 or name:find("pressure", 1, true)
                                 or LooksLikeDiscMinePart(obj)
                         then
-                                -- ★ FPS fix: debounce — เดิมตั้ง 0 ให้สแกนแมพทั้งใบทันทีทุกครั้ง
-                                -- (เปลือกกระสุน/เอฟเฟกต์รูปทรงจานแบนก็ trigger ทุกนัดที่ยิง)
-                                LastLandmineScan = tick() - LandmineScanInterval + LandmineRescanDelay
+                                LastLandmineScan = 0
                         end
                 end
         end)
@@ -9516,10 +10763,9 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- watchdog: สแกนซ้ำทุก 3 วิ (★ FPS fix 2026-11-01: เดิมทุก 1 วิ = สแกนแมพ
-    -- ทั้งใบตลอดเวลา; ของใหม่ยังถูกจับสด ๆ ผ่าน workspace.DescendantAdded อยู่)
+    -- watchdog: สแกนซ้ำทุก 1 วิ (fullScan มี ScanBusy กันสแกนซ้อนอยู่แล้ว)
     if now >= NextWatchdog then
-        NextWatchdog = now + 3
+        NextWatchdog = now + 1
         fullScan()
     end
 
@@ -12115,6 +13361,19 @@ local UGBindHideStep = function()
                                 cam.CFrame = CFrame.new(eye)
                                         * CFrame.Angles(0, ugViewYaw, 0)
                                         * CFrame.Angles(ugViewPitch, 0, 0)
+                                -- ★ v14: จัดการหมุดนิรนาม — ช่วง hold ยิงเลื่อนหมุดตามแนวมอง
+                                -- กล้องปัจจุบันตลอด (กัน ray ตาม crosshair ของเกมคืน nil ตอน
+                                -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
+                                -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
+                                if ugHoldUntil and tick() < ugHoldUntil then
+                                        pcall(function()
+                                                _G.MikoUG_RefreshBuriedAnchor()
+                                        end)
+                                else
+                                        pcall(function()
+                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
+                                        end)
+                                end
                         end
                 end)
         end)
@@ -12312,6 +13571,7 @@ _G.MikoUG_SurfaceNow = function()
                 -- _G.MikoUG_StealthServer = false
                 local ugStealth = _G.MikoUG_StealthServer
                 if ugStealth == nil then
+                        -- ★ v27: กลับค่าเริ่มต้นเป็น true — ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12
                         ugStealth = true
                         _G.MikoUG_StealthServer = true
                 end
@@ -13017,6 +14277,19 @@ local UGBindHideStep = function()
                                 cam.CFrame = CFrame.new(eye)
                                         * CFrame.Angles(0, ugViewYaw, 0)
                                         * CFrame.Angles(ugViewPitch, 0, 0)
+                                -- ★ v14: จัดการหมุดนิรนาม — ช่วง hold ยิงเลื่อนหมุดตามแนวมอง
+                                -- กล้องปัจจุบันตลอด (กัน ray ตาม crosshair ของเกมคืน nil ตอน
+                                -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
+                                -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
+                                if ugHoldUntil and tick() < ugHoldUntil then
+                                        pcall(function()
+                                                _G.MikoUG_RefreshBuriedAnchor()
+                                        end)
+                                else
+                                        pcall(function()
+                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
+                                        end)
+                                end
                         end
                 end)
         end)
@@ -13214,6 +14487,7 @@ _G.MikoUG2_SurfaceNow = function()
                 -- _G.MikoUG2_StealthServer = false
                 local ugStealth = _G.MikoUG2_StealthServer
                 if ugStealth == nil then
+                        -- ★ v27: กลับค่าเริ่มต้นเป็น true — ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12
                         ugStealth = true
                         _G.MikoUG2_StealthServer = true
                 end
@@ -13733,6 +15007,269 @@ MiscBox:AddSlider("UndergroundSpeed", {
                 end
         end,
 })
+
+----------------------------------------------------------------
+-- ★ Anti-Drown v14 (ไม่จมน้ำตาย) — เพิ่มตามคำขอ: "ทำให้เวลามุดลงน้ำไม่มีวันจมน้ำตาย"
+-- โมดูลอิสระในบล็อก do..end ของตัวเอง ทำงานตลอดเวลา ไม่มี toggle
+-- และไม่แตะระบบอื่นแม้แต่บรรทัดเดียว:
+--  (1) สแกนหาสถานะออกซิเจนของเกม (attribute / NumberValue / IntValue
+--      ชื่อคล้าย oxygen/o2/air/breath/drown/lungs บน Player, Character
+--      และโฟลเดอร์ stats) แล้วล็อคไว้ที่ค่าเต็มตลอด — เกมที่นับออกซิเจน
+--      ฝั่ง client จะไม่มีวันลดเลย
+--  (2) ถ้าหัวจมอยู่ใต้ผิวน้ำจริง ๆ แล้วเลือดถูกหัก (เกมบางเกมหักเลือด
+--      แทนการมีออกซิเจน) จะฟื้นเลือดส่วนที่หายทันทีทุกครั้ง
+--  การตรวจ "ใต้น้ำ" ใช้วิธีเดียวกับ WalkOnWater: raycast หาผิวน้ำ
+--  Terrain (Material = Water) + fallback หา part ชื่อ water/ocean
+--  * ถ้ายังจมน้ำตายได้ = เกมตรวจจมน้ำฝั่งเซิร์ฟเวอร์ล้วน ๆ — console
+--    พิมพ์สิ่งที่ล็อคได้เสมอ เอาผลไป dump หาตัวจัดการออกซิเจนต่อได้
+----------------------------------------------------------------
+do
+        local ADOxPatterns = { "oxygen", "o2", "air", "breath", "drown", "lungs" }
+        local ADOxLocked = {} -- [key] = { kind, obj, name, full, printed }
+        local ADWaterParts = {} -- cache part น้ำ (ชื่อ water/ocean) สแกนใหม่ทุก 3 วิ
+        local ADLastScan = 0
+        local ADLastPartScan = 0
+        local ADLastChar = nil
+        local ADLastHealth = nil
+        local ADLastGuardPrint = 0
+        local ADSubmergedNow = false -- ★ v15: อยู่ใต้น้ำอยู่ไหมตอนนี้ (ให้ guard ต่อเฟรมใช้)
+
+        local ADWaterRay = RaycastParams.new()
+        ADWaterRay.FilterType = Enum.RaycastFilterType.Exclude
+        ADWaterRay.IgnoreWater = false
+
+        local function ADNameMatch(name)
+                if typeof(name) ~= "string" or name == "" then
+                        return false
+                end
+                local lower = name:lower()
+                if lower:find("hair", 1, true) then
+                        return false -- กันชื่อ Hair เข้า pattern "air"
+                end
+                for _, pat in ipairs(ADOxPatterns) do
+                        if lower:find(pat, 1, true) then
+                                return true
+                        end
+                end
+                return false
+        end
+
+        local function ADTrack(kind, obj, name, current)
+                local key = kind .. "|" .. obj:GetFullName() .. "|" .. name
+                local rec = ADOxLocked[key]
+                if not rec then
+                        rec = { kind = kind, obj = obj, name = name, full = current, printed = false }
+                        ADOxLocked[key] = rec
+                end
+                if typeof(current) == "number" and current > rec.full then
+                        rec.full = current -- ค่าเต็ม = ค่าสูงสุดที่เคยเห็น (กันจับตอนโดนลดไปแล้ว)
+                end
+        end
+
+        local function ADScanOxygen()
+                local player = Players.LocalPlayer
+                local char = player and player.Character
+                local containers = {}
+                if player then
+                        containers[#containers + 1] = player
+                        for _, cname in ipairs({ "stats", "Stats", "leaderstats", "Data", "PlayerData", "playerstats", "Status", "values", "Values" }) do
+                                local folder = player:FindFirstChild(cname)
+                                if folder then
+                                        containers[#containers + 1] = folder
+                                end
+                        end
+                end
+                if char then
+                        containers[#containers + 1] = char
+                        -- ★ v15: บางเกมเก็บ Oxygen เป็น attribute บน Humanoid
+                        local adHum = char:FindFirstChildOfClass("Humanoid")
+                        if adHum then
+                                containers[#containers + 1] = adHum
+                        end
+                        for _, cname in ipairs({ "stats", "Stats", "Data", "Status", "values", "Values" }) do
+                                local folder = char:FindFirstChild(cname)
+                                if folder then
+                                        containers[#containers + 1] = folder
+                                end
+                        end
+                end
+                for _, obj in ipairs(containers) do
+                        for name, value in pairs(obj:GetAttributes()) do
+                                if typeof(value) == "number" and ADNameMatch(name) then
+                                        ADTrack("attr", obj, name, value)
+                                end
+                        end
+                        for _, child in ipairs(obj:GetChildren()) do
+                                if (child:IsA("NumberValue") or child:IsA("IntValue")) and ADNameMatch(child.Name) then
+                                        ADTrack("value", child, child.Name, child.Value)
+                                end
+                        end
+                end
+        end
+
+        local function ADApplyLocks()
+                for key, rec in pairs(ADOxLocked) do
+                        local obj = rec.obj
+                        if not obj.Parent then
+                                ADOxLocked[key] = nil -- รีสแกนจะเจอใหม่เอง (เช่นตอนรีสปอว์น)
+                        else
+                                local current
+                                if rec.kind == "attr" then
+                                        current = obj:GetAttribute(rec.name)
+                                else
+                                        current = obj.Value
+                                end
+                                if typeof(current) == "number" then
+                                        if current > rec.full then
+                                                rec.full = current
+                                        elseif current < rec.full then
+                                                if rec.kind == "attr" then
+                                                        obj:SetAttribute(rec.name, rec.full)
+                                                else
+                                                        obj.Value = rec.full
+                                                end
+                                        end
+                                        if not rec.printed then
+                                                rec.printed = true
+                                                print(string.format(
+                                                        "[Miko] Anti-Drown: ล็อคออกซิเจน %q (%s) = %g ตลอดกาล",
+                                                        rec.name, rec.kind == "attr" and "attribute" or "Value", rec.full
+                                                ))
+                                        end
+                                end
+                        end
+                end
+        end
+
+        local function ADFindWaterSurface(rootPos, headY)
+                local player = Players.LocalPlayer
+                local char = player and player.Character
+                ADWaterRay.FilterDescendantsInstances = { char, workspace.CurrentCamera }
+                for _, dy in ipairs({ 6, 30, 80 }) do
+                        local origin = Vector3.new(rootPos.X, rootPos.Y + dy, rootPos.Z)
+                        local hit = workspace:Raycast(origin, Vector3.new(0, -240, 0), ADWaterRay)
+                        if hit and hit.Instance:IsA("Terrain") and hit.Material == Enum.Material.Water
+                                and hit.Position.Y > headY then
+                                return hit.Position.Y
+                        end
+                end
+                if tick() - ADLastPartScan >= 3 then
+                        ADLastPartScan = tick()
+                        ADWaterParts = {}
+                        for _, obj in ipairs(workspace:GetDescendants()) do
+                                if obj:IsA("BasePart") then
+                                        local lower = obj.Name:lower()
+                                        if obj.Material == Enum.Material.Water
+                                                or lower:find("water", 1, true) or lower:find("ocean", 1, true) then
+                                                ADWaterParts[#ADWaterParts + 1] = obj
+                                        end
+                                end
+                        end
+                end
+                for _, obj in ipairs(ADWaterParts) do
+                        if obj.Parent then
+                                local topY = obj.Position.Y + obj.Size.Y / 2
+                                local flat = (Vector2.new(rootPos.X, rootPos.Z) - Vector2.new(obj.Position.X, obj.Position.Z)).Magnitude
+                                if topY > headY and flat <= math.max(obj.Size.X, obj.Size.Z) / 2 + 8 then
+                                        return topY
+                                end
+                        end
+                end
+                return nil
+        end
+
+        local function ADTick()
+                local now = tick()
+                local player = Players.LocalPlayer
+                local char = player and player.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                local head = char and char:FindFirstChild("Head")
+                local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
+
+                if now - ADLastScan >= 2 then
+                        ADLastScan = now
+                        ADScanOxygen()
+                end
+                ADApplyLocks()
+
+                if char ~= ADLastChar then
+                        ADLastChar = char
+                        ADLastHealth = hum and hum.Health or nil
+                end
+
+                -- จมจริง = หัวอยู่ต่ำกว่าผิวน้ำ
+                local submerged = false
+                if head and root then
+                        local waterY = ADFindWaterSurface(root.Position, head.Position.Y)
+                        if waterY and head.Position.Y < waterY - 0.3 then
+                                submerged = true
+                        end
+                end
+                -- ★ v15: สถานะ Swimming ของเอนจิน = กำลังว่าย/จมอยู่ในน้ำ (บางเกมเริ่ม
+                -- หักเลือดตั้งแต่ลอยผิวน้ำ หัวยังไม่จม) นับรวมด้วยเพื่อไม่พลาด
+                if not submerged and hum then
+                        local okSwim, adState = pcall(function()
+                                return hum:GetState()
+                        end)
+                        if okSwim and adState == Enum.HumanoidStateType.Swimming then
+                                submerged = true
+                        end
+                end
+                ADSubmergedNow = submerged
+
+                -- เกราะใต้น้ำ: ห้ามเลือดลดขณะหัวจมอยู่ใต้ผิวน้ำ
+                if submerged and hum and hum.Health > 0 and ADLastHealth and hum.Health < ADLastHealth then
+                        local was = hum.Health
+                        local target = math.min(ADLastHealth, hum.MaxHealth or ADLastHealth)
+                        if target > was then
+                                hum.Health = target
+                                if now - ADLastGuardPrint >= 3 then
+                                        ADLastGuardPrint = now
+                                        print(string.format("[Miko] Anti-Drown: ห้ามหักเลือดใต้น้ำ %.0f -> %.0f", was, target))
+                                end
+                        end
+                end
+                -- ★ v15: ขณะอยู่ใต้น้ำ จำเกณฑ์เลือดไว้ที่ "สูงสุดล่าสุด" เท่านั้น (ไม่ให้
+                -- เกณฑ์ลดลงตามเลือดที่โดนหาระหว่าง tick ไม่งั้นเลือดไหลลงเรื่อย ๆ
+                -- จนตายทั้งที่ guard ทำงานอยู่)
+                if hum and submerged then
+                        if ADLastHealth == nil or hum.Health > ADLastHealth then
+                                ADLastHealth = hum.Health
+                        end
+                else
+                        ADLastHealth = hum and hum.Health or nil
+                end
+        end
+
+        -- ★ v15: เกราะเลือดต่อเฟรม (Heartbeat) — ADTick รันทุก 0.1 วิ อาจช้ากว่า
+        -- ดาเมจจมน้ำของเกม ขณะหัวจมใต้น้ำ (ADSubmergedNow) จะคืนเลือดทันทีทุกเฟรม
+        local ADHeartConn = RunService.Heartbeat:Connect(function()
+                if Library.Unloaded then
+                        ADHeartConn:Disconnect()
+                        return
+                end
+                if not ADSubmergedNow then
+                        return
+                end
+                local adPlayer = Players.LocalPlayer
+                local adChar = adPlayer and adPlayer.Character
+                local adHum = adChar and adChar:FindFirstChildOfClass("Humanoid")
+                if adHum and adHum.Health > 0 and ADLastHealth and adHum.Health < ADLastHealth then
+                        local adTarget = math.min(ADLastHealth, adHum.MaxHealth or ADLastHealth)
+                        if adTarget > adHum.Health then
+                                adHum.Health = adTarget
+                        end
+                end
+        end)
+        task.spawn(function()
+                print("[Miko] Anti-Drown ON: ล็อคออกซิเจน + ห้ามหักเลือดใต้น้ำ = ไม่มีวันจมน้ำตาย")
+                while Library.Unloaded ~= true do
+                        pcall(ADTick)
+                        task.wait(0.1)
+                end
+        end)
+end
+
 
 MiscBox:AddLabel("Spectator: ")
 
