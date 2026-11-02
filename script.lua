@@ -1,4 +1,4 @@
-    --!native
+--!native
 --!optimize 2
 
 
@@ -340,13 +340,13 @@ local Library, Utility = LPH_JIT(function()
 
 		Theme = {
 			outline = Color3.fromRGB(0, 0, 0),
-			inline = Color3.fromRGB(40, 42, 44),
-			["inline hovering"] = Color3.fromRGB(50, 52, 54),
+			inline = Color3.fromRGB(43, 31, 55),
+			["inline hovering"] = Color3.fromRGB(58, 42, 75),
 
-			background = Color3.fromRGB(23, 25, 26),
-			["dock background"] = Color3.fromRGB(19, 19, 19),
+			background = Color3.fromRGB(16, 12, 22),
+			["dock background"] = Color3.fromRGB(11, 9, 16),
 
-			accent = Color3.fromRGB(220, 100, 100),
+			accent = Color3.fromRGB(166, 107, 255),
 
 			text = Color3.fromRGB(230, 230, 230),
 			["dark text"] = Color3.fromRGB(86, 86, 86),
@@ -770,7 +770,7 @@ local Library, Utility = LPH_JIT(function()
 				Size = UDim2.new(0, cfg.size, 0, 0),
 				BorderSizePixel = 0,
 				AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundColor3 = Color3.fromRGB(19, 19, 19),
+				BackgroundColor3 = Color3.fromRGB(11, 9, 16),
 				BackgroundTransparency = 0.5,
 				Parent = Library.ScreenGuiPopups,
 			})
@@ -783,7 +783,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(19, 19, 19),
+					BackgroundColor3 = Color3.fromRGB(11, 9, 16),
 					BackgroundTransparency = 0.5,
 					Parent = Objects.accent,
 				})
@@ -799,7 +799,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 23),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(19, 19, 19),
+					BackgroundColor3 = Color3.fromRGB(11, 9, 16),
 					Parent = Objects.background,
 				}, { BackgroundColor3 = "dock background" })
 
@@ -844,7 +844,7 @@ local Library, Utility = LPH_JIT(function()
 
 				Objects.text2 = Utility.New("TextLabel", {
 					FontFace = Library.Font,
-					TextColor3 = Color3.fromRGB(220, 100, 100),
+					TextColor3 = Color3.fromRGB(166, 107, 255),
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Text = cfg.nameend,
 					TextStrokeTransparency = 0,
@@ -921,7 +921,7 @@ local Library, Utility = LPH_JIT(function()
 
 				local Accent = Utility.New("TextLabel", {
 					FontFace = Fonts.Get("TahomaXP"),
-					TextColor3 = Color3.fromRGB(220, 100, 100),
+					TextColor3 = Color3.fromRGB(166, 107, 255),
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Text = "[]",
 					TextStrokeTransparency = 0,
@@ -995,7 +995,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					BorderSizePixel = 0,
 					AutomaticSize = Enum.AutomaticSize.XY,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Library.ScreenGui,
 				}, { BackgroundColor3 = "accent" })
 
@@ -1015,7 +1015,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.outline,
 				}, { BackgroundColor3 = "background" })
 
@@ -1421,7 +1421,7 @@ local Library, Utility = LPH_JIT(function()
 				size = UDim2.fromOffset(602, 502),
 				open = true,
 				namestart = "Miko",
-				nameend = "hub",
+				nameend = "Hub",
 			})
 
 			local Window = {
@@ -1451,7 +1451,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = cfg.size,
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.ScreenGui,
 				}, { BackgroundColor3 = "accent" })
 
@@ -1471,7 +1471,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.outline,
 				}, { BackgroundColor3 = "background" })
 
@@ -1491,7 +1491,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 30),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(19, 19, 19),
+					BackgroundColor3 = Color3.fromRGB(11, 9, 16),
 					Parent = Objects.background,
 				}, { BackgroundColor3 = "dock background" })
 
@@ -1518,6 +1518,7 @@ local Library, Utility = LPH_JIT(function()
 					VerticalAlignment = Enum.VerticalAlignment.Center,
 					FillDirection = Enum.FillDirection.Horizontal,
 					SortOrder = Enum.SortOrder.LayoutOrder,
+					Padding = UDim.new(0, 4),
 					Parent = Objects.textholder,
 				})
 
@@ -1538,7 +1539,7 @@ local Library, Utility = LPH_JIT(function()
 
 				Objects.text2 = Utility.New("TextLabel", {
 					FontFace = Library.Font,
-					TextColor3 = Color3.fromRGB(220, 100, 100),
+					TextColor3 = Color3.fromRGB(166, 107, 255),
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Text = cfg.nameend,
 					TextStrokeTransparency = 0,
@@ -1684,7 +1685,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(0, 2, 1, 0),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.holder,
 				}, { BackgroundColor3 = "accent" })
 
@@ -1782,7 +1783,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.holder,
 				}, { BackgroundColor3 = "accent" })
 
@@ -1921,7 +1922,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.outline,
 				}, { BackgroundColor3 = "accent" })
 
@@ -1941,7 +1942,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.outline,
 				}, { BackgroundColor3 = "background" })
 
@@ -1950,7 +1951,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 28),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(19, 19, 19),
+					BackgroundColor3 = Color3.fromRGB(11, 9, 16),
 					Parent = Objects.background,
 				}, { BackgroundColor3 = "dock background" })
 
@@ -1994,7 +1995,7 @@ local Library, Utility = LPH_JIT(function()
 					AutomaticCanvasSize = Enum.AutomaticSize.Y,
 					BorderSizePixel = 0,
 					CanvasSize = UDim2.new(0, 0, 0, 0),
-					ScrollBarImageColor3 = Color3.fromRGB(220, 100, 100),
+					ScrollBarImageColor3 = Color3.fromRGB(166, 107, 255),
 					MidImage = Library.Images.ScrollBar,
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					ScrollBarThickness = 1,
@@ -2091,7 +2092,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(0, 17, 0, 17),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.line,
 				}, { BackgroundColor3 = "inline" })
 
@@ -2101,7 +2102,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -2111,7 +2112,7 @@ local Library, Utility = LPH_JIT(function()
 				BorderColor3 = Color3.fromRGB(0, 0, 0),
 				Size = UDim2.new(1, -2, 1, -2),
 				BorderSizePixel = 0,
-				BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+				BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 				Parent = Objects.background,
 			}, { BackgroundColor3 = "accent" })
 
@@ -2323,7 +2324,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 14),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.line,
 				}, { BackgroundColor3 = "inline" })
 
@@ -2333,7 +2334,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -2342,7 +2343,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(0.5, 0, 1, 0),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.background,
 				}, { BackgroundColor3 = "accent" })
 
@@ -2489,7 +2490,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 27),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.line,
 				}, { BackgroundColor3 = "inline" })
 
@@ -2499,7 +2500,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -2712,7 +2713,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 27),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.line,
 				}, { BackgroundColor3 = "inline" })
 
@@ -2722,7 +2723,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -2771,7 +2772,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderSizePixel = 0,
 					Visible = false,
 					ClipsDescendants = true,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Library.ScreenGui,
 				}, { BackgroundColor3 = "inline" })
 
@@ -2781,7 +2782,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -1),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -2790,7 +2791,7 @@ local Library, Utility = LPH_JIT(function()
 					AutomaticCanvasSize = Enum.AutomaticSize.Y,
 					BorderSizePixel = 0,
 					CanvasSize = UDim2.new(0, 0, 0, 0),
-					ScrollBarImageColor3 = Color3.fromRGB(220, 100, 100),
+					ScrollBarImageColor3 = Color3.fromRGB(166, 107, 255),
 					MidImage = Library.Images.ScrollBar,
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					ScrollBarThickness = 1,
@@ -3044,7 +3045,7 @@ local Library, Utility = LPH_JIT(function()
 						BorderColor3 = Color3.fromRGB(0, 0, 0),
 						Size = UDim2.new(0, 1, 1, 0),
 						BorderSizePixel = 0,
-						BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+						BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 						Parent = Objects.holder,
 					}, { BackgroundColor3 = "accent" })
 
@@ -3283,7 +3284,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, cfg.size),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.box,
 				}, { BackgroundColor3 = "inline" })
 
@@ -3293,7 +3294,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -3302,7 +3303,7 @@ local Library, Utility = LPH_JIT(function()
 					AutomaticCanvasSize = Enum.AutomaticSize.Y,
 					BorderSizePixel = 0,
 					CanvasSize = UDim2.new(0, 0, 0, 0),
-					ScrollBarImageColor3 = Color3.fromRGB(220, 100, 100),
+					ScrollBarImageColor3 = Color3.fromRGB(166, 107, 255),
 					MidImage = Library.Images.ScrollBar,
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					ScrollBarThickness = 1,
@@ -3574,7 +3575,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, 0, 0, 27),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Objects.line,
 				}, { BackgroundColor3 = "inline" })
 
@@ -3584,7 +3585,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -3753,7 +3754,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(0, 24, 0, 12),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Parent,
 				}, { BackgroundColor3 = "inline" })
 
@@ -3763,7 +3764,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -4012,7 +4013,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderSizePixel = 0,
 					Visible = false,
 					AutomaticSize = Enum.AutomaticSize.XY,
-					BackgroundColor3 = Color3.fromRGB(40, 42, 44),
+					BackgroundColor3 = Color3.fromRGB(43, 31, 55),
 					Parent = Library.ScreenGui,
 				}, { BackgroundColor3 = "inline" })
 
@@ -4022,7 +4023,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Popup.Objects.inline,
 				}, { BackgroundColor3 = "background" })
 
@@ -4092,7 +4093,7 @@ local Library, Utility = LPH_JIT(function()
 							Size = UDim2.new(0, 1, 1, 0),
 							BorderSizePixel = 0,
 							BackgroundTransparency = 1,
-							BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+							BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 							Parent = Objs.holder,
 						}, { BackgroundColor3 = "accent" })
 					end
@@ -4148,6 +4149,7 @@ local Library, Utility = LPH_JIT(function()
 				Popup.Add(mode)
 			end
 
+
 			local Item;
 			if not cfg.ignore then
 				Item = Library.KeybindsList.Add()
@@ -4197,6 +4199,7 @@ local Library, Utility = LPH_JIT(function()
 					end
 				end
 
+
 				if Item then
 					local keyname = Keybind.Key and Keybind.Key.Name or "-"
 					local funcOn = true
@@ -4205,6 +4208,7 @@ local Library, Utility = LPH_JIT(function()
 					end
 					Item.Set(Keybind.Value, cfg.name, Keybind.Mode or "Toggle", keyname, funcOn)
 				end
+
 
 				if not ignore then
 					Library.Flags[cfg.flag] = Keybind.Value
@@ -4372,8 +4376,8 @@ local Library, Utility = LPH_JIT(function()
 		function Library.Watermark(self, cfg)
 			cfg = cfg or { }; cfg = Library.Config(cfg, {
 				text = "ping: {ping}ms | user: admin | {date}",
-				titlestart = "swim",
-				titleend = "bot",
+				titlestart = "Miko ",
+				titleend = "Hub",
 				visible = true,
 				rate = 1 / 20,
 			})
@@ -4398,7 +4402,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					BorderSizePixel = 0,
 					AutomaticSize = Enum.AutomaticSize.XY,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Library.NotificationHolder,
 				}, { BackgroundColor3 = "accent" })
 
@@ -4408,7 +4412,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(1, -2, 1, -2),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Parent = Objects.accent,
 				}, { BackgroundColor3 = "background" })
 
@@ -4475,7 +4479,7 @@ local Library, Utility = LPH_JIT(function()
 
 				Objects.text2 = Utility.New("TextLabel", {
 					FontFace = Fonts.Get("TahomaXP"),
-					TextColor3 = Color3.fromRGB(220, 100, 100),
+					TextColor3 = Color3.fromRGB(166, 107, 255),
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Text = cfg.titleend,
 					TextStrokeTransparency = 0,
@@ -4588,7 +4592,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					BorderSizePixel = 0,
 					AutomaticSize = Enum.AutomaticSize.XY,
-					BackgroundColor3 = Color3.fromRGB(23, 25, 26),
+					BackgroundColor3 = Color3.fromRGB(16, 12, 22),
 					Position = UDim2.new(-1, 0, 0, 0),
 					Parent = Objects.holder,
 				}, { BackgroundColor3 = "background" })
@@ -4622,7 +4626,7 @@ local Library, Utility = LPH_JIT(function()
 					BorderColor3 = Color3.fromRGB(0, 0, 0),
 					Size = UDim2.new(0, 2, 1, 0),
 					BorderSizePixel = 0,
-					BackgroundColor3 = Color3.fromRGB(220, 100, 100),
+					BackgroundColor3 = Color3.fromRGB(166, 107, 255),
 					Parent = Objects.background,
 				}, { BackgroundColor3 = "accent" })
 			end
@@ -4765,7 +4769,7 @@ local cheat = {nc_state = {on = false, key = false, speed = 1, kinds = {"Floors"
 cheat.utility.new_heartbeat = function(f) return RunService.Heartbeat:Connect(f) end
 cheat.utility.new_renderstepped = function(f) return RunService.RenderStepped:Connect(f) end
 local project_delta = {}
-local ui = {window = Library:Window({namestart = "swim", nameend = "hub"})}
+local ui = {window = Library:Window({namestart = "Miko", nameend = "Hub"})}
 ui.tabs = {
  skins = ui.window:Tab({name = "Skins", image = "rbxassetid://17415964540", size = 76}),
  main = ui.window:Tab({name = "Main", image = Images.Get("misc")}),
@@ -4783,6 +4787,9 @@ ui.tabs.main.Set(true)
 ui.subtabs.skins.Set(true)
 ui.subtabs.main.Set(true)
 ui.subtabs.settings.Set(true)
+ui.sections.settings_config:Toggle({Name = "Show keybinds", Value = true, Flag = "show_keybinds", Callback = function(visible)
+ Library.KeybindsList.Status(visible)
+end})
 UserInputService.InputBegan:Connect(function(input, processed)
  if not processed and input.KeyCode == Enum.KeyCode.Delete then ui.window.Open() end
 end)
@@ -5042,7 +5049,7 @@ do
 		local b = Instance.new("ImageButton")
 		b.Name = caption
 		b.LayoutOrder = order or 0
-		b.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+		b.BackgroundColor3 = Color3.fromRGB(24, 17, 33)
 		b.BorderSizePixel = 0
 		b.Image = image or ""
 		b.ScaleType = Enum.ScaleType.Fit
