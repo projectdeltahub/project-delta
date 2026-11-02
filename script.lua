@@ -5676,7 +5676,7 @@ local spiderman, spiderman_key = false, false
 		movebox:Toggle({Name = "Speedhack auto speed", Value = false, Flag = "speedhack_autospeed", Callback = function(bool)
 			speedhack_autospeed = bool
 		end})
-		movebox:Slider({Name = "Speedhack speed", Min = 1, Max = 24, Float = 0.1, Value = 18.2, Flag = "speedhack_speed", Callback = function(int)
+		movebox:Slider({Name = "Speedhack speed", Min = 1, Max = 18.1, Float = 0.1, Value = 18.2, Flag = "speedhack_speed", Callback = function(int)
 			speedhack_speed = int
 		end})
 		movebox:Slider({Name = "Auto speed offset", Min = -5, Max = 5, Float = 0.1, Value = 3.5, Flag = "speedhack_autospeed_offset", Callback = function(int)
