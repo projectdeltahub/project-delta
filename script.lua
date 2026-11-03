@@ -4738,6 +4738,13 @@ local Library, Utility = LPH_JIT(function()
 		end
 
 		function Library.Unload()
+			if Library.OnUnload then -- FPS fix 2026-11-03: run cheat cleanup hooks
+				local unload_hooks = Library.OnUnload
+				Library.OnUnload = nil
+				for _,hookfn in unload_hooks do
+					pcall(hookfn)
+				end
+			end
 			for _,obj in Utility.Connections do
 				obj:Disconnect()
 			end
@@ -4766,8 +4773,30 @@ local _FindFirstChild, _FindFirstChildOfClass = game.FindFirstChild, game.FindFi
 local _IsKeyDown = UserInputService.IsKeyDown
 local unpack = table.unpack
 local cheat = {nc_state = {on = false, key = false, speed = 1, kinds = {"Floors", "Walls"}, layers = 1}, utility = {}}
-cheat.utility.new_heartbeat = function(f) return RunService.Heartbeat:Connect(f) end
-cheat.utility.new_renderstepped = function(f) return RunService.RenderStepped:Connect(f) end
+-- FPS fix 2026-11-03: track every cheat connection/loop so Unload stops them all (no stacked loops on re-inject)
+cheat.utility.cleanup = {conns = {}, dead = false}
+cheat.utility.track = function(conn)
+	if conn then
+		cheat.utility.cleanup.conns[#cheat.utility.cleanup.conns + 1] = conn
+	end
+	return conn
+end
+cheat.utility.on_unload = function(fn)
+	local Lib0 = (getgenv and getgenv() or _G).Library
+	if Lib0 then
+		Lib0.OnUnload = Lib0.OnUnload or {}
+		table.insert(Lib0.OnUnload, fn)
+	end
+end
+cheat.utility.new_heartbeat = function(f) return cheat.utility.track(RunService.Heartbeat:Connect(f)) end
+cheat.utility.new_renderstepped = function(f) return cheat.utility.track(RunService.RenderStepped:Connect(f)) end
+cheat.utility.on_unload(function()
+	cheat.utility.cleanup.dead = true
+	for _, c in cheat.utility.cleanup.conns do
+		pcall(function() c:Disconnect() end)
+	end
+	cheat.utility.cleanup.conns = {}
+end)
 local project_delta = {}
 local ui = {window = Library:Window({namestart = "Miko", nameend = "Hub"})}
 ui.tabs = {
@@ -4792,9 +4821,9 @@ ui.subtabs.settings.Set(true)
 ui.sections.settings_config:Toggle({Name = "Show keybinds", Value = true, Flag = "show_keybinds", Callback = function(visible)
  Library.KeybindsList.Status(visible)
 end})
-UserInputService.InputBegan:Connect(function(input, processed)
+cheat.utility.track(UserInputService.InputBegan:Connect(function(input, processed)
  if not processed and input.KeyCode == Enum.KeyCode.Delete then ui.window.Open() end
-end)
+end))
 		cheat.dressSkin = function(model, item_name, selected_skin)
 			local folder = game:GetService("ReplicatedStorage"):FindFirstChild("Skins")
 			if not model or not folder then return end
@@ -5147,8 +5176,13 @@ do
 		Library.Notification("Skin cleared on " .. n .. " item(s)", 3)
 	end})
 	skin_rebuild_weapons()
+	local skin_vm_tick = 0
 	cheat.utility.new_heartbeat(function()
 		if not skin_auto then return end
+		-- FPS fix 2026-11-03: poll the viewmodel at 10Hz instead of every frame
+		local nowvm = os.clock()
+		if nowvm - skin_vm_tick < 0.1 then return end
+		skin_vm_tick = nowvm
 		local vm = Camera and _FindFirstChildOfClass(Camera, "Model")
 		if vm and vm ~= skin_last_model then
 			skin_last_model = vm
@@ -5361,6 +5395,12 @@ do
 		local cur = nil
 		for _, a in atts:GetChildren() do
 			if a:GetAttribute("Slot") == slot then cur = a break end
+		end
+		-- FPS fix 2026-11-03: skip re-stamp when already correct (stops instance churn every second)
+		if cur and cur.Name == att then
+			local list0 = items_list()
+			local ref0 = list0 and list0:FindFirstChild(att)
+			if cur.Value == ref0 and atts:GetAttribute(slot) == att then return end
 		end
 		if not cur then
 			cur = Instance.new("ObjectValue")
@@ -5637,6 +5677,7 @@ local Config = ui.sections.settings_config
 
 	task.spawn(function()
 		while task.wait(5) do
+			if cheat.utility.cleanup.dead then break end -- FPS fix 2026-11-03
 			if ui.window.Visible then
 				local _, Files = Utility.GetFiles(ConfigFolder, { ".cfg" })
 
@@ -5733,6 +5774,7 @@ local mscsec = ui.sections.misc
 			boss_gui.DisplayOrder = -1
 			boss_gui.Enabled = false
 			boss_gui.Parent = game:GetService("CoreGui")
+			cheat.utility.on_unload(function() pcall(function() boss_gui:Destroy() end) end) -- FPS fix 2026-11-03
 			local boss_outer = Instance.new("Frame")
 			boss_outer.Name = "Panel"
 			boss_outer.AnchorPoint = Vector2.new(0, 0)
@@ -5754,15 +5796,15 @@ local mscsec = ui.sections.misc
 						mx, my = input.Position.X, input.Position.Y
 					end
 				end)
-				UserInputService.InputChanged:Connect(function(input)
+				cheat.utility.track(UserInputService.InputChanged:Connect(function(input)
 					if drag and input.UserInputType == Enum.UserInputType.MouseMovement then
 						local vs = Camera.ViewportSize
 						boss_outer.Position = UDim2.new(0, math.clamp(ox + input.Position.X - mx, 0, math.max(vs.X - boss_outer.AbsoluteSize.X, 0)), 0, math.clamp(oy + input.Position.Y - my, 0, math.max(vs.Y - boss_outer.AbsoluteSize.Y, 0)))
 					end
-				end)
-				UserInputService.InputEnded:Connect(function(input)
+				end))
+				cheat.utility.track(UserInputService.InputEnded:Connect(function(input)
 					if input.UserInputType == Enum.UserInputType.MouseButton1 then drag = false end
-				end)
+				end))
 			end
 			local boss_stroke = Instance.new("UIStroke")
 			boss_stroke.Thickness = 1
@@ -5903,7 +5945,8 @@ local mscsec = ui.sections.misc
 									end
 								end
 							end
-							if #model:GetChildren() > 0 then
+							-- FPS fix 2026-11-03: only descend into Models/Folders (was a GetChildren() alloc on every node)
+							if model:IsA("Model") or model:IsA("Folder") then
 								scan_boss_zone(model, depth + 1)
 							end
 						end
@@ -5976,29 +6019,33 @@ local spiderman, spiderman_key = false, false
 
 
 	task.spawn(function()
+		-- FPS fix 2026-11-03: check toggle first (was scanning the character every Heartbeat even when off)
 		while RunService.Heartbeat:Wait() do
-				local character = LocalPlayer.Character
-				if not character then
-					continue
-				end
-
-				local hrp = _FindFirstChild(character, "HumanoidRootPart")
-				local hum = _FindFirstChildOfClass(character, "Humanoid")
-				if not (hrp and hum) then
-					continue
-				end
-
-				local currpos = hrp.CFrame.Position
-
-				if not nofall or not table.find(falling_states, hum:GetState()) then
-					should_no_fall = false
-					continue
-				end
-
-				hum:ChangeState(Enum.HumanoidStateType.Running)
-				should_no_fall = true
+			if cheat.utility.cleanup.dead then break end
+			if not nofall then
+				should_no_fall = false
+				continue
 			end
-		end)
+			local character = LocalPlayer.Character
+			if not character then
+				continue
+			end
+
+			local hrp = _FindFirstChild(character, "HumanoidRootPart")
+			local hum = _FindFirstChildOfClass(character, "Humanoid")
+			if not (hrp and hum) then
+				continue
+			end
+
+			if not table.find(falling_states, hum:GetState()) then
+				should_no_fall = false
+				continue
+			end
+
+			hum:ChangeState(Enum.HumanoidStateType.Running)
+			should_no_fall = true
+		end
+	end)
 
 		local state_changed = LPH_NO_VIRTUALIZE(function(old, new)
 			if should_no_fall and table.find(falling_states, new) then
@@ -6007,14 +6054,14 @@ local spiderman, spiderman_key = false, false
 		end)
 		local state_connection
 		if hum then
-			state_connection = hum.StateChanged:Connect(state_changed)
+			state_connection = cheat.utility.track(hum.StateChanged:Connect(state_changed))
 		end
-		LocalPlayer.CharacterAdded:Connect(function(character)
+		cheat.utility.track(LocalPlayer.CharacterAdded:Connect(function(character)
 			local humanoid = character:WaitForChild("Humanoid")
 			hum = humanoid
 			if state_connection then state_connection:Disconnect() end
-			state_connection = humanoid.StateChanged:Connect(state_changed)
-		end)
+			state_connection = cheat.utility.track(humanoid.StateChanged:Connect(state_changed))
+		end))
 	end
 		local speed_toggle = movebox:Toggle({Name = "Speedhack", Value = false, Flag = "speedhack", Callback = function(bool)
 			speedhack = bool
@@ -6074,7 +6121,8 @@ local spiderman, spiderman_key = false, false
 			sp_keybind.Set(spiderman_key, true)
 		end})
 
-RunService.RenderStepped:Connect(function(delta)
+local aspd_buffs, aspd_checked = nil, 0
+cheat.utility.new_renderstepped(function(delta) -- FPS fix 2026-11-03: tracked connection
  local char = LocalPlayer.Character
  local hrp = char and _FindFirstChild(char, "HumanoidRootPart")
  local hum = char and _FindFirstChildOfClass(char, "Humanoid")
@@ -6083,11 +6131,17 @@ RunService.RenderStepped:Connect(function(delta)
  if speedhack_autospeed then
   local movement_mod = project_delta.fps_object and project_delta.fps_object.movementModifier or 0
   local total_mod = (hrp:GetAttribute("MovementModifier") or 0) + math.clamp(movement_mod, -10, 0)
-  local players = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
-  local data = players and players:FindFirstChild(LocalPlayer.Name)
-  local status = data and data:FindFirstChild("Status")
-  local vars = status and status:FindFirstChild("GameplayVariables")
-  local buffs = vars and vars:FindFirstChild("Buffs")
+  -- FPS fix 2026-11-03: cache Buffs path (was a 6-deep FindFirstChild chain every frame)
+  local buffs = aspd_buffs
+  if not (buffs and buffs.Parent) and os.clock() - aspd_checked >= 2 then
+   aspd_checked = os.clock()
+   local players = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+   local data = players and players:FindFirstChild(LocalPlayer.Name)
+   local status = data and data:FindFirstChild("Status")
+   local vars = status and status:FindFirstChild("GameplayVariables")
+   buffs = vars and vars:FindFirstChild("Buffs")
+   aspd_buffs = buffs
+  end
   if buffs and buffs:GetAttribute("SerumRed") then total_mod = total_mod * 0.5 + 1 end
   calcspeed = 18.2 + total_mod + speedhack_autospeed_offset
  end
@@ -6187,6 +6241,7 @@ do
 	nc_probe_part.Transparency = 1
 	nc_probe_part.Size = _Vector3new(1, 1, 1)
 	nc_probe_part.Parent = workspace.Terrain
+	cheat.utility.on_unload(function() pcall(function() nc_probe_part:Destroy() end) end) -- FPS fix 2026-11-03
 	local function nc_box_free(cf, size, char)
 		nc_over.FilterDescendantsInstances = {char, workspace:FindFirstChild("NoCollision"), workspace:FindFirstChild("DroppedItems"), workspace.Terrain}
 		if nc_probe_part.Parent ~= workspace.Terrain then nc_probe_part.Parent = workspace.Terrain end
@@ -6208,6 +6263,7 @@ do
 	nc_gui.IgnoreGuiInset = true
 	nc_gui.DisplayOrder = 10
 	nc_gui.Parent = game:GetService("CoreGui")
+	cheat.utility.on_unload(function() pcall(function() nc_gui:Destroy() end) end) -- FPS fix 2026-11-03
 	local nc_label = Instance.new("TextLabel")
 	nc_label.AnchorPoint = _Vector2new(0.5, 0)
 	nc_label.Position = UDim2.new(0.5, 0, 0.5, 24)
@@ -6483,15 +6539,21 @@ do
 		end
 		return nil, "too steep"
 	end
-	RunService.Stepped:Connect(function()
+	cheat.utility.track(RunService.Stepped:Connect(function()
 		local c = nc_clip
 		if not c then return end
 		for _, p in c.parts do
 			if p.CanCollide then p.CanCollide = false end
 		end
-	end)
-	RunService.Heartbeat:Connect(function(dt)
+	end))
+	cheat.utility.track(RunService.Heartbeat:Connect(function(dt)
 		local active = cheat.nc_state.on and cheat.nc_state.key
+		-- FPS fix 2026-11-03: skip the character scan entirely when noclip is off and idle
+		if not active and not nc_clip then
+			if nc_label.Visible then nc_label.Visible = false end
+			nc_plan = nil
+			return
+		end
 		local char, hrp, hum = nc_rig()
 		local alive = hrp ~= nil and hum ~= nil and hum.Health > 0
 		nc_label.Visible = active and alive
@@ -6540,13 +6602,13 @@ do
 				nc_finish("back", "could not start")
 			end
 		end
-	end)
-	LocalPlayer.CharacterAdded:Connect(function()
+	end))
+	cheat.utility.track(LocalPlayer.CharacterAdded:Connect(function()
 		nc_clip = nil
 		nc_plan = nil
 		nc_last_part = nil
 		cheat.clipActive = false
-	end)
+	end))
 end
 
 
@@ -6625,7 +6687,7 @@ local miscsec = ui.sections.misc
 		mod_volume = int
 	end})
 	mod_volume_slider.State(false)
-	Players.PlayerRemoving:Connect(function(player)
+	cheat.utility.track(Players.PlayerRemoving:Connect(function(player)
 		mod_group_cache[player] = nil
 		if mod_tracked[player] then
 			mod_tracked[player] = nil
@@ -6634,9 +6696,10 @@ local miscsec = ui.sections.misc
 				mod_play(admin_leave_asset)
 			end
 		end
-	end)
+	end))
 	task.spawn(function()
 		while task.wait(2) do
+			if cheat.utility.cleanup.dead then break end -- FPS fix 2026-11-03
 			if mod_enabled then
 				mod_scan()
 			end
@@ -6673,6 +6736,7 @@ local miscsec = ui.sections.misc
 	end
 	task.spawn(function()
 		while task.wait(0.5) do
+			if cheat.utility.cleanup.dead then break end -- FPS fix 2026-11-03
 			if cheat.report_notifications then
 				local total = report_total()
 				if report_last_total == nil then
@@ -6689,14 +6753,14 @@ local miscsec = ui.sections.misc
 	local recent_folder = game:GetService("ReplicatedStorage"):FindFirstChild("ReportList")
 	recent_folder = recent_folder and recent_folder:FindFirstChild("Recent")
 	if recent_folder then
-		recent_folder.ChildAdded:Connect(function(child)
+		cheat.utility.track(recent_folder.ChildAdded:Connect(function(child)
 			if cheat.report_notifications then
 				local name = child.Name:match("(.+)_([^_]+)$")
 				if name == LocalPlayer.Name then
 					Library.Notification("Added to Recent Reports list!", 7)
 				end
 			end
-		end)
+		end))
 	end
 
 end
