@@ -13519,15 +13519,15 @@ local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัว�
 local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
 local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
--- Hide the local character and any gear welded to its torso, including gear
--- that the game parents outside Character. Never modify replicated Transparency.
+-- Show the prone local character and attached gear without changing replicated Transparency.
+-- Camera-owned body rigs remain hidden to avoid drawing a duplicate.
 -- ★ FPS fix 2026-10-30 (ยิงปืนแล้วเกมค้าง): ไม่ต่อ GetPropertyChangedSignal
 --   รายชิ้นอีกต่อไป — ตอนยิง เกม spawn VFX ใต้กล้องเป็นสิบชิ้นต่อนัด ทำให้เกิด
 --   connect/disconnect + signal dispatch จำนวนมากต่อเฟรมจน FPS ตกหนัก
 --   การซ่อนใช้การ re-assert ใน BindToRenderStep (รันหลังกล้อง) แทน ซึ่งชนะอยู่แล้ว
 local ugHiddenParts = {} -- [Instance] = { Value = LocalTransparencyModifier เดิม }
 local ugGhostFx = {} -- ★ UG fix v12: [Instance] = Enabled เดิม (ป้ายชื่อ/เอฟเฟกต์ที่ปิดชั่วคราวช่วง hold)
-local function UGHidePart(obj)
+local function UGHidePart(obj, showBody)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
         end
@@ -13540,8 +13540,9 @@ local function UGHidePart(obj)
                 end
                 ugHiddenParts[obj] = { Value = oldValue }
         end
+        ugHiddenParts[obj].ShowBody = showBody or false
         pcall(function()
-                obj.LocalTransparencyModifier = 1
+                obj.LocalTransparencyModifier = showBody and tick() >= ugHoldUntil and 0 or 1
         end)
 end
 
@@ -13557,7 +13558,7 @@ local function UGHideLocalBody(char)
                 return
         end
         for _, obj in ipairs(char:GetDescendants()) do
-                UGHidePart(obj)
+                UGHidePart(obj, true)
         end
 end
 
@@ -13600,11 +13601,11 @@ local function UGHideAttachedGear(char)
                                         if allowed then
                                                 gear[other] = true
                                                 queue[#queue + 1] = other
-                                                UGHidePart(other)
+                                                UGHidePart(other, true)
                                                 for _, child in ipairs(other:GetDescendants()) do
                                                         if child:IsA("Decal") then
                                                                 gear[child] = true
-                                                                UGHidePart(child)
+                                                                UGHidePart(child, true)
                                                         end
                                                 end
                                         end
@@ -13680,10 +13681,7 @@ local function UGRestoreGhostFx()
         end
 end
 
--- แก้บัคเห็นตัวเองบังจอ: TransparencyController ของ Roblox รันที่ RenderPriority.Camera
--- (200) และล้าง LocalTransparencyModifier ที่เราเซ็ตไว้ก่อนหน้าทุกเฟรม ทำให้ตัว/เป้
--- โผล่มาบังครึ่งจอล่างตอนกล้องถูกชดเชยขึ้นไปเหนือหัวตอนมุดดิน ต้องเซ็ตซ้ำ "หลัง"
--- กล้องอัปเดตเสมอ (priority มากกว่า Camera) มุมกล้องตอนเปิดมุดดินจึงเหมือนตอนปิดจริง ๆ
+-- Reapply local visibility after the game camera updates each frame.
 local UGHideStepName = "MikoUG_HideLocalBody"
 local ugHideStepBound = false
 local ugLastRescan = 0
@@ -13691,19 +13689,7 @@ local UGBindHideStep = function()
         if ugHideStepBound then
                 return
         end
-        -- priority 2147483000 = รันหลังกล้องของเกม/Roblox ทุกตัว (กล้องเกม FPS ส่วนใหญ่
-        -- เป็น Scriptable และมองข้าม Humanoid.CameraOffset) ทำให้ (1) การซ่อนตัวชนะแน่นอน
-        -- (2) ล็อกความสูงกล้องไว้ที่ระดับเดิมตอนเปิดมุดดิน = มุมมองอยู่ที่เดิม ไม่จมลงไปกับตัว
-        --
-        -- ★ FPS fix 2026-10-30 (ยิงปืนแล้ว FPS ตกเหลือ ~3): เดิม callback นี้ทำงานหนัก
-        --   ทุกเฟรม = GetDescendants ตัวละคร + camera:GetDescendants + GetConnectedParts
-        --   แถมช่วงยิง เกมเพิ่ม VFX ใต้กล้องทุกนัด งานต่อเฟรมเลยบานสะพรั่งจนขั้ว render
-        --   ถูกกินหมด (วัดจริง: Render เหลือ 2.1 ครั้ง/วินาที ทั้งที่ physics ยัง 62/วิ)
-        --   ตอนนี้แบ่งเป็น 2 ชั้น:
-        --   - ทุกเฟรม: re-assert LTM=1 เฉพาะชิ้นที่ track ไว้แล้ว (ไม่กี่สิบ write เท่านั้น)
-        --     + ล็อกความสูงกล้อง = ตัวยังถูกซ่อน 100% เพราะเรารันหลัง TransparencyController
-        --   - ทุก 0.12 วิ: สแกนหาตัว/เป้/อุปกรณ์ใหม่เท่านั้น (หน่วงได้เพราะชิ้นเดิมยังถูก
-        --     re-assert ทุกเฟรมอยู่แล้ว มุมมองไม่มีทางเห็นตัว)
+        -- Reapply tracked visibility each frame; rescan for new parts every 0.12 seconds.
         -- ★ UG fix v16: หา "ระดับผิวน้ำ" รอบตัว (raycast ลงหา Terrain Water / part
         -- ชื่อ water/ocean/sea/lake แบบเดียวกับ WalkOnWater) — ใช้ยกกล้องให้ลอย
         -- "เหนือผิวน้ำ" เสมอตอนมุดดินลงน้ำ คืนค่า Y ของผิวน้ำ ไม่เจอคืน nil
@@ -13764,9 +13750,9 @@ local UGBindHideStep = function()
                                 return
                         end
                         local c = LocalPlayer.Character
-                        for obj, _ in pairs(ugHiddenParts) do
+                        for obj, saved in pairs(ugHiddenParts) do
                                 if obj.Parent then
-                                        obj.LocalTransparencyModifier = 1
+                                        obj.LocalTransparencyModifier = saved.ShowBody and tick() >= ugHoldUntil and 0 or 1
                                 end
                         end
                         local now = tick()
@@ -13803,13 +13789,7 @@ local UGBindHideStep = function()
                                 UGRestoreGhostFx()
                             end
                         end
-                        -- ★ Camera fix 2026-10-31: คุมกล้องทั้ง CFrame เองที่นี่
-                        -- (priority 2147483000 = รันหลังกล้องเกม/Roblox ทุกตัว
-                        --  จึงชนะทุกเฟรม ไม่ต้องสู้กับกล้องเกมอีกต่อไป)
-                        -- - ตำแหน่ง: ลอยเหนือผิวดิน "ปัจจุบัน" ตรงตัว (XZ ตาม root
-                        --  + ผิวดินล่าสุด + ระดับตาที่จำไว้ตอนเปิด)
-                        -- - มุม: yaw/pitch จากเมาส์ที่เราเก็บเอง -> หมุนมองรอบได้
-                        --  อิสระ แม้ root จะถูกบังคับเป็น pose นอนราบ
+                        -- Keep the original above-ground camera after the game camera updates.
                         local cam = workspace.CurrentCamera
                         local h = c and c:FindFirstChildOfClass("Humanoid")
                         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
@@ -13826,12 +13806,7 @@ local UGBindHideStep = function()
                                                 math.rad(-85), math.rad(85)
                                         )
                                 end
-                                -- ★ UG fix v16: กล้องต้องลอย "เหนือผิวน้ำ" เสมอ — ห้ามลงไป
-                                -- ต่ำกว่าผิวน้ำเหมือน v15 เดิม (ตามหัวลงไปใต้น้ำ = เกมเห็น
-                                -- มุมมองจมน้ำ นับว่ากำลังดำน้ำแล้วหักเลือดจนตาย) ลงน้ำตอน
-                                -- มุดดิน = ยกกล้องขึ้นลอยเหนือผิวน้ำ 1.2 หน่วยตลอด = มุมมอง
-                                -- ไม่จมน้ำ เกมจึงไม่นับว่าดำน้ำ ส่วนบนบกกล้องลอยเหนือผิวดิน
-                                -- เหมือนเดิมทุกอย่าง
+                                -- Keep the existing water safety adjustment below.
                                 local eye = Vector3.new(
                                         r.Position.X,
                                         lastGroundY + ugEyeHeightY,
@@ -14210,9 +14185,6 @@ UpdateUnderground = function(deltaTime)
                                         end
                                 end
                         end
-                        -- (UGHideLocalBody ย้ายไปทำใน BindToRenderStep ตัวเดียว —
-                        --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
-                        --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
                         pcall(function()
                                 r.AssemblyLinearVelocity = Vector3.zero
                                 r.AssemblyAngularVelocity = Vector3.zero
@@ -14342,8 +14314,6 @@ UpdateUnderground = function(deltaTime)
                         end
                 end
         end
-        -- (การซ่อนตัวทำใน BindToRenderStep priority 2147483000 จุดเดียวพอ —
-        --  ค่า LTM ที่เขียนตรงนี้จะโดน TransparencyController ล้างทุกเฟรมอยู่แล้ว)
         -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
         -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
         -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
