@@ -4775,10 +4775,12 @@ ui.tabs = {
  main = ui.window:Tab({name = "Main", image = Images.Get("misc")}),
  settings = ui.window:Tab({name = "Settings", image = Images.Get("config")})
 }
-ui.subtabs = {skins = ui.tabs.skins:SubTab({Name = "Skin Changer"}), main = ui.tabs.main:SubTab({Name = "Main"}), settings = ui.tabs.settings:SubTab({Name = "Config"})}
+ui.subtabs = {skins = ui.tabs.skins:SubTab({Name = "Skin Changer"}), skins_weapon = ui.tabs.skins:SubTab({Name = "Weapon Editor"}), main = ui.tabs.main:SubTab({Name = "Main"}), settings = ui.tabs.settings:SubTab({Name = "Config"})}
 ui.sections = {
  skins_browser = ui.subtabs.skins:Section({Name = "Weapons", Side = "Left"}),
  skins_actions = ui.subtabs.skins:Section({Name = "Skins", Side = "Right"}),
+ weapon_mods = ui.subtabs.skins_weapon:Section({Name = "Attachments", Side = "Left"}),
+ weapon_list = ui.subtabs.skins_weapon:Section({Name = "Weapons", Side = "Right"}),
  movement = ui.subtabs.main:Section({Name = "Movement", Side = "Left"}),
  misc = ui.subtabs.main:Section({Name = "Misc", Side = "Right"}),
  settings_config = ui.subtabs.settings:Section({Name = "Config", Side = "Left"})
@@ -5168,6 +5170,350 @@ do
 				end
 				if need then skin_apply(item, skin) end
 			end
+		end
+	end)
+
+	-- ==================== Weapon Editor (เอามาจาก swim hub ตามที่ผู้ใช้ขอ) ====================
+	local mods_sec = ui.sections.weapon_mods
+	local guns_sec = ui.sections.weapon_list
+	print("[Miko Hub] Weapon Editor loaded - Skins tab > Weapon Editor")
+	local attach_defaults = {
+		AKMN = {Stock = "StockAKMN", Front = "FrontAKMN", Handle = "HandleAKMN", Magazine = "762x39MAG"},
+		AKM = {Stock = "ImprStockAKM", Handle = "ImprHandleAKM", Magazine = "762x39ImprMAG"},
+		SKS = {Stock = "StockSKS", Front = "FrontSKS"},
+		M4 = {Stock = "StockM4", Front = "FrontM4", Handle = "HandleM4", Magazine = "Mag556"},
+		ADAR15 = {Stock = "StockADAR", Front = "FrontADAR", Magazine = "Mag556"},
+		FAL = {Stock = "StockFAL", Front = "FrontFAL", Handle = "HandleFAL"},
+		AsVal = {Stock = "StockAsVal", Front = "FrontAsVal", Handle = "HandleAsVal", Magazine = "9x39Mag"},
+		SOCOM556 = {Magazine = "Mag556"},
+		SVD = {Stock = "StockSVD", Front = "FrontSVD", Magazine = "762x54Rnd10Mag"},
+		Mosin = {Stock = "DefaultStockMosin", Front = "DefaultFrontMosin"},
+		R700 = {Front = "FrontTimberwolf", Magazine = "MagR700"},
+		TFZ98S = {Magazine = "MagTFZ98"},
+		PPSH41 = {Stock = "StockPPSH41", Magazine = "762x25Rnd71Mag"},
+		VZ61 = {Magazine = "9x18vzMag"},
+		Saiga12 = {Front = "FrontSaiga", Magazine = "SaigaMag5rnd"},
+		IZh81 = {Stock = "StockIZh81", Front = "FrontIZh81"},
+		IZh12 = {Stock = "StockIZh12", Front = "FrontIZh12"},
+		TOZ106 = {Magazine = "MagTOZ106"},
+		Makarov = {Magazine = "9x18MakarovMAG"},
+		GoldenMakarov = {Magazine = "9x18MakarovMAG"},
+		MP443 = {Magazine = "9x19MP443MAG"},
+		TT33 = {Magazine = "762x25TTMAG"},
+		MK23 = {Magazine = "MK23ExtMag"}
+	}
+	local wep_edits = ""
+	local wep_auto, wep_unlock = true, false
+	local wep_weapon, wep_slot, wep_att = nil, nil, nil
+	local wep_slot_dd, wep_att_dd
+	local function wep_display(name)
+		local list = items_list()
+		local it = list and list:FindFirstChild(name)
+		local props = it and it:FindFirstChild("ItemProperties")
+		local disp = props and props:GetAttribute("Name")
+		if type(disp) == "string" and disp ~= "" then return disp end
+		return tostring(name)
+	end
+	local function wep_is_gun(name)
+		local list = items_list()
+		local it = list and list:FindFirstChild(name)
+		local props = it and it:FindFirstChild("ItemProperties")
+		if not props then return true end
+		local t = props:GetAttribute("ItemType")
+		if type(t) ~= "string" or t == "" then return true end
+		return t == "RangedWeapon"
+	end
+	local function wep_gun_names()
+		local models = items_models()
+		local out = {}
+		if models then
+			for _, m in models:GetChildren() do
+				if m:FindFirstChild("AttachmentPoints") and wep_is_gun(m.Name) then
+					out[#out + 1] = m.Name
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+	local function wep_slots(weapon)
+		local models = items_models()
+		local out = {}
+		local seen = {}
+		local m = models and models:FindFirstChild(weapon)
+		local ap = m and m:FindFirstChild("AttachmentPoints")
+		if ap then
+			for _, s in ap:GetChildren() do
+				if s.Name ~= "Magazine" and not seen[s.Name] then
+					seen[s.Name] = true
+					out[#out + 1] = s.Name
+				end
+			end
+		end
+		if wep_unlock then
+			for _, s in {"Front", "Handle", "Stock", "Grip"} do
+				if not seen[s] then
+					seen[s] = true
+					out[#out + 1] = s
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+	local function wep_compat()
+		local list = items_list()
+		local map = {}
+		if list then
+			for _, it in list:GetChildren() do
+				local props = it:FindFirstChild("ItemProperties")
+				local cp = props and props:FindFirstChild("CompatibleParts")
+				if cp then
+					local ok, attrs = pcall(function() return cp:GetAttributes() end)
+					if ok and type(attrs) == "table" then
+						for att, slot in attrs do
+							if type(slot) == "string" and slot ~= "" and list:FindFirstChild(att) then
+								map[slot] = map[slot] or {}
+								map[slot][att] = true
+							end
+						end
+					end
+				end
+			end
+		end
+		return map
+	end
+	local wep_compat_cache = nil
+	local function wep_options(weapon, slot)
+		if not wep_compat_cache then wep_compat_cache = wep_compat() end
+		local set = {}
+		if wep_compat_cache[slot] then
+			for att in wep_compat_cache[slot] do set[att] = true end
+		end
+		local def = attach_defaults[weapon] and attach_defaults[weapon][slot]
+		if def then set[def] = true end
+		local guess = items_list() and items_list():FindFirstChild(slot .. weapon)
+		if guess then set[slot .. weapon] = true end
+		local out = {}
+		for att in set do out[#out + 1] = att end
+		table.sort(out)
+		return out
+	end
+	local function wep_owned(name)
+		local out = {}
+		local seen = {}
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+		local data = folder and folder:FindFirstChild(LocalPlayer.Name)
+		if not data then return out end
+		local function scan(root)
+			if not root then return end
+			for _, v in root:GetChildren() do
+				if not seen[v] and v:FindFirstChild("Attachments") then
+					if name == nil or v.Name == name then
+						seen[v] = true
+						out[#out + 1] = v
+					end
+				end
+				local inner = v:FindFirstChild("Inventory")
+				if inner then scan(inner) end
+			end
+		end
+		scan(data:FindFirstChild("Inventory"))
+		scan(data:FindFirstChild("Hotbar"))
+		return out
+	end
+	local function wep_current(gun, slot)
+		local atts = gun:FindFirstChild("Attachments")
+		if not atts then return nil end
+		for _, a in atts:GetChildren() do
+			if a:GetAttribute("Slot") == slot then return a.Name end
+		end
+		return nil
+	end
+	local function wep_default(weapon, slot)
+		local d = attach_defaults[weapon] and attach_defaults[weapon][slot]
+		if d then return d end
+		local guess = slot .. weapon
+		if items_list() and items_list():FindFirstChild(guess) then return guess end
+		return nil
+	end
+	local function wep_parse(str)
+		local map = {}
+		for chunk in tostring(str or ""):gmatch("[^;]+") do
+			local w, s, a = chunk:match("^%s*([^/]+)/([^/]+)/([^/]+)%s*$")
+			if w and s and a then
+				map[w] = map[w] or {}
+				map[w][s] = a
+			end
+		end
+		return map
+	end
+	local function wep_serialize(map)
+		local out = {}
+		for w, slots in map do
+			for s, a in slots do out[#out + 1] = w .. "/" .. s .. "/" .. a end
+		end
+		return table.concat(out, ";")
+	end
+	local function wep_stamp(gun, slot, att)
+		local atts = gun:FindFirstChild("Attachments")
+		if not atts then return end
+		local cur = nil
+		for _, a in atts:GetChildren() do
+			if a:GetAttribute("Slot") == slot then cur = a break end
+		end
+		if not cur then
+			cur = Instance.new("ObjectValue")
+			cur.Parent = atts
+		end
+		pcall(function()
+			cur.Name = att
+			local list = items_list()
+			cur.Value = list and list:FindFirstChild(att)
+			cur:SetAttribute("Slot", slot)
+			atts:SetAttribute(slot, att)
+		end)
+	end
+	local function wep_apply_all()
+		local map = wep_parse(wep_edits)
+		if not next(map) then return 0 end
+		local n = 0
+		for _, gun in wep_owned(nil) do
+			local slots = map[gun.Name]
+			if slots then
+				for slot, att in slots do
+					if att == "-" then
+						local atts = gun:FindFirstChild("Attachments")
+						local cur = atts and (function()
+							for _, a in atts:GetChildren() do
+								if a:GetAttribute("Slot") == slot then return a end
+							end
+						end)()
+						if cur then pcall(function() cur:Destroy() end) n += 1 end
+					else
+						wep_stamp(gun, slot, att)
+						n += 1
+					end
+				end
+			end
+		end
+		return n
+	end
+	local function wep_status()
+		if not wep_weapon or not wep_slot then return "pick a weapon and slot" end
+		local map = wep_parse(wep_edits)
+		local edited = map[wep_weapon] and map[wep_weapon][wep_slot]
+		if edited then return "edited: " .. edited end
+		local gun = wep_owned(wep_weapon)[1]
+		local fitted = gun and wep_current(gun, wep_slot)
+		if fitted then return "fitted: " .. fitted end
+		local def = wep_default(wep_weapon, wep_slot)
+		if def then return "default: " .. def end
+		return "empty"
+	end
+	local wep_refresh_slots, wep_refresh_atts
+	local gun_grid = make_grid(guns_sec.holder)
+	local att_grid = make_grid(mods_sec.holder)
+	local gun_buttons, att_buttons = {}, {}
+	wep_refresh_slots = function()
+		local slots = wep_weapon and wep_slots(wep_weapon) or {}
+		wep_slot = slots[1]
+		if wep_slot_dd then
+			wep_slot_dd.Refresh(slots)
+			if wep_slot then wep_slot_dd.Set(wep_slot, true) end
+		end
+		wep_refresh_atts()
+	end
+	wep_refresh_atts = function()
+		if not att_grid then return end
+		for _, c in att_grid:GetChildren() do
+			if c:IsA("ImageButton") then c:Destroy() end
+		end
+		table.clear(att_buttons)
+		wep_att = "Empty"
+		if not (wep_weapon and wep_slot) then return end
+		local opts = wep_options(wep_weapon, wep_slot)
+		local vals = {"Empty"}
+		for _, o in opts do vals[#vals + 1] = o end
+		for idx, name in vals do
+			local b, stroke = grid_cell(att_grid, name == "Empty" and "" or item_icon(name), name, idx)
+			att_buttons[name] = {b, stroke}
+			b.MouseButton1Click:Connect(function()
+				wep_att = name
+				for n2, pair in att_buttons do
+					pair[2].Color = (n2 == name) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+				end
+			end)
+		end
+		local first = att_buttons["Empty"]
+		if first then first[2].Color = Library.Theme.accent end
+	end
+	local function wep_select_gun(name)
+		wep_weapon = name
+		wep_compat_cache = nil
+		for n2, pair in gun_buttons do
+			pair[2].Color = (n2 == name) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+		end
+		wep_refresh_slots()
+	end
+	do
+		local guns = wep_gun_names()
+		for idx, name in guns do
+			local b, stroke = grid_cell(gun_grid, item_icon(name), name, idx)
+			gun_buttons[name] = {b, stroke}
+			b.MouseButton1Click:Connect(function()
+				wep_select_gun(name)
+			end)
+		end
+	end
+	wep_slot_dd = mods_sec:Dropdown({Name = "Slot", Values = {}, Value = nil, Flag = "wep_slot", Multi = false, Callback = function(value)
+		wep_slot = value
+		wep_refresh_atts()
+	end})
+	mods_sec:Button({Name = "Apply attachment", Callback = function()
+		if not wep_weapon or not wep_slot then
+			Library.Notification("Pick a weapon and slot", 2.5)
+			return
+		end
+		local map = wep_parse(wep_edits)
+		map[wep_weapon] = map[wep_weapon] or {}
+		if not wep_att or wep_att == "Empty" then
+			map[wep_weapon][wep_slot] = "-"
+		else
+			map[wep_weapon][wep_slot] = wep_att
+		end
+		if not next(map[wep_weapon]) then map[wep_weapon] = nil end
+		wep_edits = wep_serialize(map)
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Edits: " .. wep_status() .. " (" .. n .. " stamped)", 3)
+	end})
+	mods_sec:Button({Name = "Clear slot", Callback = function()
+		if not wep_weapon or not wep_slot then
+			Library.Notification("Pick a weapon and slot", 2.5)
+			return
+		end
+		local map = wep_parse(wep_edits)
+		map[wep_weapon] = map[wep_weapon] or {}
+		map[wep_weapon][wep_slot] = "-"
+		if not next(map[wep_weapon]) then map[wep_weapon] = nil end
+		wep_edits = wep_serialize(map)
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Slot cleared (" .. n .. " removed)", 3)
+	end})
+	Library.Flags["weapon_edits"] = Library.Flags["weapon_edits"] or ""
+	Library.ConfigFlags["weapon_edits"] = function(v)
+		wep_edits = tostring(v or "")
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Weapon edits loaded (" .. n .. " stamped)", 3)
+	end
+	local wep_auto_tick = 0
+	cheat.utility.new_heartbeat(function()
+		if wep_auto and wep_edits ~= "" and os.clock() - wep_auto_tick > 1 then
+			wep_auto_tick = os.clock()
+			wep_apply_all()
 		end
 	end)
 end
