@@ -101,6 +101,22 @@
 --     Source ทุกสคริปต์ = ฟรีซสไปค์ตอนเข้าเกม -> วิ่งเฉพาะตอนตั้ง _G.MikoVerbose = true
 --     (ปกติผลลัพธ์ก็โดน print เงียบของ v29 กลืน ไม่มีใครเห็นอยู่แล้ว)
 -- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — ของ v36/v37 ครบเหมือนเดิมทุกอย่าง)
+-- ★ 2026-11-04 v39 (แก้ FPS ตกรอบ 3 — จากรายงาน "เปิด Underground แล้ว 150 -> 90"):
+-- งานต่อเฟรมที่ยังหลงเหลือของโหมดมุดดิน/นอนหงาย (v37/v38 ครบเหมือนเดิม):
+-- [1] สายหาผิวน้ำ (UG+FD): เดิมยิง raycast สูงสุด 3 เส้น "ทุกเฟรม" ตลอดที่โหมดเปิด
+--     อยู่บนบก = 3 เส้นเต็ม ๆ ทุกเฟรม (~450 เส้น/วิ) ทั้งที่ไม่มีน้ำเลย
+--     -> แคชผล 0.15 วิ (ลงน้ำ/ขึ้นฝั่ง กล้องยกตามภายใน 0.15 วิ = ตาไม่ทันสังเกต)
+-- [2] สายโพสตัวละคร (Stepped + Heartbeat): เดิมเขียน CFrame + velocity ทับ "ทุกสายทุกเฟรม"
+--     = สั่งย้าย assembly ตัวละคร 180 ครั้ง/วิ ทั้งที่ค่าเท่าเดิม (แพงสุดในลูปนี้)
+--     -> เขียนเฉพาะเมื่อค่าไม่ตรงเป้า (ใครแตะตัวไป = ค่าเพี้ยน = re-assert ทันทีเหมือนเดิม
+--        ค่าสุดท้ายบนตัวละครไม่เปลี่ยนแม้บิตเดียว)
+-- [3] สายซ่อนตัว: rescan ชิ้นใหม่ 0.12 -> 0.2 วิ (ลดงาน physics query GetConnectedParts
+--     กับการเดินตัวที่ผูกกับกล้องลง ~40%) + ตัดการสร้างสายอักขระทิ้ง (gsub) ทุกชั้นทุกชิ้น
+-- [4] ProbeGround: เดิมสร้างตาราง exclude + GetPlayers + ตั้ง FilterDescendantsInstances
+--     ใหม่ "ทุกเฟรม" -> สร้างใหม่เมื่อกล้อง/ตัวเรา/จำนวนผู้เล่นเปลี่ยน หรือทุก 0.5 วิ
+-- [5] ตัด closure ที่ถูกสร้างทิ้งทุกเฟรมในลูปโพส/เดิน (เดิม pcall ครอบด้วย closure ใหม่
+--     3-5 ชิ้น/เฟรม) = ลดขยะ GC ต่อเนื่อง
+-- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — โพส/กล้อง/การซ่อน/การยิงเหมือนเดิมทุกอย่าง)
 
 local MikoRealPrint = print
 local MikoRealWarn = warn
@@ -394,8 +410,8 @@ local Camera = workspace.CurrentCamera
 -- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
 -- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
 -- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
-print("[Miko] v38 (แก้ FPS ตกรอบ 2): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
-        .. " — แก้ FPS เพิ่ม 3 จุด: [1] มุดดิน/นอนหงายเลิกเดิน GetDescendants 180 ครั้ง/วิแล้ว [2] ช่วงยิงเบาลงลง [3] สแกนตอนเข้าเกมข้าม (เปิดได้ผ่าน _G.MikoVerbose)")
+print("[Miko] v39 (แก้ FPS ตกรอบ 3): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — แก้ FPS ตอนเปิดมุดดิน/นอนหงายเพิ่ม 4 จุด: [1] สายหาผิวน้ำเลิกยิง raycast ทุกเฟรม [2] โพสตัวเลิกเขียนทับค่าเดิม 180 ครั้ง/วิ [3] rescan ชิ้นใหม่ + ตาราง exclude ของ ray เดินพื้นเบาลง [4] ตัดขยะ closure/gsub ในลูปทุกเฟรม")
 -- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
 -- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
 -- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
@@ -13681,7 +13697,12 @@ local function UGHideAttachedGear(char)
                                 local node = obj
                                 local weaponPart = false
                                 while node and node ~= camera do
-                                        local name = node.Name:lower():gsub("[%s_%-]", "")
+                                        -- ★ FPS fix v39: gsub สร้างสายอักขระใหม่ทุกชั้นทุกชิ้นทุกรอบสแกน
+                                        -- ตรวจก่อนว่ามีตัวคั่น (ช่องว่าง/_/-) ไหม ไม่มี = ไม่ต้อง gsub
+                                        local name = node.Name:lower()
+                                        if name:find("[%s_%-]") then
+                                                name = name:gsub("[%s_%-]", "")
+                                        end
                                         if node:IsA("Tool") or name:find("weapon", 1, true)
                                                 or name:find("rifle", 1, true) or name:find("gun", 1, true)
                                                 or name:find("pistol", 1, true) or name:find("viewmodel", 1, true)
@@ -13748,7 +13769,8 @@ local UGBindHideStep = function()
         if ugHideStepBound then
                 return
         end
-        -- Reapply tracked visibility each frame; rescan for new parts every 0.12 seconds.
+        -- Reapply tracked visibility each frame; rescan for new parts periodically.
+        -- ★ FPS fix v39: rescan ทุก 0.2 วิ (เดิม 0.12) = ลดงาน physics query/เดินตัวลง ~40%
         -- ★ UG fix v16: หา "ระดับผิวน้ำ" รอบตัว (raycast ลงหา Terrain Water / part
         -- ชื่อ water/ocean/sea/lake แบบเดียวกับ WalkOnWater) — ใช้ยกกล้องให้ลอย
         -- "เหนือผิวน้ำ" เสมอตอนมุดดินลงน้ำ คืนค่า Y ของผิวน้ำ ไม่เจอคืน nil
@@ -13757,7 +13779,7 @@ local UGBindHideStep = function()
         ugWaterRay.IgnoreWater = false
         local ugCachedPlatform = nil
         local ugLastWaterPrint = 0
-        local function UGWaterSurfaceY(fromPos, fromY)
+        local function UGWaterSurfaceYRaw(fromPos, fromY)
                 local exclude = {}
                 local c = LocalPlayer.Character
                 if c then
@@ -13803,6 +13825,21 @@ local UGBindHideStep = function()
                 return nil
         end
 
+        -- ★ FPS fix v39: เดิมยิง raycast หาผิวน้ำสูงสุด 3 เส้น "ทุกเฟรม" ตลอดที่โหมดเปิด
+        -- (อยู่บนบก = 3 เส้นเต็ม ๆ ทุกเฟรม ~450 เส้น/วิ ทั้งที่ไม่มีน้ำเลย) -> แคชผล 0.15 วิ
+        -- ลงน้ำ/ขึ้นฝั่ง กล้องยกตามภายใน 0.15 วิ = ตาไม่ทันสังเกต
+        local ugWaterCacheY = nil
+        local ugWaterCacheAt = 0
+        local function UGWaterSurfaceY(fromPos, fromY)
+                local nowT = tick()
+                if nowT - ugWaterCacheAt < 0.15 then
+                        return ugWaterCacheY
+                end
+                ugWaterCacheAt = nowT
+                ugWaterCacheY = UGWaterSurfaceYRaw(fromPos, fromY)
+                return ugWaterCacheY
+        end
+
         local ok = pcall(function()
                 RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
@@ -13815,7 +13852,10 @@ local UGBindHideStep = function()
                                 end
                         end
                         local now = tick()
-                        if now - ugLastRescan >= 0.12 then
+                        -- ★ FPS fix v39: เดิม 0.12 วิ (8 รอบ/วิ) แต่ละรอบเดินตัวละคร + ทุกชิ้น
+                        -- ที่ผูกกับกล้อง + ถาม physics (GetConnectedParts) -> 0.2 วิ = งานลด ~40%
+                        -- ชิ้นใหม่ถูกซ่อนช้าสุด 0.2 วิ (ตาไม่ทันสังเกต)
+                        if now - ugLastRescan >= 0.2 then
                                 ugLastRescan = now
                                 if c then
                                         UGHideLocalBody(c)
@@ -13931,24 +13971,40 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = true
 rayParams.RespectCanCollide = true
 
+-- ★ FPS fix v39: เดิมสร้างตาราง exclude + GetPlayers + ตั้ง FilterDescendantsInstances
+-- ใหม่ "ทุกเฟรม" (ProbeGround เรียกทุกเฟรมตลอดที่โหมดเปิด) -> สร้างใหม่เมื่อกล้อง/ตัวเรา/
+-- จำนวนผู้เล่นเปลี่ยน หรือทุก 0.5 วิ (ผู้เล่นอื่นรีสปอว์์น = อัปเดตรายชื่อช้าสุด 0.5 วิ)
+local ugExclAt = 0
+local ugExclCam = nil
+local ugExclChar = nil
+local ugExclCount = -1
 local function BuildExclude()
         local cam = workspace.CurrentCamera
-        local list = {}
-        if cam then
-                list[#list + 1] = cam
-        end
+        local char = LocalPlayer.Character
         local ok, players = pcall(function()
                 return Players:GetPlayers()
         end)
-        if ok and players then
-                for i = 1, #players do
-                        local c = players[i].Character
-                        if c then
-                                list[#list + 1] = c
+        local cnt = (ok and players) and #players or 0
+        local nowT = tick()
+        if nowT - ugExclAt >= 0.5 or cam ~= ugExclCam or char ~= ugExclChar or cnt ~= ugExclCount then
+                ugExclAt = nowT
+                ugExclCam = cam
+                ugExclChar = char
+                ugExclCount = cnt
+                local list = {}
+                if cam then
+                        list[#list + 1] = cam
+                end
+                if ok and players then
+                        for i = 1, cnt do
+                                local c = players[i].Character
+                                if c then
+                                        list[#list + 1] = c
+                                end
                         end
                 end
+                rayParams.FilterDescendantsInstances = list
         end
-        rayParams.FilterDescendantsInstances = list
 end
 
 local function ProbeGround(root)
@@ -14250,7 +14306,7 @@ UpdateUnderground = function(deltaTime)
                         -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
                         local ugCollideList = UGSyncCollideParts(c)
                         for _, part in ipairs(ugCollideList) do
-                                if part:IsA("BasePart") and part.Parent then
+                                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -14259,22 +14315,32 @@ UpdateUnderground = function(deltaTime)
                                         end
                                 end
                         end
-                        pcall(function()
-                                r.AssemblyLinearVelocity = Vector3.zero
-                                r.AssemblyAngularVelocity = Vector3.zero
-                                if ugLastPose then
-                                    -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
-                                    -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
-                                    if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
-                                        ugLastPose = CFrame.new(Vector3.new(
-                                            r.Position.X,
-                                            lastGroundY + savedRootHeight,
-                                            r.Position.Z
-                                        )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-                                    end
-                                    r.CFrame = ugLastPose
+                        -- ★ FPS fix v39: เขียนตรง + ข้ามเมื่อค่าเท่าเดิม — เดิมสร้าง closure
+                        -- ทิ้ง 2 ครั้ง/เฟรม และเขียน CFrame/velocity ทับทุกสายทุกเฟรม
+                        -- (เขียน CFrame = ย้าย assembly ทั้งชุดใน physics = แพงสุดในลูปนี้;
+                        --  ค่าสุดท้ายเหมือนเดิมทุกอย่าง — ใครแตะตัวไป ค่าจะไม่ตรง = เขียนทันที)
+                        if r.Parent then
+                                if r.AssemblyLinearVelocity ~= Vector3.zero then
+                                        r.AssemblyLinearVelocity = Vector3.zero
                                 end
-                        end)
+                                if r.AssemblyAngularVelocity ~= Vector3.zero then
+                                        r.AssemblyAngularVelocity = Vector3.zero
+                                end
+                                if ugLastPose then
+                                        -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
+                                        -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
+                                        if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+                                                ugLastPose = CFrame.new(Vector3.new(
+                                                        r.Position.X,
+                                                        lastGroundY + savedRootHeight,
+                                                        r.Position.Z
+                                                )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                                        end
+                                        if r.CFrame ~= ugLastPose then
+                                                r.CFrame = ugLastPose
+                                        end
+                                end
+                        end
                 end
                 collideSaved = collideSaved or {}
                 ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
@@ -14317,12 +14383,10 @@ UpdateUnderground = function(deltaTime)
         local targetY = (lastGroundY or root.Position.Y) - depth
 
         -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        local dir = Vector3.zero
-        local ok, md = pcall(function()
-                return humanoid.MoveDirection
-        end)
-        if ok and typeof(md) == "Vector3" then
-                dir = md
+        -- ★ FPS fix v39: อ่านตรง (เดิมสร้าง closure ทิ้งทุกเฟรม)
+        local dir = humanoid.MoveDirection
+        if typeof(dir) ~= "Vector3" then
+                dir = Vector3.zero
         end
 
         local speed = 16
@@ -14381,7 +14445,7 @@ UpdateUnderground = function(deltaTime)
         -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
         local ugCollideList = UGSyncCollideParts(char)
         for _, part in ipairs(ugCollideList) do
-                if part:IsA("BasePart") and part.Parent then
+                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
@@ -14399,19 +14463,26 @@ UpdateUnderground = function(deltaTime)
                 -- ★ 2026-11-01: คว่ำหน้าลงดินเหมือน Underground Face Down — หมุน -90° แทน +90° (หงายหน้า)
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        pcall(function()
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
+        -- ★ FPS fix v39: เขียนตรง ไม่สร้าง closure ทิ้งทุกเฟรม (pose ย้ายทุกเฟรมต้องเขียน
+        -- อยู่แล้ว ส่วน velocity เขียนเฉพาะเมื่อไม่ใช่ศูนย์)
+        if root.Parent then
+                if root.AssemblyLinearVelocity ~= Vector3.zero then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end
+                if root.AssemblyAngularVelocity ~= Vector3.zero then
+                        root.AssemblyAngularVelocity = Vector3.zero
+                end
                 root.CFrame = pose
-        end)
+        end
 
         -- Preserve the original camera subject position relative to the ground, including
         -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
-        pcall(function()
+        -- ★ FPS fix v39: เขียนตรง (ไม่สร้าง closure ทิ้งทุกเฟรม)
+        if humanoid.Parent then
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
                 humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
-        end)
+        end
 end
 end)(); (function()
 ----------------------------------------------------------------
@@ -14608,7 +14679,12 @@ local function UGHideAttachedGear(char)
                                 local node = obj
                                 local weaponPart = false
                                 while node and node ~= camera do
-                                        local name = node.Name:lower():gsub("[%s_%-]", "")
+                                        -- ★ FPS fix v39: gsub สร้างสายอักขระใหม่ทุกชั้นทุกชิ้นทุกรอบสแกน
+                                        -- ตรวจก่อนว่ามีตัวคั่น (ช่องว่าง/_/-) ไหม ไม่มี = ไม่ต้อง gsub
+                                        local name = node.Name:lower()
+                                        if name:find("[%s_%-]") then
+                                                name = name:gsub("[%s_%-]", "")
+                                        end
                                         if node:IsA("Tool") or name:find("weapon", 1, true)
                                                 or name:find("rifle", 1, true) or name:find("gun", 1, true)
                                                 or name:find("pistol", 1, true) or name:find("viewmodel", 1, true)
@@ -14699,7 +14775,7 @@ local UGBindHideStep = function()
         ugWaterRay.IgnoreWater = false
         local ugCachedPlatform = nil
         local ugLastWaterPrint = 0
-        local function UGWaterSurfaceY(fromPos, fromY)
+        local function UGWaterSurfaceYRaw(fromPos, fromY)
                 local exclude = {}
                 local c = LocalPlayer.Character
                 if c then
@@ -14745,6 +14821,21 @@ local UGBindHideStep = function()
                 return nil
         end
 
+        -- ★ FPS fix v39: เดิมยิง raycast หาผิวน้ำสูงสุด 3 เส้น "ทุกเฟรม" ตลอดที่โหมดเปิด
+        -- (อยู่บนบก = 3 เส้นเต็ม ๆ ทุกเฟรม ~450 เส้น/วิ ทั้งที่ไม่มีน้ำเลย) -> แคชผล 0.15 วิ
+        -- ลงน้ำ/ขึ้นฝั่ง กล้องยกตามภายใน 0.15 วิ = ตาไม่ทันสังเกต
+        local ugWaterCacheY = nil
+        local ugWaterCacheAt = 0
+        local function UGWaterSurfaceY(fromPos, fromY)
+                local nowT = tick()
+                if nowT - ugWaterCacheAt < 0.15 then
+                        return ugWaterCacheY
+                end
+                ugWaterCacheAt = nowT
+                ugWaterCacheY = UGWaterSurfaceYRaw(fromPos, fromY)
+                return ugWaterCacheY
+        end
+
         local ok = pcall(function()
                 RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
@@ -14757,7 +14848,10 @@ local UGBindHideStep = function()
                                 end
                         end
                         local now = tick()
-                        if now - ugLastRescan >= 0.12 then
+                        -- ★ FPS fix v39: เดิม 0.12 วิ (8 รอบ/วิ) แต่ละรอบเดินตัวละคร + ทุกชิ้น
+                        -- ที่ผูกกับกล้อง + ถาม physics (GetConnectedParts) -> 0.2 วิ = งานลด ~40%
+                        -- ชิ้นใหม่ถูกซ่อนช้าสุด 0.2 วิ (ตาไม่ทันสังเกต)
+                        if now - ugLastRescan >= 0.2 then
                                 ugLastRescan = now
                                 if c then
                                         UGHideLocalBody(c)
@@ -14897,24 +14991,40 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = true
 rayParams.RespectCanCollide = true
 
+-- ★ FPS fix v39: เดิมสร้างตาราง exclude + GetPlayers + ตั้ง FilterDescendantsInstances
+-- ใหม่ "ทุกเฟรม" (ProbeGround เรียกทุกเฟรมตลอดที่โหมดเปิด) -> สร้างใหม่เมื่อกล้อง/ตัวเรา/
+-- จำนวนผู้เล่นเปลี่ยน หรือทุก 0.5 วิ (ผู้เล่นอื่นรีสปอว์์น = อัปเดตรายชื่อช้าสุด 0.5 วิ)
+local ugExclAt = 0
+local ugExclCam = nil
+local ugExclChar = nil
+local ugExclCount = -1
 local function BuildExclude()
         local cam = workspace.CurrentCamera
-        local list = {}
-        if cam then
-                list[#list + 1] = cam
-        end
+        local char = LocalPlayer.Character
         local ok, players = pcall(function()
                 return Players:GetPlayers()
         end)
-        if ok and players then
-                for i = 1, #players do
-                        local c = players[i].Character
-                        if c then
-                                list[#list + 1] = c
+        local cnt = (ok and players) and #players or 0
+        local nowT = tick()
+        if nowT - ugExclAt >= 0.5 or cam ~= ugExclCam or char ~= ugExclChar or cnt ~= ugExclCount then
+                ugExclAt = nowT
+                ugExclCam = cam
+                ugExclChar = char
+                ugExclCount = cnt
+                local list = {}
+                if cam then
+                        list[#list + 1] = cam
+                end
+                if ok and players then
+                        for i = 1, cnt do
+                                local c = players[i].Character
+                                if c then
+                                        list[#list + 1] = c
+                                end
                         end
                 end
+                rayParams.FilterDescendantsInstances = list
         end
-        rayParams.FilterDescendantsInstances = list
 end
 
 local function ProbeGround(root)
@@ -15216,7 +15326,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
                         local ugCollideList = UGSyncCollideParts(c)
                         for _, part in ipairs(ugCollideList) do
-                                if part:IsA("BasePart") and part.Parent then
+                                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -15228,22 +15338,32 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         -- (UGHideLocalBody ย้ายไปทำใน BindToRenderStep ตัวเดียว —
                         --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
                         --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
-                        pcall(function()
-                                r.AssemblyLinearVelocity = Vector3.zero
-                                r.AssemblyAngularVelocity = Vector3.zero
-                                if ugLastPose then
-                                    -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
-                                    -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
-                                    if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
-                                        ugLastPose = CFrame.new(Vector3.new(
-                                            r.Position.X,
-                                            lastGroundY + savedRootHeight,
-                                            r.Position.Z
-                                        )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-                                    end
-                                    r.CFrame = ugLastPose
+                        -- ★ FPS fix v39: เขียนตรง + ข้ามเมื่อค่าเท่าเดิม — เดิมสร้าง closure
+                        -- ทิ้ง 2 ครั้ง/เฟรม และเขียน CFrame/velocity ทับทุกสายทุกเฟรม
+                        -- (เขียน CFrame = ย้าย assembly ทั้งชุดใน physics = แพงสุดในลูปนี้;
+                        --  ค่าสุดท้ายเหมือนเดิมทุกอย่าง — ใครแตะตัวไป ค่าจะไม่ตรง = เขียนทันที)
+                        if r.Parent then
+                                if r.AssemblyLinearVelocity ~= Vector3.zero then
+                                        r.AssemblyLinearVelocity = Vector3.zero
                                 end
-                        end)
+                                if r.AssemblyAngularVelocity ~= Vector3.zero then
+                                        r.AssemblyAngularVelocity = Vector3.zero
+                                end
+                                if ugLastPose then
+                                        -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
+                                        -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
+                                        if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+                                                ugLastPose = CFrame.new(Vector3.new(
+                                                        r.Position.X,
+                                                        lastGroundY + savedRootHeight,
+                                                        r.Position.Z
+                                                )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                                        end
+                                        if r.CFrame ~= ugLastPose then
+                                                r.CFrame = ugLastPose
+                                        end
+                                end
+                        end
                 end
                 collideSaved = collideSaved or {}
                 ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
@@ -15286,12 +15406,10 @@ UpdateUndergroundFaceDown = function(deltaTime)
         local targetY = (lastGroundY or root.Position.Y) - depth
 
         -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        local dir = Vector3.zero
-        local ok, md = pcall(function()
-                return humanoid.MoveDirection
-        end)
-        if ok and typeof(md) == "Vector3" then
-                dir = md
+        -- ★ FPS fix v39: อ่านตรง (เดิมสร้าง closure ทิ้งทุกเฟรม)
+        local dir = humanoid.MoveDirection
+        if typeof(dir) ~= "Vector3" then
+                dir = Vector3.zero
         end
 
         local speed = 16
@@ -15350,7 +15468,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
         -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
         local ugCollideList = UGSyncCollideParts(char)
         for _, part in ipairs(ugCollideList) do
-                if part:IsA("BasePart") and part.Parent then
+                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
@@ -15371,19 +15489,26 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 * CFrame.Angles(0, lastYaw, 0)
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        pcall(function()
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
+        -- ★ FPS fix v39: เขียนตรง ไม่สร้าง closure ทิ้งทุกเฟรม (pose ย้ายทุกเฟรมต้องเขียน
+        -- อยู่แล้ว ส่วน velocity เขียนเฉพาะเมื่อไม่ใช่ศูนย์)
+        if root.Parent then
+                if root.AssemblyLinearVelocity ~= Vector3.zero then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end
+                if root.AssemblyAngularVelocity ~= Vector3.zero then
+                        root.AssemblyAngularVelocity = Vector3.zero
+                end
                 root.CFrame = pose
-        end)
+        end
 
         -- Preserve the original camera subject position relative to the ground, including
         -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
-        pcall(function()
+        -- ★ FPS fix v39: เขียนตรง (ไม่สร้าง closure ทิ้งทุกเฟรม)
+        if humanoid.Parent then
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
                 humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
-        end)
+        end
 end
 end)(); (function()
 local MiscBox = Tabs.Misc:AddLeftGroupbox("Misc")
