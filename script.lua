@@ -5007,6 +5007,16 @@ do
 		scan(data:FindFirstChild("Hotbar"))
 		return out
 	end
+	local skin_owned_cache = {}
+	local function skin_owned_cached(item, max_age) -- FPS fix 2026-11-03 round2
+		local now = os.clock()
+		local c = skin_owned_cache[item]
+		if not c or now - c[2] >= max_age then
+			c = {skin_owned(item), now}
+			skin_owned_cache[item] = c
+		end
+		return c[1]
+	end
 	local function skin_stamp(obj, item, skin)
 		local list = items_list()
 		local f = skins_folder()
@@ -5193,10 +5203,10 @@ do
 	end)
 	local skin_attr_tick = 0
 	cheat.utility.new_heartbeat(function()
-		if not skin_auto or os.clock() - skin_attr_tick < 2 then return end
+		if not skin_auto or next(skin_choices) == nil or os.clock() - skin_attr_tick < 2 then return end -- FPS fix 2026-11-03 round2: nothing chosen = zero work
 		skin_attr_tick = os.clock()
 		for item, skin in skin_choices do
-			local owned = skin_owned(item)
+			local owned = skin_owned_cached(item, 5) -- FPS fix 2026-11-03 round2: rescan the (growing) inventory at most every 5s per item
 			if #owned > 0 then
 				local need = false
 				for _, obj in owned do
@@ -5356,6 +5366,15 @@ do
 		scan(data:FindFirstChild("Hotbar"))
 		return out
 	end
+	local wep_owned_cache, wep_owned_cache_tick = nil, 0
+	local function wep_owned_cached(max_age) -- FPS fix 2026-11-03 round2
+		local now = os.clock()
+		if not wep_owned_cache or now - wep_owned_cache_tick >= max_age then
+			wep_owned_cache = wep_owned(nil)
+			wep_owned_cache_tick = now
+		end
+		return wep_owned_cache
+	end
 	local function wep_current(gun, slot)
 		local atts = gun:FindFirstChild("Attachments")
 		if not atts then return nil end
@@ -5414,11 +5433,11 @@ do
 			atts:SetAttribute(slot, att)
 		end)
 	end
-	local function wep_apply_all()
+	local function wep_apply_all(use_cached_scan)
 		local map = wep_parse(wep_edits)
 		if not next(map) then return 0 end
 		local n = 0
-		for _, gun in wep_owned(nil) do
+		for _, gun in (use_cached_scan and wep_owned_cached(3) or wep_owned(nil)) do
 			local slots = map[gun.Name]
 			if slots then
 				for slot, att in slots do
@@ -5553,7 +5572,7 @@ do
 	cheat.utility.new_heartbeat(function()
 		if wep_auto and wep_edits ~= "" and os.clock() - wep_auto_tick > 1 then
 			wep_auto_tick = os.clock()
-			wep_apply_all()
+			wep_apply_all(true) -- FPS fix 2026-11-03 round2: reuse the owned-guns scan for up to 3s
 		end
 	end)
 end
@@ -5748,8 +5767,10 @@ end
 
 do
 local mscsec = ui.sections.misc
+		local boss_gui -- FPS fix 2026-11-03 round2: forward declaration
 		local boss_toggle = mscsec:Toggle({Name = "Boss tracker", Value = false, Flag = "boss_tracker", Callback = function(bool)
 			cheat.boss_tracker = bool
+			if boss_gui then boss_gui.Enabled = bool end -- FPS fix 2026-11-03 round2
 		end})
 		cheat.boss_notify = false
 		mscsec:Toggle({Name = "Boss spawn notify", Value = false, Flag = "boss_notify", Callback = function(bool)
@@ -5767,7 +5788,7 @@ local mscsec = ui.sections.misc
 				Death = Color3.fromRGB(220, 20, 60)
 			}
 			local boss_order = {"Anton", "Dozer", "Whisper", "ScavKing", "Grif", "BTR80", "MI24V", "Death"}
-			local boss_gui = Instance.new("ScreenGui")
+			boss_gui = Instance.new("ScreenGui") -- FPS fix 2026-11-03 round2: assign to the forward-declared local
 			boss_gui.Name = "SwimBossTracker"
 			boss_gui.ResetOnSpawn = false
 			boss_gui.IgnoreGuiInset = true
@@ -5893,13 +5914,13 @@ local mscsec = ui.sections.misc
 				return _FindFirstChild(model, "HumanoidRootPart") or _FindFirstChild(model, "Head") or _FindFirstChild(model, "UpperTorso") or _FindFirstChild(model, "Chassis") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 			end
 			cheat.utility.new_renderstepped(function()
-				boss_gui.Enabled = not not cheat.boss_tracker
+				-- FPS fix 2026-11-03 round2: GUI enabled is set inside the toggle callback now (was a property write every frame)
 				if not cheat.boss_tracker and not cheat.boss_notify then
-					table.clear(boss_seen)
+					if next(boss_seen) then table.clear(boss_seen) end -- FPS fix 2026-11-03 round2: skip when already empty
 					return
 				end
 				local now = os.clock()
-				if now - boss_tick < 0.5 then return end
+				if now - boss_tick < 1 then return end -- FPS fix 2026-11-03 round2: scan at 1Hz (was 2Hz), less GC churn on big AiZones
 				boss_tick = now
 				local campos = Camera.CFrame.Position
 				local found = {}
@@ -5936,7 +5957,8 @@ local mscsec = ui.sections.misc
 										local hps = maxhp > 0 and (" " .. math.floor(hp / maxhp * 100) .. "%") or (hp > 0 and (" " .. hp) or "")
 										local brow = boss_rows[model.Name]
 										if brow then
-											brow.info.Text = (zone.Name or "?") .. "  " .. dist .. "m" .. hps
+											local txt = (zone.Name or "?") .. "  " .. dist .. "m" .. hps -- FPS fix 2026-11-03 round2: rewrite the label only when it changed
+											if brow.last_txt ~= txt then brow.info.Text = txt brow.last_txt = txt end
 											brow.row.Visible = true
 											local k = maxhp > 0 and math.clamp(hp / maxhp, 0, 1) or 1
 											brow.bar.Size = UDim2.new(k, 0, 1, 0)
@@ -6123,6 +6145,7 @@ local spiderman, spiderman_key = false, false
 
 local aspd_buffs, aspd_checked = nil, 0
 cheat.utility.new_renderstepped(function(delta) -- FPS fix 2026-11-03: tracked connection
+ if not speedhack and not flyhack and not spiderman then return end -- FPS fix 2026-11-03 round2: no movement feature active = zero work (was char scans + camera math + 4 key checks every frame)
  local char = LocalPlayer.Character
  local hrp = char and _FindFirstChild(char, "HumanoidRootPart")
  local hum = char and _FindFirstChildOfClass(char, "Humanoid")
