@@ -47,6 +47,26 @@
 -- [3] ลูปสำรอง 0.05 วิ เหลือไว้: ปลด project-delta ตอนกด Unload + รีทาย sync ถ้ากดปุ่มรัว
 --     (ตอนหน้าต่างยัง tween อยู่ Open จะถูกข้าม = จดสถานะไว้รีทายให้แน่ใจว่าตรงกัน)
 -- กด Delete เก็บเฉพาะหน้าต่าง project-delta ยังได้เหมือนเดิม
+-- ★ 2026-11-03 v36 (ตามที่ผู้ใช้ขอ — ทำ 2 อย่างเท่านั้น):
+-- [1] ถอด Door Bypass ออกทั้งฟีเจอร์: toggle/slider/ปุ่ม Fire Door + ระบบหาประตู
+--     ยิงประตูทั้งชุดหายไปจากแท็บ Misc ไม่มีโค้ดค้างให้แคร์ต่อ
+-- [2] แก้ "เปิด Underground ยิงคนใกล้ ๆ โดนตัวแต่ดาเมจไม่เข้า":
+--     จากซอร์สเกม (FPS_Bullet) สายดาเมจคือ ยิง = FireProjectile:InvokeServer(ทิศ, id, tick)
+--     ลงทะเบียนกระสุน 1 ครั้ง ถ้า server ตอบ nil เกม *ไม่ลองใหม่เอง* (แค่คืนกระสุน)
+--     พอกระสุนโดนคน เกมส่ง ProjectileInflict:FireServer(ตัว, จุดโดน, id, tick)
+--     แต่ server รับดาเมจเฉพาะ id ที่ลงทะเบียนสำเร็จแล้วเท่านั้น
+--     นัดใกล้กระสุนโดนเป้าใน ~0.05 วิ ขณะที่ลงทะเบียนเสร็จ ~0.15 วิ (v24 เคยวัดไว้
+--     server ตอบ nil นัดแรกทุกครั้ง ตอบ true ทีหลัง) = ดาเมจไปถึง server ก่อน
+--     กระสุนถูกจดจำ -> ถูกทิ้งทุกนัด (เห็นประกายโดนตัว เลือดไม่ลด)
+--     v36 ฟื้นแนวคิด v25 ใน "ร่างเบา" (ของหนัก v24-v26 ที่ทำเกมค้างไม่กลับมา):
+--     - จับ __namecall เฉพาะ 2 remote ตัวนี้ (เทียบชื่อเมธอด + ตัวตน remote)
+--       remote อื่น/เมธอดอื่นทุกตัวผ่านทันที ไม่มี log ไม่มีงานเพิ่ม
+--     - FireProjectile: server ตอบ nil = ลองซ้ำเองในพื้นหลัง (id/ทิศเดิม ทุก
+--       0.12 วิ สูงสุด 15 ครั้ง) จน server รับ
+--     - ProjectileInflict: id ยังไม่ถูกจดจำ = กั้นดาเมจไว้ก่อน (ไม่เกิน 8 นัด/id)
+--       พอลงทะเบียนสำเร็จส่งออกทันทีตามลำดับเดิม รอเกิน 1 วิปล่อยเอง (กันค้างขยะ)
+--       นัดที่ server รับ id แล้ว (ยิงไกล/ยิงปกติ) ผ่านทันที ไม่มีดีเลย์
+--     - ไม่มี: สแกน workspace / ผูก HealthChanged / ลูปถาวร / ยิงดาเมจซ้ำ
 local MikoRealPrint = print
 local MikoRealWarn = warn
 pcall(function()
@@ -339,8 +359,8 @@ local Camera = workspace.CurrentCamera
 -- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
 -- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
 -- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
-print("[Miko] v31 (ยิงคนบนที่สูงให้โดน): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
-        .. " — เก็บของ v30 (ตัดวินิจฉัยหนัก แก้เกมค้าง) ครบ แล้วเพิ่ม 2 จุด: silent aim ล็อกหัวจากเส้น crosshair จริง (เล็งโคนตัวคนบนที่สูงก็เข้าหัว) + คิดทิศกระสุนจากจุดเริ่ม ray จริงของเกม (ยิงขึ้นไม่หลุดเป้า)")
+print("[Miko] v36 (ถอด Door Bypass + แก้ยิงคนใกล้ตอน UG ดาเมจไม่เข้า): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — เก็บของเดิมครบ แล้วเปลี่ยน 2 จุด: [1] แท็บ Misc ไม่มี Door Bypass แล้ว [2] ดาเมจจะรอลงทะเบียนกระสุนกับ server ก่อนส่งเสมอ (ยิงคนใกล้ตอน UG โดนตัว = เลือดลดจริง)")
 -- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
 -- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
 -- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
@@ -1952,6 +1972,161 @@ if not _G.__MikoUG_EyeHook30 then
                         end
                 end
         end)
+end
+-- ★ 2026-11-03 v36: Damage Gate — ดาเมจรอให้ "กระสุนถูกลงทะเบียนกับ server" ก่อนส่งเสมอ
+-- (แก้: เปิด Underground ยิงคนใกล้ ๆ โดนตัวแต่ดาเมจไม่เข้า — รายละเอียดในหัวไฟล์)
+-- จับเฉพาะ 2 remote ของสายยิง: FireProjectile (ลงทะเบียน) + ProjectileInflict (ดาเมจ)
+-- ไม่มีของหนักยุค v24-v26 (สแกนแมพ/HealthChanged/ลูปถาวร/ยิงซ้ำ) = ไม่ทำเกมค้าง
+if not _G.__MikoDamageGate36 then
+        _G.__MikoDamageGate36 = true
+        local ugGateRemotes = nil
+        local ugGateRegDone = {} -- [id] = true = server รับกระสุน id นี้แล้ว
+        local ugGateRegArgs = {} -- [id] = { ทิศ, id, tick } จากตอนเกมยิงจริง
+        local ugGatePending = {} -- [id] = { args ดาเมจที่กั้นไว้, ... } (ส่งตามลำดับเดิม)
+        local ugGateSeen = {}    -- คิว id ล่าสุด (จำกัด 64 ตัว กันตารางโตไม่จำกัด)
+        local ugGateNotes = 0
+        local ugGateUnpack = table.unpack or unpack
+
+        local function ugGateNote(ugText)
+                ugGateNotes += 1
+                if ugGateNotes <= 8 then
+                        print("[Miko] v36 " .. ugText)
+                end
+        end
+
+        local function ugGateTrack(ugId)
+                ugGateSeen[#ugGateSeen + 1] = ugId
+                while #ugGateSeen > 64 do
+                        local ugOld = table.remove(ugGateSeen, 1)
+                        ugGateRegDone[ugOld] = nil
+                        ugGateRegArgs[ugOld] = nil
+                        ugGatePending[ugOld] = nil
+                end
+        end
+
+        local function ugGateFlush(ugId)
+                local ugList = ugGatePending[ugId]
+                if not ugList then
+                        return
+                end
+                ugGatePending[ugId] = nil
+                local ugRemote = ugGateRemotes and ugGateRemotes.inflict
+                if not ugRemote then
+                        return
+                end
+                for _, ugRec in ipairs(ugList) do
+                        pcall(function()
+                                ugRemote.FireServer(ugRemote, ugGateUnpack(ugRec))
+                        end)
+                end
+                ugGateNote("ส่งดาเมจที่กั้นไว้ " .. #ugList .. " นัด (id " .. tostring(ugId) .. ") — กระสุนถูกจดจำแล้ว")
+        end
+
+        -- ลองลงทะเบียนกระสุน (dot-call ตรง ๆ = ไม่วิ่งกลับเข้า hook ตัวเอง)
+        local function ugGateRegister(ugDir, ugId, ugT)
+                local ugRemote = ugGateRemotes and ugGateRemotes.fire
+                if not ugRemote then
+                        return false
+                end
+                local ugOk, ugAns = pcall(function()
+                        return ugRemote.InvokeServer(ugRemote, ugDir, ugId, ugT)
+                end)
+                if ugOk and ugAns then
+                        if ugGateRegDone[ugId] ~= true then
+                                ugGateRegDone[ugId] = true
+                                ugGateFlush(ugId)
+                        end
+                        return true
+                end
+                return false
+        end
+
+        -- server ตอบ nil ตอนเกมยิง = ลองซ้ำในพื้นหลัง (id/ทิศเดิม) จน server รับ
+        local function ugGateRetry(ugDir, ugId, ugT)
+                task.spawn(function()
+                        for _ = 1, 15 do
+                                task.wait(0.12)
+                                if ugGateRegDone[ugId] == true or ugGateRegister(ugDir, ugId, ugT) then
+                                        return
+                                end
+                        end
+                end)
+        end
+
+        task.spawn(function()
+                local ugFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 20)
+                if not ugFolder then
+                        return
+                end
+                local ugFire = ugFolder:WaitForChild("FireProjectile", 10)
+                local ugInflict = ugFolder:WaitForChild("ProjectileInflict", 10)
+                if ugFire and ugInflict then
+                        ugGateRemotes = { fire = ugFire, inflict = ugInflict }
+                        ugGateNote("พร้อมทำงาน (FireProjectile + ProjectileInflict) — ดาเมจจะรอลงทะเบียนกระสุนก่อนส่งเสมอ")
+                else
+                        ugGateNote("หา remote ยิงไม่ครบ — ปล่อยผ่านตามปกติ (ไม่มีผลอะไร)")
+                end
+        end)
+
+        if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
+                local ugWrapGate = typeof(newcclosure) == "function" and newcclosure or function(ugFn)
+                        return ugFn
+                end
+                local ugGateOldNC
+                ugGateOldNC = hookmetamethod(game, "__namecall", ugWrapGate(function(ugSelf, ...)
+                        local ugM = getnamecallmethod()
+                        local ugRemotes = ugGateRemotes
+                        if ugRemotes and ugM == "InvokeServer" and ugSelf == ugRemotes.fire then
+                                local ugArgs = table.pack(...)
+                                local ugId = ugArgs[2]
+                                if ugId ~= nil then
+                                        ugGateRegArgs[ugId] = { ugArgs[1], ugId, ugArgs[3] }
+                                        ugGateTrack(ugId)
+                                        local ugOk, ugAns = pcall(ugGateOldNC, ugSelf, ugGateUnpack(ugArgs, 1, ugArgs.n))
+                                        if ugOk and ugAns then
+                                                ugGateRegDone[ugId] = true
+                                                ugGateFlush(ugId)
+                                        elseif ugOk then
+                                                ugGateNote("server ยังไม่รับกระสุน (id " .. tostring(ugId) .. ") — ลองลงทะเบียนซ้ำในพื้นหลังจนได้")
+                                                ugGateRetry(ugArgs[1], ugId, ugArgs[3])
+                                        end
+                                        if ugOk then
+                                                return ugAns
+                                        end
+                                        return nil
+                                end
+                        elseif ugRemotes and ugM == "FireServer" and ugSelf == ugRemotes.inflict then
+                                local ugArgs = table.pack(...)
+                                local ugId = ugArgs[3]
+                                if ugId ~= nil and ugGateRegDone[ugId] ~= true and ugGateRegArgs[ugId] ~= nil then
+                                        local ugList = ugGatePending[ugId]
+                                        if not ugList then
+                                                ugList = {}
+                                                ugGatePending[ugId] = ugList
+                                                ugGateTrack(ugId)
+                                                ugGateNote("กั้นดาเมจไว้ก่อน (id " .. tostring(ugId) .. " ยังไม่ถูกจดจำ) — จะส่งทันทีที่ server รับกระสุน")
+                                                task.delay(1.0, function()
+                                                        if ugGatePending[ugId] and ugGateRegDone[ugId] ~= true then
+                                                                local ugRec = ugGateRegArgs[ugId]
+                                                                if ugRec then
+                                                                        ugGateRegister(ugRec[1], ugRec[2], ugRec[3])
+                                                                end
+                                                                if ugGateRegDone[ugId] ~= true then
+                                                                        ugGateFlush(ugId) -- รอ 1 วิ ยังไม่ได้ = ปล่อยออกไปเอง กันค้างขยะ
+                                                                end
+                                                        end
+                                                end)
+                                        end
+                                        if #ugList < 8 then
+                                                ugList[#ugList + 1] = { ugGateUnpack(ugArgs, 1, ugArgs.n) }
+                                        end
+                                        return nil
+                                end
+                        end
+                        return ugGateOldNC(ugSelf, ...)
+                end))
+                print("[Miko] v36: ติดตั้ง damage gate แล้ว (ดาเมจรอลงทะเบียนกระสุนก่อน — แก้ยิงคนใกล้ตอน UG ดาเมจไม่เข้า)")
+        end
 end
 local ugPack = table.pack or function(...)
         return { n = select("#", ...), ... }
@@ -15719,291 +15894,6 @@ task.spawn(function()
         end
 end)
 
-MiscBox:AddDivider()
-local DoorBypassStatus = MiscBox:AddLabel("Door Bypass: not working")
-local DoorBypassCooldown = {}
-local DoorBypassRunning = false
-
-local function HasAnyWord(text, words)
-        if typeof(text) ~= "string" or text == "" then
-                return false
-        end
-        for _, word in ipairs(words) do
-                if string.find(text, word, 1, true) then
-                        return true
-                end
-        end
-        return false
-end
-
--- Project Delta localizes its prompts to Thai: "ประตู" = door, "เปิดประตู" =
--- open the door, "แล็อคประตู" = lock the door. The old filter only knew English
--- words so every Thai door was invisible to Door Bypass. The door word itself
--- is the strong signal; a bare "Open" on loot crates must NOT count as a door.
-local DoorNameWords = { "door", "gate", "ประตู" }
-local DoorOpenWords = { "open", "unlock", "เปิด", "ปลดล็อค" }
-local DoorLockWords = { "lock", "ล็อค" }
-
-local function IsDoorishPrompt(prompt)
-        if HasAnyWord(tostring(prompt.ObjectText or ""), DoorNameWords)
-                or HasAnyWord(tostring(prompt.ActionText or ""), DoorNameWords)
-                or HasAnyWord(tostring(prompt.Name or ""), DoorNameWords) then
-                return true
-        end
-        local foundDoor = false
-        local node = prompt.Parent
-        for _ = 1, 4 do
-                if not node or node == workspace then
-                        break
-                end
-                local nodeName = string.lower(tostring(node.Name))
-                if string.find(nodeName, "extract", 1, true) then
-                        return false -- never auto-trigger extraction zones
-                end
-                if HasAnyWord(nodeName, DoorNameWords) then
-                        foundDoor = true
-                end
-                node = node.Parent
-        end
-        return foundDoor
-end
-
-local function IsDoorishClicker(clicker)
-        local foundDoor = false
-        local node = clicker.Parent
-        for _ = 1, 4 do
-                if not node or node == workspace then
-                        break
-                end
-                local nodeName = string.lower(tostring(node.Name))
-                if string.find(nodeName, "extract", 1, true) then
-                        return false -- never auto-trigger extraction zones
-                end
-                if HasAnyWord(nodeName, DoorNameWords) then
-                        foundDoor = true
-                end
-                node = node.Parent
-        end
-        return foundDoor
-end
-
--- Never auto-fire prompts whose action is only "lock" - that would lock the
--- door against us. "เปิดประตู" (open) fires; "แล็อคประตู" (lock) is reported only.
-local function PromptLockOnly(prompt)
-        local lockHit = HasAnyWord(tostring(prompt.ActionText or ""), DoorLockWords)
-                or HasAnyWord(tostring(prompt.ObjectText or ""), DoorLockWords)
-                or HasAnyWord(tostring(prompt.Name or ""), DoorLockWords)
-        if not lockHit then
-                return false
-        end
-        local openHit = HasAnyWord(tostring(prompt.ActionText or ""), DoorOpenWords)
-                or HasAnyWord(tostring(prompt.ObjectText or ""), DoorOpenWords)
-        return not openHit
-end
-
-local function FindDoorTargetNear(position, range)
-        local params = OverlapParams.new()
-        params.RespectCanCollide = false
-        local ok, parts = pcall(workspace.GetPartBoundsInRadius, workspace, position, range, params)
-        if not ok or typeof(parts) ~= "table" then
-                return nil, 0, nil, 0
-        end
-        local best = nil
-        local bestDist = math.huge
-        local bestClicker = nil
-        local bestClickDist = math.huge
-        local seenTarget = {}
-        local function consider(inst, anchorPart)
-                if seenTarget[inst] or typeof(inst) ~= "Instance" then
-                        return
-                end
-                seenTarget[inst] = true
-                local anchor = (inst.Parent and inst.Parent:IsA("BasePart")) and inst.Parent or anchorPart
-                if typeof(anchor) ~= "Instance" or not anchor:IsA("BasePart") then
-                        return
-                end
-                local dist = (anchor.Position - position).Magnitude
-                if inst:IsA("ProximityPrompt") then
-                        if inst.Enabled and IsDoorishPrompt(inst) and dist < bestDist then
-                                best = inst
-                                bestDist = dist
-                        end
-                elseif inst:IsA("ClickDetector") then
-                        if IsDoorishClicker(inst) and dist < bestClickDist then
-                                bestClicker = inst
-                                bestClickDist = dist
-                        end
-                end
-        end
-        for _, part in ipairs(parts) do
-                if typeof(part) == "Instance" and part:IsA("BasePart") then
-                        for _, desc in ipairs(part:GetDescendants()) do
-                                consider(desc, part)
-                        end
-                        local par = part.Parent
-                        if par and par ~= workspace then
-                                for _, ch in ipairs(par:GetChildren()) do
-                                        consider(ch, part)
-                                end
-                        end
-                end
-        end
-        return best, bestDist, bestClicker, bestClickDist
-end
-
-local function FireDoorTarget(target)
-        if typeof(target) ~= "Instance" then
-                return false
-        end
-        if target:IsA("ProximityPrompt") then
-                if typeof(fireproximityprompt) == "function" then
-                        local ok = pcall(fireproximityprompt, target)
-                        if ok then
-                                return true
-                        end
-                end
-                return pcall(function()
-                        target:InputHoldBegin()
-                        task.wait((tonumber(target.HoldDuration) or 0) + 0.1)
-                        target:InputHoldEnd()
-                end) == true
-        elseif target:IsA("ClickDetector") then
-                if typeof(fireclickdetector) == "function" then
-                        return pcall(fireclickdetector, target, 0) == true
-                end
-                return false
-        end
-        return false
-end
-
-local LastDoorStatusText = ""
-local function SetDoorStatus(text)
-        if text == LastDoorStatusText then
-                return
-        end
-        LastDoorStatusText = text
-        if typeof(DoorBypassStatus.SetText) == "function" then
-                pcall(DoorBypassStatus.SetText, DoorBypassStatus, text)
-        end
-end
-
-local function DoorBypassTick()
-        if not FreeCamSaved.Active then
-                SetDoorStatus("Door Bypass: waiting for Free Cam (V)...")
-                return
-        end
-        local cam = workspace.CurrentCamera
-        if not cam then
-                return
-        end
-        local range = tonumber(Misc.DoorBypassRange) or 15
-        local prompt, dist, clicker, clickDist = FindDoorTargetNear(cam.CFrame.Position, range)
-        local target = nil
-        local targetDist = 0
-        local kind = ""
-        if prompt and not PromptLockOnly(prompt) then
-                target = prompt
-                targetDist = dist
-                kind = "prompt"
-        elseif clicker then
-                target = clicker
-                targetDist = clickDist
-                kind = "clicker"
-        elseif prompt then
-                SetDoorStatus(string.format("Door Bypass: only a LOCK prompt within %dm - not firing", math.floor(dist)))
-                return
-        end
-        if not target then
-                SetDoorStatus(string.format("Door Bypass: no door within %dm of camera - fly closer", math.floor(range)))
-                return
-        end
-        local last = DoorBypassCooldown[target]
-        if last and tick() - last < 2.5 then
-                return
-        end
-        DoorBypassCooldown[target] = tick()
-        if FireDoorTarget(target) then
-                local hint = ""
-                if not Misc.FreeCamFollow then
-                        hint = " - turn on Bring Character so your body is at the door"
-                end
-                SetDoorStatus(string.format("Door Bypass: fired %s '%s' (%dm)%s", kind, tostring(target.Name), math.floor(targetDist), hint))
-        else
-                SetDoorStatus("Door Bypass: executor cannot fire " .. (kind == "prompt" and "prompts (no fireproximityprompt)" or "click detectors (no fireclickdetector)"))
-        end
-end
-
-local function StartDoorBypassLoop()
-        if DoorBypassRunning then
-                return
-        end
-        DoorBypassRunning = true
-        task.spawn(function()
-                while Misc.DoorBypass == true and Library.Unloaded ~= true do
-                        task.wait(0.3)
-                        pcall(DoorBypassTick)
-                end
-                DoorBypassRunning = false
-        end)
-end
-
-MiscBox:AddToggle("DoorBypass", {
-        Text = "Door Bypass not working",
-        Default = false,
-        Callback = function(value)
-                Misc.DoorBypass = value
-                if value then
-                        StartDoorBypassLoop()
-                else
-                        if typeof(DoorBypassStatus.SetText) == "function" then
-                                DoorBypassStatus:SetText("Door Bypass: off")
-                        end
-                end
-        end,
-})
-MiscBox:AddSlider("DoorBypassRange", {
-        Text = "Door Bypass not working",
-        Default = 15,
-        Min = 5,
-        Max = 50,
-        Rounding = 0,
-        Callback = function(value)
-                if typeof(value) == "number" then
-                        Misc.DoorBypassRange = value
-                end
-        end,
-})
-
-MiscBox:AddButton("not working", function()
-        local cam = workspace.CurrentCamera
-        if not cam then
-                return
-        end
-        local range = math.max(tonumber(Misc.DoorBypassRange) or 15, 15)
-        local prompt, dist, clicker, clickDist = FindDoorTargetNear(cam.CFrame.Position, range)
-        local target = nil
-        local targetDist = 0
-        local kind = ""
-        if prompt and not PromptLockOnly(prompt) then
-                target = prompt
-                targetDist = dist
-                kind = "prompt"
-        elseif clicker then
-                target = clicker
-                targetDist = clickDist
-                kind = "clicker"
-        end
-        if not target then
-                SetDoorStatus(string.format("Fire Door: no open-door prompt/clicker within %dm of camera", math.floor(range)))
-                return
-        end
-        DoorBypassCooldown[target] = tick()
-        if FireDoorTarget(target) then
-                SetDoorStatus(string.format("Fire Door: fired %s '%s' (%dm)", kind, tostring(target.Name), math.floor(targetDist)))
-        else
-                SetDoorStatus("Fire Door: executor cannot fire this target")
-        end
-end)
 
 MiscBox:AddToggle("FullBright", {
         Text = "Full Bright",
