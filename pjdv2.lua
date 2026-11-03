@@ -87,6 +87,21 @@
 -- [7] Unload: เดิมกด Unload แล้วบางลูปยังวิ่งต่อ (ลูปหลัก 11 ระบบ/เฟรม, Item X-Ray,
 --     Item Finder, โพลปุ่ม FreeCam, NoRecoil/NoSpread) ฉีดซ้ำ = ลูปซ้อนทบ FPS ยิ่งตก
 --     -> ตั้งธง Library.Unloaded ก่อนเก็บของ ให้ทุกลูปปิดตัวเอง (แนวเดียวกับลูป Anti-Drown)
+-- ★ 2026-11-04 v38 (แก้ FPS ตกรอบ 2 — ต่อจาก v37 ตามที่ผู้ใช้ยังเจอ):
+-- [1] Underground/Face Down (ตัวการหลัก): เดิมทุกเฟรมเดิน char:GetDescendants() 3 ครั้ง
+--     (สายเคลื่อนที่ + ugApplyPose บน Stepped และ Heartbeat) = 180 ครั้ง/วิ สร้างตารางขยะ
+--     หลักร้อยชิ้นต่อเฟรมตลอดเวลาเปิดโหมด = FPS ตกต่อเนื่องตอนเปิดมุดดิน/นอนหงาย
+--     -> แคชรายชื่อ BasePart ของตัวละคร สร้างครั้งเดียว + เติมชิ้นใหม่ทันทีผ่าน
+--        DescendantAdded (ปืน/VFX ที่ spawn ทีหลังไม่ตกหล่น) + ล้างขยะทุก 1 วิ
+--        (CanCollide ยังถูก re-assert ทุกเฟรมเหมือนเดิม พฤติกรรมไม่เปลี่ยน)
+-- [2] ช่วง hold ตอนยิง (UG/Face Down): เดิมเดิน char:GetDescendants() หาป้ายชื่อ/เอฟเฟกต์
+--     ทุกเฟรม (ยิงรัว = 60 ครั้ง/วิ) -> เฟรมแรกของ hold + ทุก 0.05 วิ
+--     (ป้าย/เอฟเฟกต์ใหม่ถูกปิดช้าสุด 3 เฟรม ตาไม่ทันสังเกต)
+-- [3] สแกน Error Hunter v21: เดิมวิ่งเสมอ ~4 วิหลังเข้าเกม เดิน workspace ทั้งแมพ + อ่าน
+--     Source ทุกสคริปต์ = ฟรีซสไปค์ตอนเข้าเกม -> วิ่งเฉพาะตอนตั้ง _G.MikoVerbose = true
+--     (ปกติผลลัพธ์ก็โดน print เงียบของ v29 กลืน ไม่มีใครเห็นอยู่แล้ว)
+-- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — ของ v36/v37 ครบเหมือนเดิมทุกอย่าง)
+
 local MikoRealPrint = print
 local MikoRealWarn = warn
 pcall(function()
@@ -379,8 +394,8 @@ local Camera = workspace.CurrentCamera
 -- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
 -- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
 -- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
-print("[Miko] v36 (ถอด Door Bypass + แก้ยิงคนใกล้ตอน UG ดาเมจไม่เข้า): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
-        .. " — เก็บของเดิมครบ แล้วเปลี่ยน 2 จุด: [1] แท็บ Misc ไม่มี Door Bypass แล้ว [2] ดาเมจจะรอลงทะเบียนกระสุนกับ server ก่อนส่งเสมอ (ยิงคนใกล้ตอน UG โดนตัว = เลือดลดจริง)")
+print("[Miko] v38 (แก้ FPS ตกรอบ 2): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — แก้ FPS เพิ่ม 3 จุด: [1] มุดดิน/นอนหงายเลิกเดิน GetDescendants 180 ครั้ง/วิแล้ว [2] ช่วงยิงเบาลงลง [3] สแกนตอนเข้าเกมข้าม (เปิดได้ผ่าน _G.MikoVerbose)")
 -- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
 -- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
 -- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
@@ -394,6 +409,12 @@ _G.MikoUG_NoPopUp = true
 _G.MikoUG_StealthServer = true
 _G.MikoUG2_StealthServer = true
 task.delay(4, function()
+        -- ★ FPS fix v38: scan วินิจฉัย error :14781 (งาน v21) เดิน descendants ของ 11 service
+        --   รวม workspace ทั้งแมพ + อ่าน Source ทุกสคริปต์ในเกม ~4 วิหลังเข้า = ฟรีซสไปค์ตอนเข้า
+        --   เกมโดยไม่จำเป็น (ปกติผลก็โดน print mute ของ v29 กลืน) -> วิ่งเฉพาะ _G.MikoVerbose
+        if _G.MikoVerbose ~= true then
+                return
+        end
         local ugRoots = {}
         local function ugAddRoot(ugInst, ugLabel)
                 if ugInst then
@@ -13504,6 +13525,42 @@ local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
+-- ★ FPS fix v38: แคชรายชื่อ BasePart ของตัวละคร — เดิม ugApplyPose (Stepped+Heartbeat)
+--   กับสายเคลื่อนที่เดิน char:GetDescendants() รวม 3 ครั้ง/เฟรม = 180 ครั้ง/วิ สร้างตาราง
+--   ขยะหลักร้อยชิ้นต่อเฟรมตลอดเวลาเปิดโหมด = ตัวการหลัก FPS ตก ตอนนี้แคชสร้างครั้งเดียว
+--   ต่อตัวละคร เติมชิ้นใหม่ทันทีผ่าน DescendantAdded (ปืน/VFX spawn ทีหลังไม่ตกหล่น)
+--   และล้างขยะทุก 1 วิ — CanCollide ยังถูก re-assert ทุกเฟรมเหมือนเดิมทุกอย่าง
+local ugCollideParts = nil
+local ugCollidePartsChar = nil
+local ugCollidePartsAt = 0
+local ugCollidePartsConn = nil
+local function UGRebuildCollideParts(char)
+        local list = {}
+        for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                        list[#list + 1] = part
+                end
+        end
+        ugCollideParts = list
+        ugCollidePartsChar = char
+        ugCollidePartsAt = tick()
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+        end
+        ugCollidePartsConn = char.DescendantAdded:Connect(function(obj)
+                if obj:IsA("BasePart") and ugCollideParts then
+                        ugCollideParts[#ugCollideParts + 1] = obj
+                end
+        end)
+end
+local function UGSyncCollideParts(char)
+        if ugCollidePartsChar ~= char or (tick() - ugCollidePartsAt) >= 1 then
+                UGRebuildCollideParts(char)
+        end
+        return ugCollideParts
+end
 -- ★ Camera fix 2026-10-31 (มุมกล้องล็อคตอนมุดดิน):
 -- เดิมสคริปต์ (1) ล็อกแกน Y ของกล้องไว้ที่ระดับ "ตอนเปิด" ทุกเฟรม และ
 -- (2) บังคับ root ให้หมุนตาม "ทิศเดิน" แบบนอนราบ ซึ่งกล้องของเกม FPS
@@ -13516,6 +13573,8 @@ local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
 local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
 local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
 local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัวยังถูกยกขึ้น "ยืน" เหนือผิวดินช่วงยิง
+local ugHoldFxNextScan = 0 -- ★ FPS fix v38: เวลาสแกนเอฟเฟกต์ช่วง hold ครั้งถัดไป (ทุก 0.05 วิ)
+local ugHoldWasActive = false -- ★ FPS fix v38: จำสถานะ hold ก่อนหน้า (เฟรมแรกของ hold สแกนทันที)
 local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
 local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
@@ -13773,15 +13832,28 @@ local UGBindHideStep = function()
                         -- ยืน จึงปิดทิ้งระหว่าง hold แล้วคืนค่าเดิมทันทีที่หมด hold
                         if c then
                             if tick() < ugHoldUntil then
-                                for _, obj in ipairs(c:GetDescendants()) do
-                                    if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
-                                        or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
-                                        or obj:IsA("Trail") then
-                                        if ugGhostFx[obj] == nil then
-                                            ugGhostFx[obj] = obj.Enabled
-                                        end
-                                        if obj.Enabled then
-                                            obj.Enabled = false
+                                -- ★ FPS fix v38: เดิมเดิน char:GetDescendants() ทุกเฟรมช่วง hold
+                                --   (ยิงรัว = 60 ครั้ง/วิ) -> เฟรมแรกของ hold + ทุก 0.05 วิ
+                                --   ป้าย/เอฟเฟกต์ใหม่ยังถูกปิดทันตา (ช้าสุด 3 เฟรม)
+                                local holdActive = tick() < ugHoldUntil
+                                if holdActive and not ugHoldWasActive then
+                                        ugHoldWasActive = true
+                                        ugHoldFxNextScan = 0
+                                elseif not holdActive then
+                                        ugHoldWasActive = false
+                                end
+                                if holdActive and now >= ugHoldFxNextScan then
+                                    ugHoldFxNextScan = now + 0.05
+                                    for _, obj in ipairs(c:GetDescendants()) do
+                                        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
+                                            or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
+                                            or obj:IsA("Trail") then
+                                            if ugGhostFx[obj] == nil then
+                                                ugGhostFx[obj] = obj.Enabled
+                                            end
+                                            if obj.Enabled then
+                                                obj.Enabled = false
+                                            end
                                         end
                                     end
                                 end
@@ -14175,8 +14247,10 @@ UpdateUnderground = function(deltaTime)
                         if not Misc.Underground or Misc.FreeCam or Misc.UndergroundFaceDown or Library.Unloaded then
                                 return
                         end
-                        for _, part in ipairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") then
+                        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part:IsA("BasePart") and part.Parent then
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -14304,8 +14378,10 @@ UpdateUnderground = function(deltaTime)
         if not collideSaved then
                 collideSaved = {}
         end
-        for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
+        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part:IsA("BasePart") and part.Parent then
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
@@ -14377,6 +14453,42 @@ local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
+-- ★ FPS fix v38: แคชรายชื่อ BasePart ของตัวละคร — เดิม ugApplyPose (Stepped+Heartbeat)
+--   กับสายเคลื่อนที่เดิน char:GetDescendants() รวม 3 ครั้ง/เฟรม = 180 ครั้ง/วิ สร้างตาราง
+--   ขยะหลักร้อยชิ้นต่อเฟรมตลอดเวลาเปิดโหมด = ตัวการหลัก FPS ตก ตอนนี้แคชสร้างครั้งเดียว
+--   ต่อตัวละคร เติมชิ้นใหม่ทันทีผ่าน DescendantAdded (ปืน/VFX spawn ทีหลังไม่ตกหล่น)
+--   และล้างขยะทุก 1 วิ — CanCollide ยังถูก re-assert ทุกเฟรมเหมือนเดิมทุกอย่าง
+local ugCollideParts = nil
+local ugCollidePartsChar = nil
+local ugCollidePartsAt = 0
+local ugCollidePartsConn = nil
+local function UGRebuildCollideParts(char)
+        local list = {}
+        for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                        list[#list + 1] = part
+                end
+        end
+        ugCollideParts = list
+        ugCollidePartsChar = char
+        ugCollidePartsAt = tick()
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+        end
+        ugCollidePartsConn = char.DescendantAdded:Connect(function(obj)
+                if obj:IsA("BasePart") and ugCollideParts then
+                        ugCollideParts[#ugCollideParts + 1] = obj
+                end
+        end)
+end
+local function UGSyncCollideParts(char)
+        if ugCollidePartsChar ~= char or (tick() - ugCollidePartsAt) >= 1 then
+                UGRebuildCollideParts(char)
+        end
+        return ugCollideParts
+end
 -- ★ Camera fix 2026-10-31 (มุมกล้องล็อคตอนมุดดิน):
 -- เดิมสคริปต์ (1) ล็อกแกน Y ของกล้องไว้ที่ระดับ "ตอนเปิด" ทุกเฟรม และ
 -- (2) บังคับ root ให้หมุนตาม "ทิศเดิน" แบบนอนราบ ซึ่งกล้องของเกม FPS
@@ -14389,6 +14501,8 @@ local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
 local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
 local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
 local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัวยังถูกยกขึ้น "ยืน" เหนือผิวดินช่วงยิง
+local ugHoldFxNextScan = 0 -- ★ FPS fix v38: เวลาสแกนเอฟเฟกต์ช่วง hold ครั้งถัดไป (ทุก 0.05 วิ)
+local ugHoldWasActive = false -- ★ FPS fix v38: จำสถานะ hold ก่อนหน้า (เฟรมแรกของ hold สแกนทันที)
 local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
 local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
@@ -14663,15 +14777,28 @@ local UGBindHideStep = function()
                         -- ยืน จึงปิดทิ้งระหว่าง hold แล้วคืนค่าเดิมทันทีที่หมด hold
                         if c then
                             if tick() < ugHoldUntil then
-                                for _, obj in ipairs(c:GetDescendants()) do
-                                    if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
-                                        or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
-                                        or obj:IsA("Trail") then
-                                        if ugGhostFx[obj] == nil then
-                                            ugGhostFx[obj] = obj.Enabled
-                                        end
-                                        if obj.Enabled then
-                                            obj.Enabled = false
+                                -- ★ FPS fix v38: เดิมเดิน char:GetDescendants() ทุกเฟรมช่วง hold
+                                --   (ยิงรัว = 60 ครั้ง/วิ) -> เฟรมแรกของ hold + ทุก 0.05 วิ
+                                --   ป้าย/เอฟเฟกต์ใหม่ยังถูกปิดทันตา (ช้าสุด 3 เฟรม)
+                                local holdActive = tick() < ugHoldUntil
+                                if holdActive and not ugHoldWasActive then
+                                        ugHoldWasActive = true
+                                        ugHoldFxNextScan = 0
+                                elseif not holdActive then
+                                        ugHoldWasActive = false
+                                end
+                                if holdActive and now >= ugHoldFxNextScan then
+                                    ugHoldFxNextScan = now + 0.05
+                                    for _, obj in ipairs(c:GetDescendants()) do
+                                        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
+                                            or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
+                                            or obj:IsA("Trail") then
+                                            if ugGhostFx[obj] == nil then
+                                                ugGhostFx[obj] = obj.Enabled
+                                            end
+                                            if obj.Enabled then
+                                                obj.Enabled = false
+                                            end
                                         end
                                     end
                                 end
@@ -15086,8 +15213,10 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         if not Misc.UndergroundFaceDown or Misc.FreeCam or Misc.Underground or Library.Unloaded then
                                 return
                         end
-                        for _, part in ipairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") then
+                        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part:IsA("BasePart") and part.Parent then
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -15218,8 +15347,10 @@ UpdateUndergroundFaceDown = function(deltaTime)
         if not collideSaved then
                 collideSaved = {}
         end
-        for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
+        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part:IsA("BasePart") and part.Parent then
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
