@@ -67,6 +67,26 @@
 --       พอลงทะเบียนสำเร็จส่งออกทันทีตามลำดับเดิม รอเกิน 1 วิปล่อยเอง (กันค้างขยะ)
 --       นัดที่ server รับ id แล้ว (ยิงไกล/ยิงปกติ) ผ่านทันที ไม่มีดีเลย์
 --     - ไม่มี: สแกน workspace / ผูก HealthChanged / ลูปถาวร / ยิงดาเมจซ้ำ
+-- ★ 2026-11-03 v37 (แก้ FPS ตก — ตรวจทั้งไฟล์แล้ว ไม่แตะพฤติกรรมฟีเจอร์):
+-- [1] Extraction ESP: เดิมตอนเปิดจะเดิน workspace ทั้งแมพ ~5 รอบ ทุก 0.75 วิ (GetDescendants
+--     ครบ + ตามหา 12 ฟอลเดอร์ด้วย FindFirstChild(name, true) ทีละชื่อ = เดินซ้ำอีก 12 รอบ
+--     + เช็คทุกโมเดลในแมพ) = สตัตเตอร์หนักตลอดเวลา -> เหลือเดิน 2 รอบ + ขยับรอบสแกน
+--     เป็นทุก 2 วิ (ของใหม่ยังโผล่ทันทีผ่าน hook DescendantAdded เหมือนเดิม)
+-- [2] Crate/Landmine ESP: แคชตำแหน่งฟอลเดอร์ (เดิมเดินทั้งแมพตามหาทุกชื่อทุกรอบสแกน) และ
+--     แคชผลเช็ครูปทรงทุ่นระเบิดต่อโมเดล 10 วิ (GetBoundingBox = คิวรี่ฟิสิกส์แพงสุด ไม่ต้อง
+--     ตรวจซ้ำโมเดลเดิมทุก 2 วิ ทุ่นที่เกิดใหม่เป็นอินสแตนซ์ใหม่ = ตรวจเต็มทันทีเหมือนเดิม)
+-- [3] Fast Walk: เดิมเดิน PlayerScripts:GetDescendants() ทุกเฟรมขณะเปิด (สคริปต์เกมหลายพันชิ้น)
+--     -> จำกัดทุก 0.5 วิ ผลเดิมคือเด้งเสียงเดินให้เงียบเหมือนกัน
+-- [4] NoRecoil/NoSpread: เดิมสร้าง closure ใหม่ทุก attribute ทุกตัวอามู่ทุก 0.15 วิ + เขียน
+--     SetAttribute ซ้ำทั้งที่ค่าเป็น 0 แล้ว -> เรียกตรงผ่าน pcall(fn, ...) ไม่มีขยะฟังก์ชัน
+--     + ข้ามเขียนเมื่อค่าเท่าเดิม (ยังบังคับค่า 0 ต่อเนื่องเหมือนเดิมทุกอย่าง)
+-- [5] Silent Aim fallback: แคชผลสแกน NPC 1 -> 2.5 วิ (เดิมยิงแต่ละนัดที่ไม่เจอเป้าในโซน
+--     จะเดิน workspace ทั้งแมพถึง 1 ครั้ง/วิ) + แคชผลสแกน NPC แชร์ทุกระบบ 1 วิ (เดิม NPC ESP/
+--     เรดาร์/ลิสต์ TP ของ FreeCam สแกนแยกกันเอง ตอนไม่มี AiZones = เดินแมพซ้ำหลายรอบ)
+-- [6] MON-50: watchdog สแกนซ้ำทั้งแมพ 1 -> 3 วิ
+-- [7] Unload: เดิมกด Unload แล้วบางลูปยังวิ่งต่อ (ลูปหลัก 11 ระบบ/เฟรม, Item X-Ray,
+--     Item Finder, โพลปุ่ม FreeCam, NoRecoil/NoSpread) ฉีดซ้ำ = ลูปซ้อนทบ FPS ยิ่งตก
+--     -> ตั้งธง Library.Unloaded ก่อนเก็บของ ให้ทุกลูปปิดตัวเอง (แนวเดียวกับลูป Anti-Drown)
 local MikoRealPrint = print
 local MikoRealWarn = warn
 pcall(function()
@@ -1132,7 +1152,9 @@ local ugNpcFallbackCache = nil
 local ugNpcFallbackAt = 0
 local function GetSilentNpcFallback()
         local now = os.clock()
-        if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 1 then
+        -- ★ FPS fix v37: แคช 1 -> 2.5 วิ (เดิมยิงแต่ละนัดเมื่อไม่เจอเป้าใน AiZones/Players
+        --   จะเดิน workspace ทั้งแมพได้ถึง 1 ครั้ง/วิ เป้านอกโซนโผล่ในวงเล็งช้าขึ้น ~1.5 วิ เท่านั้น)
+        if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 2.5 then
                 return ugNpcFallbackCache
         end
 
@@ -3704,7 +3726,8 @@ local LastCrateLabelRefresh = 0
 local CrateScanInterval = 4
 local LandmineScanInterval = 2
 local CrateLabelRefreshInterval = 0.15
-local ExtractionScanInterval = 0.75
+-- ★ FPS fix v37: 0.75 -> 2 วิ (สแกนทั้งแมพบ่อยเกิน ของใหม่ยังโผล่ทันทีผ่าน hook DescendantAdded)
+local ExtractionScanInterval = 2
 local ExtractionDescendantHook = false
 local LandmineDescendantHook = false
 
@@ -6647,7 +6670,22 @@ local function NpcNeedsESP()
                 or NpcESP.HealthText
 end
 
+-- ★ FPS fix v37: แคชผลสแกน NPC 1 วิ แชร์ทุกผู้ใช้ (NPC ESP / เรดาร์ / ลิสต์ TP ของ FreeCam /
+--   แผนที่ใหญ่) เดิมแต่ละระบบสแกนแยกกันเอง ตอนแมพไม่มี AiZones = เดิน workspace ทั้งแมพ
+--   คนละรอบซ้อนเวลากัน ทุกคนได้ชุดผลลัพธ์เดิม (ตารางถูกอ่านอย่างเดียว ไม่มีใครแก้)
+local ScanNpcCache = nil
+local ScanNpcCacheAt = 0
+local ScanNPCsRaw = nil
 ScanNPCs = function()
+        if ScanNpcCache and (os.clock() - ScanNpcCacheAt) < 1 then
+                return ScanNpcCache
+        end
+        local resultNpc = ScanNPCsRaw()
+        ScanNpcCache = resultNpc
+        ScanNpcCacheAt = os.clock()
+        return resultNpc
+end
+ScanNPCsRaw = function()
         local found = {}
         local aiZones = workspace:FindFirstChild("AiZones")
 
@@ -7010,6 +7048,31 @@ local function GetCrateScreenBounds(crate, crateData)
         }
 end
 
+-- ★ FPS fix v37: แคชฟอลเดอร์ของ Container ESP (เดิม workspace:FindFirstChild(name, true)
+--   ทีละชื่อ 9 ชื่อ = เดินทั้งแมพ 9 รอบทุกครั้งที่สแกน) หาใหม่เฉพาะตอนฟอลเดอร์หาย/ยังไม่เกิด
+--   (พยายามซ้ำไม่บ่อยกว่าทุก 5 วิ) ผลลัพธ์เท่าเดิม
+local CrateFolderCache = {}
+local CrateFolderMissAt = {}
+local function FindCrateFolderCached(folderName)
+        local cachedFolder = CrateFolderCache[folderName]
+        if cachedFolder then
+                if cachedFolder.Parent then
+                        return cachedFolder
+                end
+                CrateFolderCache[folderName] = nil
+        end
+        local nowC = os.clock()
+        if (CrateFolderMissAt[folderName] or 0) > nowC then
+                return nil
+        end
+        CrateFolderMissAt[folderName] = nowC + 5
+        local foundFolder = workspace:FindFirstChild(folderName, true)
+        if foundFolder then
+                CrateFolderCache[folderName] = foundFolder
+        end
+        return foundFolder
+end
+
 local function ScanCrates()
         local found = {}
 
@@ -7023,7 +7086,7 @@ local function ScanCrates()
         end
 
         for _, folderName in ContainerFolderNames do
-                local folder = workspace:FindFirstChild(folderName, true)
+                local folder = FindCrateFolderCached(folderName)
                 if folder then
                         for _, obj in folder:GetDescendants() do
                                 if obj:IsA("ProximityPrompt") then
@@ -7484,29 +7547,18 @@ local function ScanMapRoots()
         return roots
 end
 
+-- ★ FPS fix v37: เดิมเดิน workspace ครบ 3 รอบ (prompt / ป้าย+โมเดล / attribute ตาม map roots)
+--   + ลูป 12 ฟอลเดอร์ (FindFirstChild(name, true) ทีละชื่อ = เดินทั้งแมพอีก 12 รอบ) ทุก 0.75 วิ
+--   ขณะเปิด Extraction ESP = สตัตเตอร์หนัก -> เหลือเดิน 2 รอบ (prompt ก่อนตามเดิม แล้วรวม
+--   ป้าย/โมเดล/attribute ในรอบเดียว) เพราะทุกอย่างที่เช็คเป็นลูกของ workspace อยู่แล้ว
+--   และ TryAddExtraction เช็ค attribute/tag ของตัวเองครบอยู่แล้ว = ชุดผลลัพธ์เท่าเดิมทุกจุด
+--   (รอบ tags ย้ายไปท้าย — เรียก TryAddExtraction เดียวกันกับรอบโมเดล ผลเดิมทุกกรณี)
 ScanExtractions = function()
         local found = {}
 
         for _, obj in workspace:GetDescendants() do
                 if obj:IsA("ProximityPrompt") then
                         TryAddExtractionFromPrompt(found, obj)
-                end
-        end
-
-        for _, tag in ExtractionTags do
-                for _, obj in CollectionService:GetTagged(tag) do
-                        TryAddExtraction(found, obj)
-                end
-        end
-
-        for _, folderName in ExtractionFolderNames do
-                local folder = workspace:FindFirstChild(folderName, true)
-                if folder then
-                        for _, obj in folder:GetDescendants() do
-                                if obj:IsA("Model") or obj:IsA("BasePart") then
-                                        TryAddExtraction(found, obj)
-                                end
-                        end
                 end
         end
 
@@ -7530,11 +7582,9 @@ ScanExtractions = function()
                 end
         end
 
-        for _, root in ScanMapRoots() do
-                for _, obj in root:GetDescendants() do
-                        if obj:IsA("BasePart") and HasExtractionAttribute(obj) then
-                                TryAddExtraction(found, obj)
-                        end
+        for _, tag in ExtractionTags do
+                for _, obj in CollectionService:GetTagged(tag) do
+                        TryAddExtraction(found, obj)
                 end
         end
 
@@ -7956,6 +8006,52 @@ local function TryAddLandmine(found, instance)
         }
 end
 
+-- ★ FPS fix v37: แคชผลเช็ครูปทรงทุ่น (ModelLooksLikeDiscMine เรียก GetBoundingBox = คิวรี่
+--   ฟิสิกส์แพงสุดของรอบสแกน) ต่อโมเดล 10 วิ กันตรวจซ้ำทั้งแมพทุก 2 วิ โมเดลที่ตรวจแล้วไม่ใช่
+--   จะไม่ถูกตรวจรูปทรงซ้ำ ส่วนทุ่นที่เกิดใหม่ = อินสแตนซ์ใหม่ ไม่อยู่ในแคช = ตรวจเต็มทันที
+local DiscMineCheckCache = {}
+local DiscMineCacheClearAt = 0
+local function ModelLooksLikeDiscMineCached(model)
+        local nowC = os.clock()
+        if nowC - DiscMineCacheClearAt > 60 then
+                table.clear(DiscMineCheckCache)
+                DiscMineCacheClearAt = nowC
+        end
+        local cachedAt = DiscMineCheckCache[model]
+        if cachedAt and (nowC - cachedAt) < 10 then
+                return false
+        end
+        local isDiscMine = ModelLooksLikeDiscMine(model)
+        if not isDiscMine then
+                DiscMineCheckCache[model] = nowC
+        end
+        return isDiscMine
+end
+
+-- ★ FPS fix v37: แคชฟอลเดอร์ของ Landmine ESP (เดิม FindFirstChild(name, true) ทีละชื่อ =
+--   เดินทั้งแมพทุกชื่อทุกรอบสแกน) หาใหม่เฉพาะตอนฟอลเดอร์หาย/ยังไม่เกิด (ทุก 5 วิ)
+local MineFolderCache = {}
+local MineFolderMissAt = {}
+local function FindMineFolderCached(folderName)
+        local cachedFolder = MineFolderCache[folderName]
+        if cachedFolder then
+                if cachedFolder.Parent then
+                        return cachedFolder
+                end
+                MineFolderCache[folderName] = nil
+        end
+        local nowC = os.clock()
+        if (MineFolderMissAt[folderName] or 0) > nowC then
+                return nil
+        end
+        MineFolderMissAt[folderName] = nowC + 5
+        local foundFolder = workspace:FindFirstChild(folderName, true)
+        if foundFolder then
+                MineFolderCache[folderName] = foundFolder
+        end
+        return foundFolder
+end
+
 local function ScanLandmines()
         local found = {}
 
@@ -7966,7 +8062,7 @@ local function ScanLandmines()
         end
 
         for _, folderName in DeployableFolderNames do
-                local folder = workspace:FindFirstChild(folderName, true)
+                local folder = FindMineFolderCached(folderName)
                 if folder then
                         for _, obj in folder:GetDescendants() do
                                 if obj:IsA("Model") or obj:IsA("BasePart") then
@@ -7978,12 +8074,13 @@ local function ScanLandmines()
 
         -- Full workspace scan for mines (name + flat disc shape like your screenshot)
         for _, obj in workspace:GetDescendants() do
+                -- ★ FPS fix v37: จัดลำดับเช็คจากถูกไปแพง (ชื่อ -> attribute -> tag -> รูปทรง)
                 if obj:IsA("Model") then
-                        if NameLooksLikeLandmine(obj.Name) or ModelLooksLikeDiscMine(obj) or HasLandmineAttribute(obj) or HasLandmineTag(obj) then
+                        if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or ModelLooksLikeDiscMineCached(obj) then
                                 TryAddLandmine(found, obj)
                         end
                 elseif obj:IsA("BasePart") then
-                        if NameLooksLikeLandmine(obj.Name) or LooksLikeDiscMinePart(obj) or HasLandmineAttribute(obj) or HasLandmineTag(obj) then
+                        if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or LooksLikeDiscMinePart(obj) then
                                 TryAddLandmine(found, obj)
                         end
                 end
@@ -10077,7 +10174,15 @@ XRayGroup:AddSlider("XRayTextSize", {
     end,
 })
 
-RunService.RenderStepped:Connect(function()
+local XRayRenderConn = nil
+XRayRenderConn = RunService.RenderStepped:Connect(function()
+    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง (เดิมวิ่งต่อหลังปิดเมนู ฉีดซ้ำ = ลูปซ้อนทบ)
+    if Library.Unloaded then
+        if XRayRenderConn then
+            XRayRenderConn:Disconnect()
+        end
+        return
+    end
     local now = tick()
     if now - LastScan < SCAN_INTERVAL then
         return
@@ -11113,9 +11218,10 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- watchdog: สแกนซ้ำทุก 1 วิ (fullScan มี ScanBusy กันสแกนซ้อนอยู่แล้ว)
+    -- watchdog: สแกนซ้ำทุก 3 วิ (fullScan มี ScanBusy กันสแกนซ้อนอยู่แล้ว)
+    -- ★ FPS fix v37: 1 -> 3 วิ (เดิมเดิน workspace:GetDescendants() ทั้งแมพทุกวินาทีตอนเปิด)
     if now >= NextWatchdog then
-        NextWatchdog = now + 1
+        NextWatchdog = now + 3
         fullScan()
     end
 
@@ -11783,7 +11889,15 @@ FinderGroup:AddButton("Clear All Targets", function()
     UpdateTargetsLabel()
 end)
 
-RunService.RenderStepped:Connect(function()
+local FinderRenderConn = nil
+FinderRenderConn = RunService.RenderStepped:Connect(function()
+    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+    if Library.Unloaded then
+        if FinderRenderConn then
+            FinderRenderConn:Disconnect()
+        end
+        return
+    end
     local now = tick()
     if now - LastScan < SCAN_INTERVAL then
         return
@@ -11918,7 +12032,15 @@ RunService.RenderStepped:Connect(function()
 end)
 
 local LastRainbow = 0
-RunService.RenderStepped:Connect(function()
+local RainbowConn = nil
+RainbowConn = RunService.RenderStepped:Connect(function()
+    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+    if Library.Unloaded then
+        if RainbowConn then
+            RainbowConn:Disconnect()
+        end
+        return
+    end
     if not Finder.Rainbow then
         return
     end
@@ -12466,6 +12588,9 @@ local function EnsureSilentWalkHook()
         end)
 end
 
+-- ★ FPS fix v37: จับเวลาสแกนเสียงเดินของ Fast Walk (เดิมสแกนทุกเฟรม)
+local LastMovementSoundScan = 0
+
 UpdateFastWalk = function(deltaTime)
         deltaTime = typeof(deltaTime) == "number" and deltaTime or 0.016
         if deltaTime <= 0 then
@@ -12540,17 +12665,24 @@ UpdateFastWalk = function(deltaTime)
                 root.AssemblyAngularVelocity = Vector3.zero
         end)
 
-        pcall(function()
-                local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
-                if not scripts then
-                        return
-                end
-                for _, desc in scripts:GetDescendants() do
-                        if IsMovementSound(desc) then
-                                MuteMovementSound(desc)
+        -- ★ FPS fix v37: เดิมเดิน PlayerScripts:GetDescendants() ทุกเฟรมขณะเปิด Fast Walk
+        --   (สคริปต์เกมหลายพันชิ้นต่อเฟรม = ตกเฟรมหนัก) จำกัดเหลือทุก 0.5 วิ
+        --   เสียงเดินที่เกิดใหม่ยังถูกเด้งให้เงียบทันทีที่รู้ตัวเหมือนเดิม
+        local nowSound = tick()
+        if nowSound - LastMovementSoundScan >= 0.5 then
+                LastMovementSoundScan = nowSound
+                pcall(function()
+                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
+                        if not scripts then
+                                return
                         end
-                end
-        end)
+                        for _, desc in scripts:GetDescendants() do
+                                if IsMovementSound(desc) then
+                                        MuteMovementSound(desc)
+                                end
+                        end
+                end)
+        end
 end
 
 local FreeCamSaved = {
@@ -12790,23 +12922,23 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                 return
         end
 
+        -- ★ FPS fix v37: เดิมปิด closure ใหม่ทุก attribute ทุกตัวอามู่ทุก 0.15 วิ (ขยะ
+        --   ฟังก์ชันนับพันชิ้น/วิ) + เขียน SetAttribute ซ้ำทั้งที่ค่าเป็น 0 แล้ว -> เรียกตรง
+        --   ผ่าน pcall(fn, ...) ไม่มี closure + ข้ามเขียนเมื่อค่าเท่าเดิม (บังคับ 0 เหมือนเดิม
+        --   เพราะถ้าเกม restore ค่ากลับมาเป็นอย่างอื่น รอบถัดไปจะเขียนทับเป็น 0 ตามเดิม)
         for _, attrName in attrNames do
-                local ok, value = pcall(function()
-                        return ammo:GetAttribute(attrName)
-                end)
+                local ok, value = pcall(ammo.GetAttribute, ammo, attrName)
                 if ok and typeof(value) == "number" then
                         local key = ammo.Name .. "::" .. attrName
                         if enabled then
                                 if cacheBucket[key] == nil then
                                         cacheBucket[key] = value
                                 end
-                                pcall(function()
-                                        ammo:SetAttribute(attrName, 0)
-                                end)
+                                if value ~= 0 then
+                                        pcall(ammo.SetAttribute, ammo, attrName, 0)
+                                end
                         elseif cacheBucket[key] ~= nil then
-                                pcall(function()
-                                        ammo:SetAttribute(attrName, cacheBucket[key])
-                                end)
+                                pcall(ammo.SetAttribute, ammo, attrName, cacheBucket[key])
                                 cacheBucket[key] = nil
                         end
                 end
@@ -12822,7 +12954,11 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                                 or lower:find("accuracy", 1, true)
                         local match = (enabled and cacheBucket == AmmoGunModCache.Recoil and isRecoil)
                                 or (enabled and cacheBucket == AmmoGunModCache.Spread and isSpread)
-                        local restore = (not enabled) and cacheBucket[ammo.Name .. "::child::" .. child:GetFullName()] ~= nil
+                        -- ★ FPS fix v37: ไม่สร้าง GetFullName ทิ้งทุกลูกตอนโหมดบังคับ (เปิด = ไม่ต้อง restore)
+                        local restore = false
+                        if not enabled then
+                                restore = cacheBucket[ammo.Name .. "::child::" .. child:GetFullName()] ~= nil
+                        end
 
                         if match then
                                 local key = ammo.Name .. "::child::" .. child:GetFullName()
@@ -12877,6 +13013,10 @@ do
         task.spawn(function()
                 while true do
                         task.wait(1)
+                        -- ★ FPS fix v37: ออกจากลูปเมื่อ Unload (เดิมวิ่งต่อตลอดไปหลังปิดเมนู)
+                        if Library.Unloaded then
+                                break
+                        end
                         if Misc and (Misc.NoRecoil or Misc.NoSpread) then
                                 pcall(ApplyAmmoGunMods, true)
                         end
@@ -15593,7 +15733,10 @@ do
 
         -- ★ v15: เกราะเลือดต่อเฟรม (Heartbeat) — ADTick รันทุก 0.1 วิ อาจช้ากว่า
         -- ดาเมจจมน้ำของเกม ขณะหัวจมใต้น้ำ (ADSubmergedNow) จะคืนเลือดทันทีทุกเฟรม
-        local ADHeartConn = RunService.Heartbeat:Connect(function()
+        -- ★ Unload fix: ต้องประกาศ ADHeartConn ก่อน แล้วค่อย Connect แยกบรรทัด — เดิมประกาศและอ้างตัวเองในบรรทัดเดียว
+        --   ทำให้ใน callback ตัวแปรยังเป็น nil (ชี้ global) -> กด Unload แล้ว error "attempt to index nil with 'Disconnect'" ซ้ำทุกเฟรม
+        local ADHeartConn
+        ADHeartConn = RunService.Heartbeat:Connect(function()
                 if Library.Unloaded then
                         ADHeartConn:Disconnect()
                         return
@@ -16232,6 +16375,9 @@ MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
 })
 
 MenuGroup:AddButton("Unload", function()
+        -- ★ FPS fix v37: ตั้งธงก่อนเก็บของ = ลูปทุกตัวที่เหลือเช็คธงนี้แล้วปิดตัวเอง
+        --   (เดิมลูปหลัก/ลูปย่อยบางส่วนยังวิ่งต่อหลัง Unload ฉีดซ้ำที = ลูปซ้อนทบ FPS ยิ่งตก)
+        Library.Unloaded = true
         for player in pairs(ESPCache) do
                 ClearPlayerESP(player)
         end
@@ -16462,7 +16608,15 @@ OffKeysGroup:AddButton("Turn Off All / Restore", function()
 end)
 
 local LastFreeCamKeyState = false
-RunService.RenderStepped:Connect(function()
+local KeyPollConn = nil
+KeyPollConn = RunService.RenderStepped:Connect(function()
+        -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+        if Library.Unloaded then
+                if KeyPollConn then
+                        KeyPollConn:Disconnect()
+                end
+                return
+        end
         -- Free Cam key: single press toggles Spectator (rising-edge
         -- detect, same proven mechanism as the category off binds)
         local kbOpt = Options.FreeCamKeybind
@@ -17375,8 +17529,16 @@ end
 -- Loop
 ----------------------------------------------------------------
 local LastFrameTime = tick()
+local MainRenderConn = nil
 
-RunService.RenderStepped:Connect(function()
+MainRenderConn = RunService.RenderStepped:Connect(function()
+        -- ★ FPS fix v37: Unload แล้วปิดตัวเอง (เดิม 11 ระบบยังวิ่งทุกเฟรมตลอดไป)
+        if Library.Unloaded then
+                if MainRenderConn then
+                        MainRenderConn:Disconnect()
+                end
+                return
+        end
         local now = tick()
         local deltaTime = now - LastFrameTime
         LastFrameTime = now
