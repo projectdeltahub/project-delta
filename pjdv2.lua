@@ -117,6 +117,37 @@
 -- [5] ตัด closure ที่ถูกสร้างทิ้งทุกเฟรมในลูปโพส/เดิน (เดิม pcall ครอบด้วย closure ใหม่
 --     3-5 ชิ้น/เฟรม) = ลดขยะ GC ต่อเนื่อง
 -- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — โพส/กล้อง/การซ่อน/การยิงเหมือนเดิมทุกอย่าง)
+-- ★ 2026-11-04 v40 (แก้ "FPS กระชากตอนใช้ไปสักพัก" — ตรวจทั้งไฟล์ พบต้นตอร่วมกัน):
+--   ESP หลายระบบเดิน workspace:GetDescendants() ทั้งแมพ (หลายหมื่นชิ้น) แบบซิงค์
+--   "บนเฟรมเรนเดอร์" เป็นรอบ ๆ — ยิ่งเล่นนาน ของในแมพยิ่งเยอะ (ไอเทมดรอป/กล่อง/ศพ)
+--   ยิ่งสแกนนาน = FPS กระชากถี่ขึ้นเรื่อย ๆ รอบนี้ย้ายไปทำบน background worker
+--   แบบเป็นชุด (yield ทุก 2000 ชิ้น) เหมือนที่ Corpse ESP / Item Finder ทำไว้แล้ว
+--   ผลสดเท่าเดิมทุกระบบ (คาบเวลาเดิมทุกตัว):
+-- [1] NPC scan (แชร์ NPC ESP/เรดาร์/แมพใหญ่/ลิสต์ TP): เดิมเดินแมพบนเฟรมผู้เรียกทันที
+--     ทุกครั้งที่ cache หมดอายุ (1-3 วิ) -> worker เติม cache ทุก 1 วิ ผู้เรียกได้ของเดิม
+-- [2] Crate ESP: เดิมเดินแมพซิงค์ทุก 4 วิ -> worker (คาบเดิม)
+-- [3] Extraction ESP: เดิมเดินแมพ 2 รอบซิงค์ทุก 2 วิ -> worker (GetDescendants ครั้งเดียว
+--     เดินซ้ำจากอาร์เรย์เดิม ลำดับเช็คเดิม = ชุดผลลัพธ์เท่าเดิม)
+-- [4] Landmine ESP: เดิมเดินแมพซิงค์ + เช็คชื่อ/attribute/tag/รูปทรงทุกโมเดล-BasePart
+--     ทุก 2 วิ (หนักสุดของไฟล์) -> worker (คาบเดิม)
+-- [5] Walk On Water: เดิมยิง 3 raycast ทุกเฟรม + เดินทั้งแมพหา part น้ำซิงค์ทุก 1 วิ
+--     -> แคชผล 0.15 วิ (แนวเดียวกับ UG v39) + สแกน part น้ำลง worker
+-- [6] Fast Walk: เดิมเดิน PlayerScripts ทั้งชุดบนเฟรมทุก 0.5 วิ -> worker (เสียงเดิน
+--     ที่เกิดใหม่ยังโดนเด้งเงียบทันทีเหมือนเดิม) + ล้างเสียงที่ถูกทำลายออกจากตาราง
+-- [7] Gun Cham: เดิมเขียน Material/Color/LTM/ไฟทุกชิ้นทุกเฟรมแม้ค่าเท่าเดิม + เดินหา
+--     ปืนใหม่ทุกเฟรม -> เขียนเมื่อค่าเปลี่ยน + re-assert เต็มทุก 0.2 วิ + แคชผลหาปืน 0.1 วิ
+-- ★ 2026-11-04 v41 (FPS ตกตอนเปิด Underground — เก็บงานต่อเฟรมที่ยังหลงเหลือรอบสุดท้าย):
+-- [1] สายซ่อนตัว (UG+FD): เดิมเขียน LocalTransparencyModifier ทับ "ทุกชิ้นทุกเฟรม" ทั้งที่
+--     TransparencyController ล้างค่าใหม่เฉพาะชิ้นตัวละคร ส่วน gear ใต้กล้องค่าค้างอยู่แล้ว
+--     = เขียนทับเปล่า ๆ หลายพันครั้ง/วิ -> เขียนเฉพาะเมื่อค่าเพี้ยน (อ่านเช็คก่อนเขียน)
+-- [2] UGHidePart (ทุกรอบสแกน 0.2 วิ): เดิม pcall สร้าง closure ทิ้งทุกชิ้น (~600/วิ/บล็อก)
+--     -> ชิ้นที่ track แล้วเขียนตรง + เขียนเฉพาะเมื่อค่าเพี้ยน (ชิ้นใหม่ยังบันทึกค่าเดิมเหมือนเดิม)
+-- [3] ลูปหมุดนิรนาม + ช่วง hold ยิง: เดิม pcall สร้าง closure ทิ้ง 2-3 ชิ้น/เฟรม -> เรียกตรง
+--     (ฟังก์ชันปลายทางกัน error เอง / ตัวแปร nil-check ครบแล้ว และไม่มี yield กลางบล็อก)
+-- [4] CameraOffset: เดิมคำนวณ + เขียนทับทุกเฟรม -> คำนวณแล้วเขียนเฉพาะเมื่อค่าเปลี่ยน
+-- [5] ปิดโหมด: ปลดสาย DescendantAdded ของแคช CanCollide + ล้างแคช (เดิมค้างหลังปิด =
+--     สายอ้างอิงตัวละครเก่า + callback เติมอาเรย์เก่าจนกว่าจะเปิดโหมดรอบหน้า)
+-- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — โพส/กล้อง/การซ่อน/การยิงเหมือนเดิมทุกอย่าง)
 
 local MikoRealPrint = print
 local MikoRealWarn = warn
@@ -410,8 +441,8 @@ local Camera = workspace.CurrentCamera
 -- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
 -- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
 -- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
-print("[Miko] v39 (แก้ FPS ตกรอบ 3): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
-        .. " — แก้ FPS ตอนเปิดมุดดิน/นอนหงายเพิ่ม 4 จุด: [1] สายหาผิวน้ำเลิกยิง raycast ทุกเฟรม [2] โพสตัวเลิกเขียนทับค่าเดิม 180 ครั้ง/วิ [3] rescan ชิ้นใหม่ + ตาราง exclude ของ ray เดินพื้นเบาลง [4] ตัดขยะ closure/gsub ในลูปทุกเฟรม")
+print("[Miko] v40 (แก้ FPS กระชากตอนใช้ไปสักพัก): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — ย้ายสแกนทั้งแมพของ ESP ทุกระบบ (NPC/Crate/Extraction/Landmine/น้ำ/เสียงเดิน) ออกจากเฟรมเรนเดอร์ไป background worker แบบเป็นชุด ยิ่งเล่นนานของในแมพยิ่งเยอะก็ไม่กระตุกแล้ว + Gun Cham เขียนค่าเมื่อเปลี่ยนเท่านั้น")
 -- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
 -- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
 -- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
@@ -5071,6 +5102,11 @@ local NameMatchesContainer, NameMatchesContainerModel
 local GunChamHighlight = nil
 local GunChamTarget = nil
 local GunChamPartCache = {}
+-- ★ FPS fix v40: จำสถานะล่าสุดกันเขียนค่าซ้ำทุกเฟรม (เดิมเขียน Material/Color/LTM/ไฟ
+--   ทุกชิ้นทุกเฟรมแม้ค่าเท่าเดิม + เดินหาปืนใหม่ทุกเฟรม)
+local GunChamLastColor = nil
+local GunChamLastApplyAt = 0
+local GunLookupCache = { Character = nil, Gun = nil, At = 0 }
 
 local GunChamFolder = Instance.new("Folder")
 GunChamFolder.Name = "WallhackGunCham"
@@ -5607,6 +5643,7 @@ ClearGunCham = function()
         end
 
         GunChamTarget = nil
+        GunChamLastColor = nil
 end
 
 local function EnsureGunGlowLight(part, color)
@@ -5619,10 +5656,21 @@ local function EnsureGunGlowLight(part, color)
                 light.Name = "WallhackGunGlow"
                 light.Shadows = false
                 light.Parent = part
+                light.Color = color
+                light.Brightness = 4.5
+                light.Range = 12
+                return light
         end
-        light.Color = color
-        light.Brightness = 4.5
-        light.Range = 12
+        -- ★ FPS fix v40: เขียนเมื่อค่าเพี้ยนเท่านั้น (เดิมเขียนทุกชิ้นทุกเฟรม)
+        if light.Color ~= color then
+                light.Color = color
+        end
+        if light.Brightness ~= 4.5 then
+                light.Brightness = 4.5
+        end
+        if light.Range ~= 12 then
+                light.Range = 12
+        end
         return light
 end
 
@@ -5638,12 +5686,30 @@ local function ApplyGunCham(gun)
                 return
         end
 
+        local color = ESP.GunChamColor
+
+        -- ★ FPS fix v40: ปืนเดิม+สีเดิม = ข้าม restyle ทั้งชุด (re-assert เต็มทุก 0.2 วิ
+        --   กันเกม restore ค่า) ระหว่างรอ re-assert แค่ดัน LTM กลับถ้าโดนรีเซ็ต (อ่านเฉย ๆ
+        --   ถูกกว่าเขียนมาก) ค่าบนปืนไม่เปลี่ยนแม้บิตเดียวจากของเดิม
+        local nowGun = tick()
+        if GunChamTarget == gun and GunChamLastColor == color and (nowGun - GunChamLastApplyAt) < 0.2 then
+                for part in pairs(GunChamPartCache) do
+                        if part.Parent and part.LocalTransparencyModifier ~= -0.35 then
+                                pcall(function()
+                                        part.LocalTransparencyModifier = -0.35
+                                end)
+                        end
+                end
+                return
+        end
+        GunChamLastApplyAt = nowGun
+
         if GunChamTarget ~= gun then
                 ClearGunCham()
                 GunChamTarget = gun
         end
+        GunChamLastColor = color
 
-        local color = ESP.GunChamColor
         -- Punch the color brighter so Neon reads as a real glow
         local glowColor = Color3.new(
                 math.clamp(color.R * 1.35 + 0.15, 0, 1),
@@ -5664,11 +5730,18 @@ local function ApplyGunCham(gun)
                         }
                 end
 
-                part.Material = Enum.Material.Neon
-                part.Color = glowColor
-                pcall(function()
-                        part.LocalTransparencyModifier = -0.35
-                end)
+                -- ★ FPS fix v40: เขียนเมื่อค่าไม่ตรงเป้าเท่านั้น (กันเขียนทับซ้ำทุกชิ้นทุกเฟรม)
+                if part.Material ~= Enum.Material.Neon then
+                        part.Material = Enum.Material.Neon
+                end
+                if part.Color ~= glowColor then
+                        part.Color = glowColor
+                end
+                if part.LocalTransparencyModifier ~= -0.35 then
+                        pcall(function()
+                                part.LocalTransparencyModifier = -0.35
+                        end)
+                end
                 EnsureGunGlowLight(part, glowColor)
                 appliedParts += 1
         end
@@ -5696,24 +5769,53 @@ local function ApplyGunCham(gun)
                 GunChamHighlight = highlight
         end
 
-        GunChamHighlight.Adornee = gun
-        GunChamHighlight.FillColor = glowColor
-        GunChamHighlight.OutlineColor = Color3.new(1, 1, 1)
-        GunChamHighlight.FillTransparency = 0.05
-        GunChamHighlight.OutlineTransparency = 0
-        GunChamHighlight.Enabled = true
+        -- ★ FPS fix v40: เขียนเมื่อค่าเพี้ยนเท่านั้น
+        if GunChamHighlight.Adornee ~= gun then
+                GunChamHighlight.Adornee = gun
+        end
+        if GunChamHighlight.FillColor ~= glowColor then
+                GunChamHighlight.FillColor = glowColor
+        end
+        if GunChamHighlight.OutlineColor ~= Color3.new(1, 1, 1) then
+                GunChamHighlight.OutlineColor = Color3.new(1, 1, 1)
+        end
+        if GunChamHighlight.FillTransparency ~= 0.05 then
+                GunChamHighlight.FillTransparency = 0.05
+        end
+        if GunChamHighlight.OutlineTransparency ~= 0 then
+                GunChamHighlight.OutlineTransparency = 0
+        end
+        if not GunChamHighlight.Enabled then
+                GunChamHighlight.Enabled = true
+        end
+end
+
+-- ★ FPS fix v40: แคชผลหาปืน 0.1 วิ (เดิมเดินกล้อง/ตัวละครทั้งชุดทุกเฟรมเพื่อหาปืนตัวเดิม)
+local function GetEquippedGunCached(character)
+        local nowLookup = os.clock()
+        if GunLookupCache.Character == character and (nowLookup - GunLookupCache.At) < 0.1 then
+                return GunLookupCache.Gun
+        end
+        local gun = GetEquippedGun(character)
+        GunLookupCache.Character = character
+        GunLookupCache.Gun = gun
+        GunLookupCache.At = nowLookup
+        return gun
 end
 
 UpdateGunCham = function()
         SyncESPFromUI()
 
         if not ESP.GunCham then
-                ClearGunCham()
+                -- ★ FPS fix v40: เคลียร์ครั้งเดียวพอ (เดิมเรียก ClearGunCham ทุกเฟรมขณะปิดอยู่)
+                if GunChamTarget ~= nil or GunChamHighlight ~= nil or next(GunChamPartCache) ~= nil then
+                        ClearGunCham()
+                end
                 return
         end
 
         local character = LocalPlayer.Character
-        local gun = GetEquippedGun(character)
+        local gun = GetEquippedGunCached(character)
         if gun then
                 ApplyGunCham(gun)
         else
@@ -6710,17 +6812,36 @@ end
 -- ★ FPS fix v37: แคชผลสแกน NPC 1 วิ แชร์ทุกผู้ใช้ (NPC ESP / เรดาร์ / ลิสต์ TP ของ FreeCam /
 --   แผนที่ใหญ่) เดิมแต่ละระบบสแกนแยกกันเอง ตอนแมพไม่มี AiZones = เดิน workspace ทั้งแมพ
 --   คนละรอบซ้อนเวลากัน ทุกคนได้ชุดผลลัพธ์เดิม (ตารางถูกอ่านอย่างเดียว ไม่มีใครแก้)
+-- ★ FPS fix v40: cache ถูกเติมโดย background worker ทุก 1 วิ (ด้านล่าง) — เดิมผู้เรียก
+--   ตัวไหนเจอ cache หมดอายุ = เดินแมพซิงค์ "บนเฟรมผู้เรียก" ทันที (เรดาร์/แมพใหญ่/TP ทุก 3-5
+--   วิ = กระตุกเป็นจังหวะ) ตอนนี้ผู้เรียกได้ชุดล่าสุดไปเลย ส่วนสแกนจริงทำบนเธรดหลังบ้าน
 local ScanNpcCache = nil
 local ScanNpcCacheAt = 0
+local MikoNpcWorkerBusy = false
+local MikoNpcScanRequest = false
 local ScanNPCsRaw = nil
 ScanNPCs = function()
-        if ScanNpcCache and (os.clock() - ScanNpcCacheAt) < 1 then
+        local nowC = os.clock()
+        if ScanNpcCache and (nowC - ScanNpcCacheAt) < 1.25 then
                 return ScanNpcCache
         end
-        local resultNpc = ScanNPCsRaw()
-        ScanNpcCache = resultNpc
-        ScanNpcCacheAt = os.clock()
-        return resultNpc
+        if MikoNpcWorkerBusy then
+                return ScanNpcCache or {}
+        end
+        MikoNpcScanRequest = true
+        if ScanNpcCache then
+                return ScanNpcCache
+        end
+        -- ยังไม่เคยมีผลเลย (เฟรมแรกหลังโหลด) = สแกนครั้งแรกให้ได้ก่อนแบบเดิม
+        MikoNpcWorkerBusy = true
+        local okFirst, firstResult = pcall(ScanNPCsRaw)
+        MikoNpcWorkerBusy = false
+        if okFirst and type(firstResult) == "table" then
+                ScanNpcCache = firstResult
+                ScanNpcCacheAt = os.clock()
+                return firstResult
+        end
+        return {}
 end
 ScanNPCsRaw = function()
         local found = {}
@@ -6740,16 +6861,46 @@ ScanNPCsRaw = function()
                 return found
         end
 
-        for _, obj in workspace:GetDescendants() do
+        -- ★ FPS fix v40: เดินแบบเป็นชุด (yield ทุก 2000 ชิ้น) — ตอนรันบน background worker
+        --   จะไม่กินเฟรมเรนเดอร์เลย ถ้าถูกเรียกซิงค์ (ครั้งแรก) ก็แบ่งงานต่อเฟรมเหมือนกัน
+        local npcDescs = workspace:GetDescendants()
+        for ni = 1, #npcDescs do
+                local obj = npcDescs[ni]
                 if obj:IsA("Model") and IsNpcCharacter(obj) then
                         found[obj] = {
                                 Instance = obj,
                                 Name = obj.Name:gsub("_", " "),
                         }
                 end
+                if ni % 2000 == 0 then
+                        task.wait()
+                end
         end
 
         return found
+end
+
+-- ★ FPS fix v40: worker เติม NPC cache ทุก 1 วิ ขณะมีผู้ใช้ (NPC ESP เปิด หรือมีระบบอื่น
+--   ขอสแกนล่าสุด) — ผู้ใช้ทุกระบบได้ชุดเดิม สดเท่าเดิม แต่แมพไม่ถูกเดินบนเฟรมอีกเลย
+do
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        local nowC = os.clock()
+                        local stale = (ScanNpcCache == nil) or ((nowC - ScanNpcCacheAt) >= 1)
+                        if not MikoNpcWorkerBusy and stale
+                                and (MikoNpcScanRequest or NpcNeedsESP()) then
+                                MikoNpcScanRequest = false
+                                MikoNpcWorkerBusy = true
+                                local okNpcW, npcWResult = pcall(ScanNPCsRaw)
+                                MikoNpcWorkerBusy = false
+                                if okNpcW and type(npcWResult) == "table" then
+                                        ScanNpcCache = npcWResult
+                                        ScanNpcCacheAt = os.clock()
+                                end
+                        end
+                end
+        end)
 end
 
 local function DrawNpcESP(npc, npcData)
@@ -7146,9 +7297,16 @@ local function ScanCrates()
                 end
         end
 
-        for _, obj in workspace:GetDescendants() do
+        -- ★ FPS fix v40: เดินแบบเป็นชุด (yield ทุก 2000 ชิ้น) — ตอนรันบน background worker
+        --   จะไม่กินเฟรมเรนเดอร์เลย ของในแมพเยอะแค่ไหน FPS ก็ไม่กระตุก
+        local crateDescs = workspace:GetDescendants()
+        for ci = 1, #crateDescs do
+                local obj = crateDescs[ci]
                 if obj:IsA("ProximityPrompt") then
                         TryAddContainerFromPrompt(found, obj)
+                end
+                if ci % 2000 == 0 then
+                        task.wait()
                 end
         end
 
@@ -7177,21 +7335,8 @@ UpdateCrateESP = function()
                 return
         end
 
-        local now = tick()
-        if now - LastCrateScan >= CrateScanInterval then
-                LastCrateScan = now
-                local ok, result = pcall(ScanCrates)
-                if ok and type(result) == "table" then
-                        CrateList = result
-                end
-
-                for crate in pairs(CrateCache) do
-                        if not CrateList[crate] or not crate.Parent then
-                                ClearCrateESP(crate)
-                        end
-                end
-        end
-
+        -- ★ FPS fix v40: สแกนย้ายไป background worker (ท้าย chunk นี้) — เฟรมเรนเดอร์เหลือ
+        --   แค่วาดผลจาก CrateList ล่าสุดเหมือนเดิม (worker เก็บกวาดของที่หายด้วยตัวเอง)
         local root = GetLocalRoot()
 
         for crate, crateData in pairs(CrateList) do
@@ -7253,6 +7398,34 @@ UpdateCrateESP = function()
                         ClearCrateESP(crate)
                 end
         end
+end
+
+-- ★ FPS fix v40: สแกนกล่องทั้งแมพย้ายมาทำบน background worker (คาบเดิมทุก 4 วิ ผลสดเท่าเดิม)
+--   เดิม: UpdateCrateESP บน RenderStepped เดิน workspace:GetDescendants() ซิงค์ทุก 4 วิ
+--   = FPS กระชาก ยิ่งเล่นนานของดรอป/กล่องยิ่งเยอะ ยิ่งหนัก
+do
+        local CrateScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldNeedsCrateESP()
+                                and not CrateScanBusy
+                                and (tick() - LastCrateScan) >= CrateScanInterval then
+                                LastCrateScan = tick()
+                                CrateScanBusy = true
+                                local okCrate, crateResult = pcall(ScanCrates)
+                                CrateScanBusy = false
+                                if okCrate and type(crateResult) == "table" then
+                                        CrateList = crateResult
+                                        for crate in pairs(CrateCache) do
+                                                if not CrateList[crate] or not crate.Parent then
+                                                        ClearCrateESP(crate)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
 end
 end)(); (function()
 
@@ -7593,13 +7766,23 @@ end
 ScanExtractions = function()
         local found = {}
 
-        for _, obj in workspace:GetDescendants() do
+        -- ★ FPS fix v40: GetDescendants ครั้งเดียว + เดินซ้ำสองรอบจากอาร์เรย์เดิม
+        --   (ลำดับเช็คเดิม: prompt ก่อน แล้วค่อยอื่น ๆ = ชุดผลลัพธ์เท่าเดิมทุกจุด)
+        --   และเดินแบบเป็นชุด (yield ทุก 2000 ชิ้น) เพราะตอนนี้รันบน background worker
+        local extractionDescs = workspace:GetDescendants()
+
+        for ei = 1, #extractionDescs do
+                local obj = extractionDescs[ei]
                 if obj:IsA("ProximityPrompt") then
                         TryAddExtractionFromPrompt(found, obj)
                 end
+                if ei % 2000 == 0 then
+                        task.wait()
+                end
         end
 
-        for _, obj in workspace:GetDescendants() do
+        for ei = 1, #extractionDescs do
+                local obj = extractionDescs[ei]
                 if obj:IsA("BillboardGui") then
                         local name = obj.Name:lower()
                         if name:find("extract", 1, true) or name:find("exit", 1, true) or name:find("marker", 1, true) then
@@ -7616,6 +7799,9 @@ ScanExtractions = function()
                         TryAddExtraction(found, obj.Parent)
                 elseif obj:IsA("Model") or obj:IsA("BasePart") then
                         TryAddExtraction(found, obj)
+                end
+                if ei % 2000 == 0 then
+                        task.wait()
                 end
         end
 
@@ -7673,21 +7859,8 @@ UpdateExtractionESP = function()
 
         EnsureExtractionDescendantHook()
 
-        local now = tick()
-        if now - LastExtractionScan >= ExtractionScanInterval then
-                LastExtractionScan = now
-                local ok, result = pcall(ScanExtractions)
-                if ok then
-                        ExtractionList = result
-                end
-
-                for extraction in pairs(ExtractionCache) do
-                        if not ExtractionList[extraction] or not extraction.Parent then
-                                ClearExtractionESP(extraction)
-                        end
-                end
-        end
-
+        -- ★ FPS fix v40: สแกนย้ายไป background worker (ท้าย chunk นี้) — เฟรมเรนเดอร์เหลือ
+        --   แค่วาดผลจาก ExtractionList ล่าสุดเหมือนเดิม (worker เก็บกวาดของที่หายด้วยตัวเอง)
         local root = GetLocalRoot()
         local maxDistance = WorldESP.ExtractionMaxDistance or 5000
 
@@ -7718,6 +7891,33 @@ UpdateExtractionESP = function()
                         ClearExtractionESP(extraction)
                 end
         end
+end
+
+-- ★ FPS fix v40: สแกนจุดหนีทั้งแมพย้ายมาทำบน background worker (คาบเดิมทุก 2 วิ ผลสดเท่าเดิม)
+--   เดิมเดินแมพ 2 รอบซิงค์บน RenderStepped ทุก 2 วิ = FPS กระชากเป็นจังหวะ
+do
+        local ExtractionScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldESP.Extractions
+                                and not ExtractionScanBusy
+                                and (tick() - LastExtractionScan) >= ExtractionScanInterval then
+                                LastExtractionScan = tick()
+                                ExtractionScanBusy = true
+                                local okExt, extResult = pcall(ScanExtractions)
+                                ExtractionScanBusy = false
+                                if okExt and type(extResult) == "table" then
+                                        ExtractionList = extResult
+                                        for extraction in pairs(ExtractionCache) do
+                                                if not ExtractionList[extraction] or not extraction.Parent then
+                                                        ClearExtractionESP(extraction)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
 end
 
 end)(); (function()
@@ -8110,7 +8310,12 @@ local function ScanLandmines()
         end
 
         -- Full workspace scan for mines (name + flat disc shape like your screenshot)
-        for _, obj in workspace:GetDescendants() do
+        -- ★ FPS fix v40: เดินแบบเป็นชุด (yield ทุก 2000 ชิ้น) — รอบสแกนนี้หนักสุดของไฟล์
+        --   (เช็คชื่อ/attribute/tag/รูปทรงทุกโมเดล-ทุก BasePart) ตอนรันบน background worker
+        --   จะไม่กินเฟรมเรนเดอร์เลย
+        local mineDescs = workspace:GetDescendants()
+        for mi = 1, #mineDescs do
+                local obj = mineDescs[mi]
                 -- ★ FPS fix v37: จัดลำดับเช็คจากถูกไปแพง (ชื่อ -> attribute -> tag -> รูปทรง)
                 if obj:IsA("Model") then
                         if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or ModelLooksLikeDiscMineCached(obj) then
@@ -8120,6 +8325,9 @@ local function ScanLandmines()
                         if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or LooksLikeDiscMinePart(obj) then
                                 TryAddLandmine(found, obj)
                         end
+                end
+                if mi % 2000 == 0 then
+                        task.wait()
                 end
         end
 
@@ -8150,16 +8358,12 @@ local function EnsureLandmineDescendantHook()
         end)
 end
 
+-- ★ FPS fix v40: สแกนทุ่นระเบิด (หนักสุดของไฟล์ — เดินแมพครบ + เช็ครูปทรง) ย้ายไป
+--   background worker ท้าย chunk นี้ ที่นี่เหลือหน้าที่ "ขอสแกน" อย่างเดียว:
+--   force = ตั้งเวลาเป็น 0 ให้ worker หยิบไปสแกนภายใน 0.25 วิ (ผลสดเท่าเดิม)
 local function RefreshLandmineListIfNeeded(force)
-        local now = tick()
-        if not force and now - LastLandmineScan < LandmineScanInterval then
-                return
-        end
-
-        LastLandmineScan = now
-        local ok, result = pcall(ScanLandmines)
-        if ok and type(result) == "table" then
-                LandmineList = result
+        if force then
+                LastLandmineScan = 0
         end
 end
 
@@ -8196,8 +8400,9 @@ UpdateLandmineESP = function()
         end
 
         EnsureLandmineDescendantHook()
-        RefreshLandmineListIfNeeded(false)
 
+        -- ★ FPS fix v40: สแกนย้ายไป worker แล้ว — เฟรมเรนเดอร์ยังเก็บกวาดทุ่นที่หายไป
+        --   ทุกเฟรมเหมือนเดิม (ลูปด้านล่าง)
         for mine in pairs(LandmineCache) do
                 if not LandmineList[mine] or not mine.Parent then
                         ClearLandmineESP(mine)
@@ -8244,6 +8449,32 @@ UpdateLandmineESP = function()
                         ClearLandmineESP(mine)
                 end
         end
+end
+
+-- ★ FPS fix v40: สแกนทุ่นทั้งแมพย้ายมาทำบน background worker (คาบเดิมทุก 2 วิ ผลสดเท่าเดิม)
+do
+        local MineScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldESP.Landmines
+                                and not MineScanBusy
+                                and (tick() - LastLandmineScan) >= LandmineScanInterval then
+                                LastLandmineScan = tick()
+                                MineScanBusy = true
+                                local okMine, mineResult = pcall(ScanLandmines)
+                                MineScanBusy = false
+                                if okMine and type(mineResult) == "table" then
+                                        LandmineList = mineResult
+                                        for mine in pairs(LandmineCache) do
+                                                if not LandmineList[mine] or not mine.Parent then
+                                                        ClearLandmineESP(mine)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
 end
 
 Players.PlayerRemoving:Connect(ClearPlayerESP)
@@ -12703,23 +12934,43 @@ UpdateFastWalk = function(deltaTime)
         end)
 
         -- ★ FPS fix v37: เดิมเดิน PlayerScripts:GetDescendants() ทุกเฟรมขณะเปิด Fast Walk
-        --   (สคริปต์เกมหลายพันชิ้นต่อเฟรม = ตกเฟรมหนัก) จำกัดเหลือทุก 0.5 วิ
-        --   เสียงเดินที่เกิดใหม่ยังถูกเด้งให้เงียบทันทีที่รู้ตัวเหมือนเดิม
-        local nowSound = tick()
-        if nowSound - LastMovementSoundScan >= 0.5 then
-                LastMovementSoundScan = nowSound
-                pcall(function()
-                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
-                        if not scripts then
-                                return
+        -- ★ FPS fix v40: ย้ายสแกนเสียงเดินไป background worker (ด้านล่าง) — เดิมแม้จำกัด
+        --   ทุก 0.5 วิ แต่ยังเดิน PlayerScripts ทั้งชุด "บนเฟรมเรนเดอร์" = กระตุกเป็นจังหวะ
+        --   เสียงเดินที่เกิดใหม่ยังถูกเด้งให้เงียบทันทีที่รู้ตัวเหมือนเดิม (worker รอบ 0.5 วิ
+        --   + hook DescendantAdded ของตัวละครยังจับของใหม่ทันทีเหมือนเดิม)
+end
+
+-- ★ FPS fix v40: สแกนเสียงเดินของ Fast Walk ย้ายมาทำบน background worker (คาบเดิม 0.5 วิ
+--   ผลเดิมทุกอย่าง) + เก็บเสียงที่ถูกทำลายออกจากตารางกันตารางโตไม่จำกัดตอนเปิดนาน
+do
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.5)
+                        if Misc.FastWalk then
+                                pcall(function()
+                                        LastMovementSoundScan = tick()
+                                        for sound in pairs(SilentWalkSounds) do
+                                                if not sound.Parent then
+                                                        SilentWalkSounds[sound] = nil
+                                                end
+                                        end
+                                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
+                                        if not scripts then
+                                                return
+                                        end
+                                        local soundDescs = scripts:GetDescendants()
+                                        for si = 1, #soundDescs do
+                                                if IsMovementSound(soundDescs[si]) then
+                                                        MuteMovementSound(soundDescs[si])
+                                                end
+                                                if si % 2000 == 0 then
+                                                        task.wait()
+                                                end
+                                        end
+                                end)
                         end
-                        for _, desc in scripts:GetDescendants() do
-                                if IsMovementSound(desc) then
-                                        MuteMovementSound(desc)
-                                end
-                        end
-                end)
-        end
+                end
+        end)
 end
 
 local FreeCamSaved = {
@@ -13331,7 +13582,23 @@ local function IsWaterHit(hit)
         return false
 end
 
+-- ★ FPS fix v40: แคชผล 0.15 วิ (แนวเดียวกับ Underground v39) — เดิมยิง 3 raycast ทุกเฟรม
+--   ตลอดที่เปิด Walk On Water อยู่บนบก = ยิงเปล่า ~180 เส้น/วิ ลงน้ำ/ขึ้นฝั่งแพลตฟอร์มขยับ
+--   ตามภายใน 0.15 วิ = ตาไม่ทันสังเกต
+local WaterSurfaceCacheY = nil
+local WaterSurfaceCacheAt = 0
+local FindWaterSurfaceYRaw -- ประกาศล่วงหน้า (ตัวแคชเรียกตัวสแกนจริงที่ประกาศทีหลัง)
 local function FindWaterSurfaceY(root)
+        local nowT = tick()
+        if nowT - WaterSurfaceCacheAt < 0.15 then
+                return WaterSurfaceCacheY
+        end
+        WaterSurfaceCacheAt = nowT
+        WaterSurfaceCacheY = FindWaterSurfaceYRaw(root)
+        return WaterSurfaceCacheY
+end
+
+FindWaterSurfaceYRaw = function(root)
         local character = LocalPlayer.Character
         WaterRayParams.FilterDescendantsInstances = { character, WaterPlatform }
 
@@ -13348,21 +13615,9 @@ local function FindWaterSurfaceY(root)
                 end
         end
 
-        local now = tick()
-        if now - LastWaterPartScan >= 1 then
-                LastWaterPartScan = now
-                CachedWaterParts = {}
-                for _, obj in workspace:GetDescendants() do
-                        if obj:IsA("BasePart") then
-                                local isWater = obj.Material == Enum.Material.Water
-                                        or obj.Name:lower():find("water", 1, true)
-                                        or obj.Name:lower():find("ocean", 1, true)
-                                if isWater then
-                                        table.insert(CachedWaterParts, obj)
-                                end
-                        end
-                end
-        end
+        -- ★ FPS fix v40: สแกน part น้ำทั้งแมพย้ายไป background worker (ท้าย chunk นี้)
+        --   เดิมเดิน workspace:GetDescendants() ซิงค์บนเฟรมทุก 1 วิ = FPS กระชาก
+        --   ตาราง CachedWaterParts ยังถูกอ่านแบบเดิมทุกเฟรม (แต่ละตัวเช็ค obj.Parent เองอยู่แล้ว)
 
         for _, obj in CachedWaterParts do
                 if obj.Parent then
@@ -13404,6 +13659,45 @@ ClearWaterPlatform = function()
                 WaterPlatform:Destroy()
                 WaterPlatform = nil
         end
+end
+
+-- ★ FPS fix v40: สแกน part น้ำทั้งแมพย้ายมาทำบน background worker (คาบเดิมทุก 1 วิ
+--   ผลสดเท่าเดิม) เดินแบบเป็นชุด yield ทุก 2000 ชิ้น ไม่กินเฟรมเรนเดอร์แม้แมพมีของล้น
+do
+        local WaterScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if Misc.WalkOnWater
+                                and not WaterScanBusy
+                                and (tick() - LastWaterPartScan) >= 1 then
+                                LastWaterPartScan = tick()
+                                WaterScanBusy = true
+                                task.spawn(function()
+                                        local waterFound = {}
+                                        pcall(function()
+                                                local waterDescs = workspace:GetDescendants()
+                                                for wi = 1, #waterDescs do
+                                                        local obj = waterDescs[wi]
+                                                        if obj:IsA("BasePart") then
+                                                                local isWater = obj.Material == Enum.Material.Water
+                                                                        or obj.Name:lower():find("water", 1, true)
+                                                                        or obj.Name:lower():find("ocean", 1, true)
+                                                                if isWater then
+                                                                        table.insert(waterFound, obj)
+                                                                end
+                                                        end
+                                                        if wi % 2000 == 0 then
+                                                                task.wait()
+                                                        end
+                                                end
+                                        end)
+                                        CachedWaterParts = waterFound
+                                        WaterScanBusy = false
+                                end)
+                        end
+                end
+        end)
 end
 
 local function UpdateWalkOnWater()
@@ -13606,19 +13900,25 @@ local function UGHidePart(obj, showBody)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
         end
-        if not ugHiddenParts[obj] then
-                local ok, oldValue = pcall(function()
-                        return obj.LocalTransparencyModifier
-                end)
-                if not ok then
-                        return
+        -- ★ FPS fix v41: ชิ้นที่ track แล้วเขียนตรง + เขียนเฉพาะเมื่อค่าเพี้ยน
+        -- (เดิม pcall สร้าง closure ทิ้งทุกชิ้นทุกรอบสแกน ~600 ครั้ง/วิ)
+        local saved = ugHiddenParts[obj]
+        if saved then
+                saved.ShowBody = showBody or false
+                local ugLtm = showBody and tick() >= ugHoldUntil and 0 or 1
+                if obj.LocalTransparencyModifier ~= ugLtm then
+                        obj.LocalTransparencyModifier = ugLtm
                 end
-                ugHiddenParts[obj] = { Value = oldValue }
+                return
         end
-        ugHiddenParts[obj].ShowBody = showBody or false
-        pcall(function()
-                obj.LocalTransparencyModifier = showBody and tick() >= ugHoldUntil and 0 or 1
+        local ok, oldValue = pcall(function()
+                return obj.LocalTransparencyModifier
         end)
+        if not ok then
+                return
+        end
+        ugHiddenParts[obj] = { Value = oldValue, ShowBody = showBody or false }
+        obj.LocalTransparencyModifier = showBody and tick() >= ugHoldUntil and 0 or 1
 end
 
 local function UGRestorePart(obj, saved)
@@ -13848,7 +14148,13 @@ local UGBindHideStep = function()
                         local c = LocalPlayer.Character
                         for obj, saved in pairs(ugHiddenParts) do
                                 if obj.Parent then
-                                        obj.LocalTransparencyModifier = saved.ShowBody and tick() >= ugHoldUntil and 0 or 1
+                                        -- ★ FPS fix v41: เขียน LTM เฉพาะเมื่อค่าเพี้ยน — TransparencyController
+                                        -- ล้างค่าใหม่เฉพาะชิ้นตัวละคร ส่วน gear ใต้กล้องค่าค้างอยู่แล้ว =
+                                        -- ข้าม write ได้เกือบทั้งหมด (ลด property write หลายพันครั้ง/วิ)
+                                        local ugLtm = saved.ShowBody and tick() >= ugHoldUntil and 0 or 1
+                                        if obj.LocalTransparencyModifier ~= ugLtm then
+                                                obj.LocalTransparencyModifier = ugLtm
+                                        end
                                 end
                         end
                         local now = tick()
@@ -13943,13 +14249,17 @@ local UGBindHideStep = function()
                                 -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
                                 -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
                                 if ugHoldUntil and tick() < ugHoldUntil then
-                                        pcall(function()
-                                                _G.MikoUG_RefreshBuriedAnchor()
-                                        end)
+                                        -- ★ FPS fix v41: เรียกตรง ๆ ไม่สร้าง closure ทุกเฟรม
+                                        -- (ฟังก์ชันปลายทางเช็คค่า/pcall กัน error เองอยู่แล้ว)
+                                        local ugAnchorFn = _G.MikoUG_RefreshBuriedAnchor
+                                        if ugAnchorFn then
+                                                ugAnchorFn()
+                                        end
                                 else
-                                        pcall(function()
-                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
-                                        end)
+                                        local ugParkFn = _G.MikoUG_ParkBuriedAnchorIfIdle
+                                        if ugParkFn then
+                                                ugParkFn()
+                                        end
                                 end
                         end
                 end)
@@ -14124,6 +14434,16 @@ stopUnderground = function()
         lastGroundY = nil
         lastChar = nil
         printedGround = false
+        -- ★ FPS fix v41: ปลดสาย DescendantAdded ของแคช + ล้างแคช — เดิมค้างหลังปิดโหมด
+        -- (สายอ้างอิงตัวละครเก่า + callback เติมอาเรย์เก่าต่อจนกว่าจะเปิดโหมดรอบหน้า)
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+                ugCollidePartsConn = nil
+        end
+        ugCollideParts = nil
+        ugCollidePartsChar = nil
 end
 _G.MikoUG_ForceStop = stopUnderground
 
@@ -14409,11 +14729,11 @@ UpdateUnderground = function(deltaTime)
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            pcall(function()
+            if root.Parent then
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
-            end)
+            end
         return
         end
         -- ★ UG fix v12: หมด hold = ปลด anchor กลับสู่การ replicate ปกติทันที — เซิร์ฟเวอร์
@@ -14479,9 +14799,13 @@ UpdateUnderground = function(deltaTime)
         -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
         -- ★ FPS fix v39: เขียนตรง (ไม่สร้าง closure ทิ้งทุกเฟรม)
         if humanoid.Parent then
+                -- ★ FPS fix v41: คำนวณแล้วเขียนเฉพาะเมื่อค่าเปลี่ยน (ยืนนิ่ง = ไม่เขียนทับทุกเฟรม)
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
-                humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
+                local ugCamOff = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
+                if humanoid.CameraOffset ~= ugCamOff then
+                        humanoid.CameraOffset = ugCamOff
+                end
         end
 end
 end)(); (function()
@@ -14589,18 +14913,22 @@ local function UGHidePart(obj)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
         end
-        if not ugHiddenParts[obj] then
-                local ok, oldValue = pcall(function()
-                        return obj.LocalTransparencyModifier
-                end)
-                if not ok then
-                        return
+        -- ★ FPS fix v41: ชิ้นที่ track แล้วเขียนตรง + เขียนเฉพาะเมื่อค่าเพี้ยน
+        -- (เดิม pcall สร้าง closure ทิ้งทุกชิ้นทุกรอบสแกน ~600 ครั้ง/วิ)
+        if ugHiddenParts[obj] then
+                if obj.LocalTransparencyModifier ~= 1 then
+                        obj.LocalTransparencyModifier = 1
                 end
-                ugHiddenParts[obj] = { Value = oldValue }
+                return
         end
-        pcall(function()
-                obj.LocalTransparencyModifier = 1
+        local ok, oldValue = pcall(function()
+                return obj.LocalTransparencyModifier
         end)
+        if not ok then
+                return
+        end
+        ugHiddenParts[obj] = { Value = oldValue }
+        obj.LocalTransparencyModifier = 1
 end
 
 local function UGRestorePart(obj, saved)
@@ -14844,7 +15172,12 @@ local UGBindHideStep = function()
                         local c = LocalPlayer.Character
                         for obj, _ in pairs(ugHiddenParts) do
                                 if obj.Parent then
-                                        obj.LocalTransparencyModifier = 1
+                                        -- ★ FPS fix v41: เขียน LTM เฉพาะเมื่อค่าเพี้ยน (gear ใต้กล้อง
+                                        -- ไม่มีใครล้างค่า = ครั้งแรกเดียวที่เขียนจริง ส่วนตัวละครยังเขียน
+                                        -- ทุกเฟรมเหมือนเดิมเพราะ TransparencyController ล้างทุกเฟรม)
+                                        if obj.LocalTransparencyModifier ~= 1 then
+                                                obj.LocalTransparencyModifier = 1
+                                        end
                                 end
                         end
                         local now = tick()
@@ -14963,13 +15296,17 @@ local UGBindHideStep = function()
                                 -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
                                 -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
                                 if ugHoldUntil and tick() < ugHoldUntil then
-                                        pcall(function()
-                                                _G.MikoUG_RefreshBuriedAnchor()
-                                        end)
+                                        -- ★ FPS fix v41: เรียกตรง ๆ ไม่สร้าง closure ทุกเฟรม
+                                        -- (ฟังก์ชันปลายทางเช็คค่า/pcall กัน error เองอยู่แล้ว)
+                                        local ugAnchorFn = _G.MikoUG_RefreshBuriedAnchor
+                                        if ugAnchorFn then
+                                                ugAnchorFn()
+                                        end
                                 else
-                                        pcall(function()
-                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
-                                        end)
+                                        local ugParkFn = _G.MikoUG_ParkBuriedAnchorIfIdle
+                                        if ugParkFn then
+                                                ugParkFn()
+                                        end
                                 end
                         end
                 end)
@@ -15144,6 +15481,16 @@ stopUnderground = function()
         lastGroundY = nil
         lastChar = nil
         printedGround = false
+        -- ★ FPS fix v41: ปลดสาย DescendantAdded ของแคช + ล้างแคช — เดิมค้างหลังปิดโหมด
+        -- (สายอ้างอิงตัวละครเก่า + callback เติมอาเรย์เก่าต่อจนกว่าจะเปิดโหมดรอบหน้า)
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+                ugCollidePartsConn = nil
+        end
+        ugCollideParts = nil
+        ugCollidePartsChar = nil
 end
 _G.MikoUG2_ForceStop = stopUnderground
 
@@ -15432,11 +15779,11 @@ UpdateUndergroundFaceDown = function(deltaTime)
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            pcall(function()
+            if root.Parent then
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
-            end)
+            end
         return
         end
         -- ★ UG fix v12: หมด hold = ปลด anchor กลับสู่การ replicate ปกติทันที — เซิร์ฟเวอร์
@@ -15505,9 +15852,13 @@ UpdateUndergroundFaceDown = function(deltaTime)
         -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
         -- ★ FPS fix v39: เขียนตรง (ไม่สร้าง closure ทิ้งทุกเฟรม)
         if humanoid.Parent then
+                -- ★ FPS fix v41: คำนวณแล้วเขียนเฉพาะเมื่อค่าเปลี่ยน (ยืนนิ่ง = ไม่เขียนทับทุกเฟรม)
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
-                humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
+                local ugCamOff = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
+                if humanoid.CameraOffset ~= ugCamOff then
+                        humanoid.CameraOffset = ugCamOff
+                end
         end
 end
 end)(); (function()
