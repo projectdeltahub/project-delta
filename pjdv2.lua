@@ -15985,9 +15985,9 @@ MiscBox:AddToggle("FastWalk", {
 MiscBox:AddSlider("FastWalkSpeed", {
         Text = "Fast Walk Speed",
         Tooltip = "Speed multiplier (0.1 - 2)",
-        Default = 2.6,
+        Default = 1,
         Min = 0.1,
-        Max = 2,
+        Max = 1.2,
         Rounding = 1,
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
@@ -16050,9 +16050,9 @@ MiscBox:AddToggle("UndergroundFaceDown", {
 MiscBox:AddSlider("UndergroundDepth", {
         Text = "Underground Depth",
         Tooltip = "ความลึกตอนมุดดิน (0.1 - 0.9)",
-        Default = 1,
+        Default = 0.9,
         Min = 0.1,
-        Max = 1,
+        Max = 0.9,
         Rounding = 2,
         Callback = function(value)
                 if typeof(value) == "number" then
@@ -16064,7 +16064,7 @@ MiscBox:AddSlider("UndergroundDepth", {
 MiscBox:AddSlider("UndergroundSpeed", {
         Text = "Underground Speed",
         Tooltip = "ความเร็วตอนมุดดิน (0.1 - 2)",
-        Default = 1,
+        Default = 1.75,
         Min = 0.1,
         Max = 2,
         Rounding = 2,
