@@ -1,92 +1,5 @@
---[[
-        Miko Hub - Project Delta
-        Obsidian UI
-        Build: 2026-08-17bn (credits Made by Yuki)
-]]
 
--- ★ 2026-11-02 v29 (F9 เงียบสนิท — ตามที่ผู้ใช้ขอ): ไม่พิมพ์อะไรขึ้นคอนโซล F9 เลย
--- ทั้งตัวอักษรขาว ([Miko] ... / [Miko][SRC] ...) ข้อความตอนเปิด/ปิดมุดดิน และแบนเนอร์ทุกบรรทัด
--- (ปิดที่ปากท่อตัวเดียว = เงียบทั้งไฟล์ ไม่ต้องไล่แก้ print ทีละจุด)
--- ส่วน error แดงของเกม (FPS:1044) ปิดต้นตอแยกที่สายยิงด้านล่าง: คืนค่า CreateBullet
--- ให้ครบทุกเส้นทาง ห้ามคืน nil เด็ดขาด (เกมอ่าน v88.y ทันทีที่ได้ค่ากลับ = แดงทุกครั้ง)
--- ถ้าอยากเห็นข้อความ debug อีกครั้ง: ตั้ง _G.MikoVerbose = true ก่อนรันสคริปต์
--- ★ 2026-11-02 v31 (ยิงคนบนที่สูงไม่โดน — จากคลิปผู้ใช้): แก้ 2 จุดในสายยิง
--- [1] Silent Aim หาเป้าจากระยะ "หัวเป้าถึงกึ่งกลางจอ" เวลาเป้ายืนบนที่สูง (ตู้/ดาดฟ้า/กล่อง)
---     เราเล็งจากล่างขึ้นไป จุดกึ่งกลางจอ (crosshair) จะไปคาดที่โคนเป้า/ขอบสิ่งที่เขายืน
---     หัวเป้าเลยอยู่ไกลจากกึ่งกลางจอเกินวงเล็ง = ไม่ล็อก กระสุนเดินตาม crosshair เข้า
---     ขอบตู้แทนตัวคน (พิสูจน์จากคลิป: ประกายกระสุนลงที่ขอบตู้ตรงโคนตัวเป้าทุกนัด)
---     -> เพิ่ม fallback: ถ้าไม่เจอเป้าในวงเล็ง ให้เดิน ray ตามแนว crosshair จริง
---        โดนตัวคน = ล็อกหัวคนนั้น / โดนขอบวัตถุข้างตัวคน (รัศมี 3 หน่วย) = ก็ล็อกหัว
--- [2] ทิศกระสุนเดิมคำนวณจากปากกระบอก (aimPart) แต่เกมเริ่ม ray ที่ "จุดตา" ที่เกมประมาณ
---     ค่า (GetEstimatedCameraPosition) ยิงระดับเดียวกันแทบไม่เห็นผล แต่ตอนยิงขึ้นใส่
---     คนบนที่สูง มุมเยื้องทำให้เส้นกระสุนหลุดหัวเป้า -> คิดทิศจากจุดเริ่ม ray จริงผ่านจุดเล็ง
---     = กระสุนพุ่งเข้าเป้าเป๊ะทุกมุม (โหมดมุดดินคำนวณจากจุดตาเหนือดินอยู่แล้ว = ผลเท่าเดิม)
--- ★ 2026-11-03 v32 (ปุ่มโหลดสคริปต์ project-delta ในแท็บ Misc): เพิ่ม toggle
--- "Load Project Delta Script" ท้ายกล่อง Misc — กดเปิด = ดึงและรันสคริปต์นี้ทันที
--- loadstring(game:HttpGet("https://raw.githubusercontent.com/projectdeltahub/project-delta/refs/heads/main/script.lua"))()
--- (ใช้ Fetch + CompileSource ที่มีอยู่แล้วแทน loadstring ตรง ๆ = ผ่าน http_request/request
--- fallback ของทุก executor และโดน print/warn ตัวเงียบ v29 ครอบ ไม่รกคอนโซล F9)
--- โหลดได้ 1 ครั้งต่อเซสชัน กดซ้ำจะเด้งข้อความว่าโหลดไปแล้ว ไม่รันซ้อนกัน
--- โหลดพลาดจะดันปุ่มกลับมา Off เอง + เด้งข้อความล่างจอ (toast ทำเอง เพราะ Notify ถูกปิด)
--- ★ 2026-11-03 v33 (จับคู่ 2 UI — ตามที่ผู้ใช้ขอ): แก้ 2 จุดจาก v32
--- [1] สคริปต์ project-delta ตอนโหลดจะเรียก getgenv().Library.Unload() เพื่อเคลียร์ "ตัวเก่า"
---     แต่ตอนนั้น getgenv().Library คือ UI ของ Miko เอง (Obsidian ก็เซ็ตตัวนี้ตอนโหลด)
---     = กดปุ่มโหลดแล้วเมนู Miko ถูกปิดหายไปเฉย ๆ เหลือแต่ UI ของ project-delta ตัวเดียว
---     -> ก่อนรันเราแพตช์บรรทัดนั้นในซอร์ส ให้เคลียร์เฉพาะ project-delta ตัวเก่าที่เราแท็ก
---        ไว้เอง (MikoPDLibrary) เมนู Miko กับ project-delta เลยเปิดค้างพร้อมกันได้ = 2 UI
--- [2] ซิงก์จับคู่: ปิดเมนู Miko (RightShift) = หน้าต่าง project-delta ปิดตาม
---     เปิดเมนูใหม่ = เปิดตาม (เช็คเฉพาะตอนสถานะเมนู "เปลี่ยน" ดังนั้นกด Delete
---     เก็บเฉพาะหน้าต่าง project-delta ได้เหมือนเดิม) กดปุ่ม Unload = ปลด project-delta ด้วย
---     ทั้งหมดผ่าน MikoPDWindow ที่เราแทรกโค้ดดึงออกมาตอนโหลดซอร์ส
--- ★ 2026-11-03 v34 (สลับ 2 UI แบบเรียลไทม์สมูด): แก้จาก v33 ที่ UI ที่สองบางทีตามช้า
--- [ต้นตอ] v33 ซิงก์ด้วยลูปสำรวจทุก 0.15 วิ = ดีเลสุ่ม 0-150ms ตามจังหวะกดปุ่ม
---   แถม fade ของหน้าต่าง project-delta ใช้ 0.4 วิ ขณะที่เมนู Miko โผล่/หายทันที
--- [1] hook ตรงที่ Library.Toggle ของเมนู Miko = กด RightShift ปุ๊บ หน้าต่าง project-delta
---     เปิด/ปิดตามในเฟรมเดียวกัน (เรียลไทม์ ไม่มีดีเล)
--- [2] จูน TweenSpeed ของ project-delta จาก 0.4 -> 0.15 วิ (Quad) = fade จบไว เกือบพร้อมเมนู
--- [3] ลูปสำรอง 0.05 วิ เหลือไว้: ปลด project-delta ตอนกด Unload + รีทาย sync ถ้ากดปุ่มรัว
---     (ตอนหน้าต่างยัง tween อยู่ Open จะถูกข้าม = จดสถานะไว้รีทายให้แน่ใจว่าตรงกัน)
--- กด Delete เก็บเฉพาะหน้าต่าง project-delta ยังได้เหมือนเดิม
--- ★ 2026-11-03 v36 (ตามที่ผู้ใช้ขอ — ทำ 2 อย่างเท่านั้น):
--- [1] ถอด Door Bypass ออกทั้งฟีเจอร์: toggle/slider/ปุ่ม Fire Door + ระบบหาประตู
---     ยิงประตูทั้งชุดหายไปจากแท็บ Misc ไม่มีโค้ดค้างให้แคร์ต่อ
--- [2] แก้ "เปิด Underground ยิงคนใกล้ ๆ โดนตัวแต่ดาเมจไม่เข้า":
---     จากซอร์สเกม (FPS_Bullet) สายดาเมจคือ ยิง = FireProjectile:InvokeServer(ทิศ, id, tick)
---     ลงทะเบียนกระสุน 1 ครั้ง ถ้า server ตอบ nil เกม *ไม่ลองใหม่เอง* (แค่คืนกระสุน)
---     พอกระสุนโดนคน เกมส่ง ProjectileInflict:FireServer(ตัว, จุดโดน, id, tick)
---     แต่ server รับดาเมจเฉพาะ id ที่ลงทะเบียนสำเร็จแล้วเท่านั้น
---     นัดใกล้กระสุนโดนเป้าใน ~0.05 วิ ขณะที่ลงทะเบียนเสร็จ ~0.15 วิ (v24 เคยวัดไว้
---     server ตอบ nil นัดแรกทุกครั้ง ตอบ true ทีหลัง) = ดาเมจไปถึง server ก่อน
---     กระสุนถูกจดจำ -> ถูกทิ้งทุกนัด (เห็นประกายโดนตัว เลือดไม่ลด)
---     v36 ฟื้นแนวคิด v25 ใน "ร่างเบา" (ของหนัก v24-v26 ที่ทำเกมค้างไม่กลับมา):
---     - จับ __namecall เฉพาะ 2 remote ตัวนี้ (เทียบชื่อเมธอด + ตัวตน remote)
---       remote อื่น/เมธอดอื่นทุกตัวผ่านทันที ไม่มี log ไม่มีงานเพิ่ม
---     - FireProjectile: server ตอบ nil = ลองซ้ำเองในพื้นหลัง (id/ทิศเดิม ทุก
---       0.12 วิ สูงสุด 15 ครั้ง) จน server รับ
---     - ProjectileInflict: id ยังไม่ถูกจดจำ = กั้นดาเมจไว้ก่อน (ไม่เกิน 8 นัด/id)
---       พอลงทะเบียนสำเร็จส่งออกทันทีตามลำดับเดิม รอเกิน 1 วิปล่อยเอง (กันค้างขยะ)
---       นัดที่ server รับ id แล้ว (ยิงไกล/ยิงปกติ) ผ่านทันที ไม่มีดีเลย์
---     - ไม่มี: สแกน workspace / ผูก HealthChanged / ลูปถาวร / ยิงดาเมจซ้ำ
--- ★ 2026-11-03 v37 (แก้ FPS ตก — ตรวจทั้งไฟล์แล้ว ไม่แตะพฤติกรรมฟีเจอร์):
--- [1] Extraction ESP: เดิมตอนเปิดจะเดิน workspace ทั้งแมพ ~5 รอบ ทุก 0.75 วิ (GetDescendants
---     ครบ + ตามหา 12 ฟอลเดอร์ด้วย FindFirstChild(name, true) ทีละชื่อ = เดินซ้ำอีก 12 รอบ
---     + เช็คทุกโมเดลในแมพ) = สตัตเตอร์หนักตลอดเวลา -> เหลือเดิน 2 รอบ + ขยับรอบสแกน
---     เป็นทุก 2 วิ (ของใหม่ยังโผล่ทันทีผ่าน hook DescendantAdded เหมือนเดิม)
--- [2] Crate/Landmine ESP: แคชตำแหน่งฟอลเดอร์ (เดิมเดินทั้งแมพตามหาทุกชื่อทุกรอบสแกน) และ
---     แคชผลเช็ครูปทรงทุ่นระเบิดต่อโมเดล 10 วิ (GetBoundingBox = คิวรี่ฟิสิกส์แพงสุด ไม่ต้อง
---     ตรวจซ้ำโมเดลเดิมทุก 2 วิ ทุ่นที่เกิดใหม่เป็นอินสแตนซ์ใหม่ = ตรวจเต็มทันทีเหมือนเดิม)
--- [3] Fast Walk: เดิมเดิน PlayerScripts:GetDescendants() ทุกเฟรมขณะเปิด (สคริปต์เกมหลายพันชิ้น)
---     -> จำกัดทุก 0.5 วิ ผลเดิมคือเด้งเสียงเดินให้เงียบเหมือนกัน
--- [4] NoRecoil/NoSpread: เดิมสร้าง closure ใหม่ทุก attribute ทุกตัวอามู่ทุก 0.15 วิ + เขียน
---     SetAttribute ซ้ำทั้งที่ค่าเป็น 0 แล้ว -> เรียกตรงผ่าน pcall(fn, ...) ไม่มีขยะฟังก์ชัน
---     + ข้ามเขียนเมื่อค่าเท่าเดิม (ยังบังคับค่า 0 ต่อเนื่องเหมือนเดิมทุกอย่าง)
--- [5] Silent Aim fallback: แคชผลสแกน NPC 1 -> 2.5 วิ (เดิมยิงแต่ละนัดที่ไม่เจอเป้าในโซน
---     จะเดิน workspace ทั้งแมพถึง 1 ครั้ง/วิ) + แคชผลสแกน NPC แชร์ทุกระบบ 1 วิ (เดิม NPC ESP/
---     เรดาร์/ลิสต์ TP ของ FreeCam สแกนแยกกันเอง ตอนไม่มี AiZones = เดินแมพซ้ำหลายรอบ)
--- [6] MON-50: watchdog สแกนซ้ำทั้งแมพ 1 -> 3 วิ
--- [7] Unload: เดิมกด Unload แล้วบางลูปยังวิ่งต่อ (ลูปหลัก 11 ระบบ/เฟรม, Item X-Ray,
---     Item Finder, โพลปุ่ม FreeCam, NoRecoil/NoSpread) ฉีดซ้ำ = ลูปซ้อนทบ FPS ยิ่งตก
---     -> ตั้งธง Library.Unloaded ก่อนเก็บของ ให้ทุกลูปปิดตัวเอง (แนวเดียวกับลูป Anti-Drown)
+
 local MikoRealPrint = print
 local MikoRealWarn = warn
 pcall(function()
@@ -230,7 +143,6 @@ local function CompileSource(source, label)
         return fn()
 end
 
--- Fast path: disk cache. First run downloads all UI files in parallel.
 local function LoadUiModules(urls)
         local sources = {}
         local missing = {}
@@ -258,7 +170,7 @@ local function LoadUiModules(urls)
                                 else
                                         errors[index] = tostring(body)
                                 end
-                                done += 1
+                                done  = done + (1)
                         end)
                 end
 
@@ -290,7 +202,6 @@ local Library, ThemeManager, SaveManager = LoadUiModules({
         repo .. "addons/SaveManager.lua",
 })
 
--- Kill Obsidian notify sounds (no load ding)
 pcall(function()
         Library.Notify = function() end
 end)
@@ -314,7 +225,7 @@ local function MuteObsidianSounds(root)
         if not root then
                 return
         end
-        for _, desc in root:GetDescendants() do
+                for _, desc in pairs(root:GetDescendants()) do
                 if desc:IsA("Sound") then
                         desc.Volume = 0
                         pcall(function()
@@ -337,9 +248,9 @@ local function SilenceLibraryAudio()
                 Library.Notify = function() end
         end)
         local playerGui = Players.LocalPlayer and Players.LocalPlayer:FindFirstChild("PlayerGui")
-        for _, parent in { CoreGui, playerGui } do
+                for _, parent in pairs({ CoreGui, playerGui }) do
                 if parent then
-                        for _, child in parent:GetChildren() do
+                                                for _, child in pairs(parent:GetChildren()) do
                                 local name = child.Name:lower()
                                 if name:find("obsidian", 1, true)
                                         or name:find("wallhack", 1, true)
@@ -369,31 +280,18 @@ end)
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ★ 2026-11-01 v21 (Error Hunter): จากภาพคอนโซลล่าสุด error ใหม่ล้นจอ
--- ":14781: attempt to index nil with 'Disconnect'" 2939 ครั้ง = มีโค้ดตัวไหนสักตัว
--- พัง "ทุกเฟรม" ตอนเรียก :Disconnect() บนค่า nil — สคริปต์เราปลอดภัย (ทุกจุด Disconnect
--- ในไฟล์นี้มี if เช็ค nil + pcall ครบแล้ว) ดังนั้นตัวพังคือ [ก] hook __namecall ที่ v20
--- ติดตั้ง (ครอบการเรียกเมธอด "ทุกครั้ง" ของทั้งเกม เสี่ยงชนโค้ดเกมเอง) หรือ [ข] สคริปต์
--- ของเกมเอง crash ทุกเฟรม — ถ้าเป็นกรณี [ข] และโค้ดที่พังอยู่ในสายคอมแบต = นี่คือสาเหตุ
--- ที่ "ยิงโดนแต่ดาเมจไม่เข้า" ด้วย (สายส่งดาเมจ crash ก่อนส่ง remote ถึง server)
--- v21 ทำ 2 อย่าง: [1] ปิด remote logger v20 ไว้ก่อน (ทดสอบว่า error หายไหม)
--- [2] สแกนซอร์ส "ทุกสคริปต์ฝั่ง client" — ตัวไหนยาวถึงบรรทัด 14781 ให้พิมพ์ชื่อไฟล์
--- + โค้ดบรรทัด 14781 ±3 ออกคอนโซล เราจะเห็นทันทีว่าเกมพังตรงไหนและแก้ตรงจุดได้
-print("[Miko] v36 (ถอด Door Bypass + แก้ยิงคนใกล้ตอน UG ดาเมจไม่เข้า): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
-        .. " — เก็บของเดิมครบ แล้วเปลี่ยน 2 จุด: [1] แท็บ Misc ไม่มี Door Bypass แล้ว [2] ดาเมจจะรอลงทะเบียนกระสุนกับ server ก่อนส่งเสมอ (ยิงคนใกล้ตอน UG โดนตัว = เลือดลดจริง)")
--- ★ 2026-11-01 v28: ผล v27 = ตัวไม่เด้งตามที่ขอ แต่ยิงได้ไม่กี่นัดเกมค้าง
--- สาเหตุที่พบในโค้ดเกม: กระสุนถูกจำลองจาก "จุดที่ server คิดว่ากล้องเราอยู่"
--- (GetEstimatedCameraPosition) ตอนตัวนอนใต้ดิน จุดนั้นก็อยู่ใต้ดิน = กระสุนเกิดในดิน
--- ลอยใต้ดินไม่มีวันโดนอะไรและไม่มีวันจบ = งานจำลองค้างสะสมทุกเฟรมจนเกมค้าง
--- v28 แก้โดย hook ฟังก์ชันจุดยิงของเกม "เฉพาะตอนมุดดิน" ให้กระสุนเริ่มที่ระดับตา
--- เหนือผิวดิน = แก้ที่ "ข้อมูลจุดยิง" อย่างเดียว ตัวละครไม่ขยับแม้นิดเดียว
--- ไม่มีอะไรเห็น ไม่มีอะไรส่งขึ้นเซิร์ฟเวอร์ (ต่างจาก v12-v26 ที่ยกตัวจริงขึ้น)
--- ถ้าอยากกลับไปยกตัวตอนยิงแบบเดิม: พิมพ์ _G.MikoUG_NoPopUp = false ในคอนโซล
+print("[Miko] v40 (แก้ FPS กระชากตอนใช้ไปสักพัก): โหลดตัวใหม่สำเร็จ @ " .. os.date("%H:%M:%S")
+        .. " — ย้ายสแกนทั้งแมพของ ESP ทุกระบบ (NPC/Crate/Extraction/Landmine/น้ำ/เสียงเดิน) ออกจากเฟรมเรนเดอร์ไป background worker แบบเป็นชุด ยิ่งเล่นนานของในแมพยิ่งเยอะก็ไม่กระตุกแล้ว + Gun Cham เขียนค่าเมื่อเปลี่ยนเท่านั้น")
+
 _G.MikoUG_NoPopUp = true
--- ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12 (กันไว้สำหรับเส้นอื่นที่ยังยกตัว)
+
 _G.MikoUG_StealthServer = true
 _G.MikoUG2_StealthServer = true
 task.delay(4, function()
+
+        if _G.MikoVerbose ~= true then
+                return
+        end
         local ugRoots = {}
         local function ugAddRoot(ugInst, ugLabel)
                 if ugInst then
@@ -415,7 +313,7 @@ task.delay(4, function()
         local ugErrLine = 14781
         local ugScanCount = 0
         local ugFound = 0
-        local ugTop3 = {} -- สคริปต์ยาวสุด 3 อันดับ (ไว้เทียบตอนไม่เจอตัวตรง)
+        local ugTop3 = {}
         for _, ugR in ipairs(ugRoots) do
                 local okDesc, ugDescs = pcall(function()
                         return ugR[1]:GetDescendants()
@@ -424,7 +322,7 @@ task.delay(4, function()
                         for _, ugObj in ipairs(ugDescs) do
                                 local ugClass = ugObj.ClassName
                                 if ugClass == "ModuleScript" or ugClass == "LocalScript" or ugClass == "Script" then
-                                        ugScanCount += 1
+                                        ugScanCount  = ugScanCount + (1)
                                         local okSrc, ugSrc = pcall(function()
                                                 return ugObj.Source
                                         end)
@@ -440,13 +338,13 @@ task.delay(4, function()
                                                         table.remove(ugTop3)
                                                 end
                                                 if ugTotal >= ugErrLine and ugFound < 6 then
-                                                        ugFound += 1
+                                                        ugFound  = ugFound + (1)
                                                         local ugPath = ugObj.Name
                                                         local ugWalk, ugDepth = ugObj, 0
                                                         while ugWalk.Parent and ugDepth < 8 do
                                                                 ugWalk = ugWalk.Parent
                                                                 ugPath = ugWalk.Name .. "/" .. ugPath
-                                                                ugDepth += 1
+                                                                ugDepth  = ugDepth + (1)
                                                         end
                                                         print(("[Miko] v21 scan: เจอตัวต้องสงสัย #%d = %s (%s) รวม %d บรรทัด @ %s"):format(
                                                                 ugFound, ugObj.Name, ugClass, ugTotal, ugPath))
@@ -493,7 +391,7 @@ local function AttachOverlayGui(gui)
                 end
         end
 
-        for _, target in targets do
+                for _, target in pairs(targets) do
                 local attached = false
                 pcall(function()
                         gui.Parent = target
@@ -530,9 +428,6 @@ local Tabs = {
         Credits = Window:AddTab("Credits", "user"),
 }
 
-----------------------------------------------------------------
--- Aimbot
-----------------------------------------------------------------
 local Aimbot = {
         Enabled = false,
         ShowFOV = false,
@@ -544,7 +439,6 @@ local Aimbot = {
         FilledFOVColor = Color3.fromRGB(255, 80, 80),
         Holding = false,
 
-        -- Target In FOV alert
         TargetAlert = false,
         TargetAlertColor = Color3.fromRGB(0, 255, 80),
         TargetInFOV = false,
@@ -721,7 +615,7 @@ GetClosestTarget = function()
         local center = GetScreenCenter()
         local maxFov = math.max(Aimbot.FOV, 1)
 
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                         local character = player.Character
                         if character then
@@ -988,7 +882,7 @@ local function GetPlayersInFOV()
         local maxFov = math.max(Aimbot.FOV, 1)
         local localRoot = GetLocalRootForDistance()
 
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                         local character = player.Character
                         if character then
@@ -1020,8 +914,6 @@ local function GetPlayersInFOV()
         return found
 end
 
--- Target In FOV alert: turns the circle to the alert color and shows a
--- label under the circle while someone is standing inside the FOV.
 UpdateTargetAlert = function()
         local alertToggle = Toggles.TargetAlert
         if alertToggle then
@@ -1042,7 +934,7 @@ UpdateTargetAlert = function()
                         detected = true
 
                         local closest = targets[1]
-                        for _, entry in targets do
+                                                for _, entry in pairs(targets) do
                                 if entry.Distance and closest.Distance and entry.Distance < closest.Distance then
                                         closest = entry
                                 end
@@ -1103,19 +995,18 @@ do
 local BulletModule
 local oldCreateBullet
 local AiZones = workspace:FindFirstChild("AiZones")
-local ugSilentUgPrinted = false -- print ครั้งเดียว: silent aim ยิงสำเร็จตอนมุดดิน
-local ugBulletRetry = 0    -- นับจำนวนครั้งลองหาโมดูล Bullet ซ้ำ (fix v4)
-local ugHookSeenPrinted = false -- พิมพ์ครั้งเดียว: เกมเรียก hook จริง (fix v4)
-local ugTargetPrinted = false -- พิมพ์ครั้งเดียว: silent aim ล็อกเป้าสำเร็จ (fix v4)
-local ugDiagCount = 0 -- นับช็อตมุดดินที่พิมพ์ค่า diagnostic (fix v8 - พิมพ์แค่ 5 ช็อตแรก)
-local ugSourceDumped = true -- ★ 2026-11-02 v30: ปิดดัมพ์ [Miko][SRC] ตลอด (งาน decompile/สแกนซอร์สหนักตอนยิงนัดแรก ไม่จำเป็นแล้ว)
-local ugLiftPrinted = false -- พิมพ์ครั้งเดียวว่ายกตัวขึ้นเท่าไรตอนยิง (fix v8)
+local ugSilentUgPrinted = false
+local ugBulletRetry = 0
+local ugHookSeenPrinted = false
+local ugTargetPrinted = false
+local ugDiagCount = 0
+local ugSourceDumped = true
+local ugLiftPrinted = false
 
 pcall(function()
         BulletModule = require(ReplicatedStorage.Modules.FPS.Bullet)
 end)
 
--- ★ Silent Aim fix v4: ถ้าพาธเดิมไม่ได้ผล ให้ไล่ค้นหาโมดูลทันทีที่โหลด
 if not (BulletModule and typeof(BulletModule.CreateBullet) == "function") then
         pcall(FindBulletModuleDeep)
 end
@@ -1137,8 +1028,8 @@ local function GetAiCharacters()
                 return ai
         end
 
-        for _, zone in AiZones:GetChildren() do
-                for _, character in zone:GetChildren() do
+                for _, zone in pairs(AiZones:GetChildren()) do
+                                for _, character in pairs(zone:GetChildren()) do
                         ai[#ai + 1] = character
                 end
         end
@@ -1146,14 +1037,11 @@ local function GetAiCharacters()
         return ai
 end
 
--- ★ Silent Aim fix v4: สแกนหา NPC ทั้ง workspace (cache 1 วินาที) ใช้เมื่อ
--- AiZones/Players ไม่เจอเป้า — หลักการเดียวกับ fallback ของ ScanNPCs
 local ugNpcFallbackCache = nil
 local ugNpcFallbackAt = 0
 local function GetSilentNpcFallback()
         local now = os.clock()
-        -- ★ FPS fix v37: แคช 1 -> 2.5 วิ (เดิมยิงแต่ละนัดเมื่อไม่เจอเป้าใน AiZones/Players
-        --   จะเดิน workspace ทั้งแมพได้ถึง 1 ครั้ง/วิ เป้านอกโซนโผล่ในวงเล็งช้าขึ้น ~1.5 วิ เท่านั้น)
+
         if ugNpcFallbackCache and (now - ugNpcFallbackAt) < 2.5 then
                 return ugNpcFallbackCache
         end
@@ -1161,13 +1049,13 @@ local function GetSilentNpcFallback()
         local list = {}
         local seen = {}
         local cam = workspace.CurrentCamera
-        for _, obj in workspace:GetDescendants() do
+                for _, obj in pairs(workspace:GetDescendants()) do
                 if obj:IsA("Model") and not seen[obj] then
                         local hum = obj:FindFirstChildOfClass("Humanoid")
                         local root = obj:FindFirstChild("HumanoidRootPart")
                         if hum and root and hum.Health > 0 then
                                 local isPlayerChar = false
-                                for _, pl in Players:GetPlayers() do
+                                                                for _, pl in pairs(Players:GetPlayers()) do
                                         local ch = pl.Character
                                         if ch and (obj == ch or obj:IsDescendantOf(ch)) then
                                                 isPlayerChar = true
@@ -1187,8 +1075,6 @@ local function GetSilentNpcFallback()
         return list
 end
 
--- ★ Silent Aim fix v4: ค้นหาโมดูล Bullet แบบไล่ค้นทั้ง ReplicatedStorage
--- ใช้เมื่อพาธเดิม (Modules.FPS.Bullet) ไม่ตรงกับเกมปัจจุบัน
 local function FindBulletModuleDeep()
         if BulletModule and typeof(BulletModule.CreateBullet) == "function" then
                 return true
@@ -1196,7 +1082,7 @@ local function FindBulletModuleDeep()
         BulletModule = nil
         local found = nil
         pcall(function()
-                for _, obj in ReplicatedStorage:GetDescendants() do
+                                for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
                         if obj:IsA("ModuleScript") and obj.Name == "Bullet" then
                                 local okMod, mod = pcall(require, obj)
                                 if okMod and typeof(mod) == "table" and typeof(mod.CreateBullet) == "function" then
@@ -1234,16 +1120,14 @@ local function GetSilentTarget(...)
                 local hitPart = character:FindFirstChild(hitPartName)
                 local hitOffset = Vector3.zero
                 if not hitPart then
-                        -- ★ Underground fix: ริกบางแบบ (AI) ไม่มี part "Head"
-                        -- โค้ดเดิมจะเงียบและไม่ล็อกเป้าเลย กระสุนจึงไปตาม crosshair
-                        -- (ตอนมุดดิน crosshair อยู่ระดับขา) -> เพิ่ม fallback ส่วนหัว
+
                         hitPart = character:FindFirstChild("FaceHitBox")
                                 or character:FindFirstChild("HeadHitBox")
                         if not hitPart then
                                 local root = character:FindFirstChild("HumanoidRootPart")
                                 if root then
                                         hitPart = root
-                                        hitOffset = Vector3.new(0, 2.2, 0) -- เล็งจุดระดับหัว
+                                        hitOffset = Vector3.new(0, 2.2, 0)
                                 end
                         end
                         if not hitPart then
@@ -1264,35 +1148,22 @@ local function GetSilentTarget(...)
                 end
         end
 
-        for _, character in GetAiCharacters() do
+                for _, character in pairs(GetAiCharacters()) do
                 considerCharacter(character)
         end
 
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                         considerCharacter(player.Character)
                 end
         end
 
-        -- ★ Silent Aim fix v4: ถ้า AiZones/Players ไม่เจอเป้าเลย ให้สแกน
-        -- workspace หาโมเดลที่มี Humanoid ยังมีชีวิต (หลักการเดียวกับ
-        -- fallback ของ NPC ESP) ไม่งั้น silent aim จะเงียบและกระสุนเดิน
-        -- ตาม crosshair ทั้งที่ผู้เล่นเปิดฟีเจอร์ไว้
         if not closestTarget then
-                for _, character in GetSilentNpcFallback() do
+                                for _, character in pairs(GetSilentNpcFallback()) do
                         considerCharacter(character)
                 end
         end
 
-        -- ★ 2026-11-02 v31 (ยิงคนบนที่สูงไม่โดน — จากคลิปผู้ใช้): fallback จาก "เส้นเล็งจริง"
-        -- ปัญหาที่พิสูจน์จากคลิป: เป้ายืนบนที่สูง (ตู้/กล่อง/ดาดฟ้า) เราเล็งจากล่างขึ้นไป
-        -- จุดกึ่งกลางจอ (crosshair) จะไปคาดที่ "โคนเป้า/ขอบสิ่งที่เขายืน" ไม่ใช่ตัวหัว
-        -- หัวเป้าจึงอยู่ไกลจากกึ่งกลางจอเกินวง FOV = ไม่ล็อก กระสุนเดินตาม crosshair
-        -- เข้าขอบตู้/พื้นข้างล่างตัวเป้าแทนตัวคน = ยิงเท่าไรก็ไม่โดน
-        -- แก้: ถ้าหาเป้าในวง FOV ไม่เจอ ให้ยิง ray ตามแนว crosshair จริง (กล้อง -> หน้าเรา)
-        --   - ray โดนตัวคน (โมเดลที่มี Humanoid ยังมีชีวิต) = ล็อกหัวคนนั้นทันที
-        --   - ray โดนขอบตู้/กำแพงที่อยู่ข้างตัวคน = หาคนที่ตัวอยู่ใกล้เส้น ray ที่สุด
-        --     ภายใน 3 หน่วย และต้องอยู่บนจอ = "เล็งใส่ใครอยู่ กระสุนเข้าหัวคนนั้น"
         if not closestTarget and Camera then
                 pcall(function()
                         local ugExclude31 = {}
@@ -1342,7 +1213,7 @@ local function GetSilentTarget(...)
                                         if ugRt31 then
                                                 ugCheckParts31[#ugCheckParts31 + 1] = ugRt31.Position
                                         end
-                                        for _, ugPos31 in ugCheckParts31 do
+                                                                                for _, ugPos31 in pairs(ugCheckParts31) do
                                                 local ugTo31 = ugPos31 - ugOrigin31
                                                 local ugAlong31 = ugTo31:Dot(ugDir31)
                                                 if ugAlong31 > 1 and ugAlong31 < ugMaxDist31 then
@@ -1354,16 +1225,16 @@ local function GetSilentTarget(...)
                                                 end
                                         end
                                 end
-                                for _, character in GetAiCharacters() do
+                                                                for _, character in pairs(GetAiCharacters()) do
                                         ugConsiderRay31(character)
                                 end
-                                for _, player in Players:GetPlayers() do
+                                                                for _, player in pairs(Players:GetPlayers()) do
                                         if player ~= LocalPlayer then
                                                 ugConsiderRay31(player.Character)
                                         end
                                 end
                                 if not ugBest31 then
-                                        for _, character in GetSilentNpcFallback() do
+                                                                                for _, character in pairs(GetSilentNpcFallback()) do
                                                 ugConsiderRay31(character)
                                         end
                                 end
@@ -1465,11 +1336,6 @@ local function GetAimLook(aimPart)
         return Vector3.new(0, 0, -1)
 end
 
--- ★ Underground fix v7: สรุปกลไกที่พิสูจน์ได้จากผลทุกรอบ — เกมคำนวณการยิง
--- จาก "position ใน finalAim" (ต้องเป็นจุดที่มองเห็นเป้าตรง ๆ) แล้วบินตาม
--- LookVector พร้อมแรงโน้มถ่วงของเกม ถ้า position อยู่ใต้ผิวดิน ray ของเกม
--- จะติดดิน (error FPS:1044 ทุกนัด) แล้วตกไปยิงตาม crosshair = โดนขา
--- ฟังก์ชันนี้คืน "จุดระดับตาเหนือผิวดิน" ที่ hook ใช้เป็นจุดยิง (UG fix v7)
 local function GetUndergroundEyeOrigin()
         if not (Misc and (Misc.Underground or Misc.UndergroundFaceDown)) then
                 return nil
@@ -1502,7 +1368,7 @@ local function ForceAmmoPenetration(ammo)
                 "MaterialPenetration",
         }
 
-        for _, name in names do
+                for _, name in pairs(names) do
                 pcall(function()
                         ammo:SetAttribute(name, 9999)
                 end)
@@ -1522,7 +1388,7 @@ local function ForceAmmoPenetration(ammo)
                 end
         end
 
-        for _, child in ammo:GetDescendants() do
+                for _, child in pairs(ammo:GetDescendants()) do
                 if (child:IsA("NumberValue") or child:IsA("IntValue")) and child.Name:lower():find("pen", 1, true) then
                         pcall(function()
                                 child.Value = 9999
@@ -1536,7 +1402,7 @@ local function BoostLoadedAmmoPenetration()
         if not ammoFolder then
                 return
         end
-        for _, ammo in ammoFolder:GetChildren() do
+                for _, ammo in pairs(ammoFolder:GetChildren()) do
                 ForceAmmoPenetration(ammo)
         end
 end
@@ -1566,20 +1432,6 @@ local function IsWorldWallPart(part)
         return not IsHumanoidPart(part)
 end
 
--- ★ 2026-11-01 v14 (ยิงโดนคนเปิดมุดดิน): หมุดนิรนาม "บนแนว crosshair ของกล้อง"
--- จาก log ผู้เล่น: error FPS:1044 = "attempt to index nil with 'y'" คือเกมยิง ray
--- ตามแนวเล็งแล้ว "ไม่โดนอะไรเลย" (nil) แล้วไปอ่าน .y ของผลลัพธ์ = พัง
--- → เกม fallback ยิงตาม crosshair = พลาดทุกนัด
--- ตอนเปิด Face Down กล้องจมอยู่ใต้ผิวดิน แนวมองระดับพื้นวิ่งอยู่ใน "โพรงใต้ดิน"
--- ที่ว่างเปล่า ray จึงไม่เจอทั้งภูเขาทั้งตึก = nil ทุกนัด (v13 เดิมวางหมุดตามแนว
--- กระสุนใต้ดินใกล้เป้า แต่ ray ของเกมวิ่งตามแนว "กล้อง" ไม่ใช่แนวกระสุน จึงไม่โดน
--- หมุดและยัง nil เหมือนเดิม)
--- วิธีแก้ v14: วาง Part ล่องหน (CanQuery=true, CanCollide=true, CanTouch=false)
--- บนแนวมองกล้อง "เลยเป้าออกไป 15 หน่วย" — ray ตาม crosshair ของเกมจะโดนหมุดนี้
--- ไม่คืน nil และเพราะอยู่ไกลกว่าหัวเป้า กระสุนจะโดนหัวเป้าก่อนเสมอ
--- (CanCollide=true เพราะ ray ของเกมอาจตั้ง RespectCanCollide แล้วข้าม part ที่
---  CanCollide=false ทิ้ง — สาเหตุที่หมุดรุ่น v13 ไม่เวิร์ก)
--- สร้างฝั่ง client คนอื่น/เซิร์ฟเวอร์ไม่เห็น และเลื่อนตามกล้องตลอดช่วง hold ยิง
 local ugBuriedAnchor = nil
 local ugAnchorAheadDist = nil
 local function ugGetBuriedAnchor()
@@ -1612,7 +1464,6 @@ local function ugSetBuriedAnchor(position, aheadDist)
         end
 end
 
--- เลื่อนหมุดตามแนวมองกล้องปัจจุบัน (ลูปกล้อง UG/FD เรียกทุกเฟรมช่วง hold ยิง)
 _G.MikoUG_RefreshBuriedAnchor = function()
         if not ugAnchorAheadDist or ugAnchorAheadDist <= 0 then
                 return
@@ -1631,7 +1482,6 @@ _G.MikoUG_RefreshBuriedAnchor = function()
         end
 end
 
--- หมดช่วงยิง = เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่นเดินชนกล่องล่องหนโดยไม่รู้ตัว
 _G.MikoUG_ParkBuriedAnchorIfIdle = function()
         if not ugAnchorAheadDist then
                 return
@@ -1645,19 +1495,6 @@ _G.MikoUG_ParkBuriedAnchorIfIdle = function()
         end
 end
 
--- ★ 2026-11-01 v15 (ยิงไม่โดนคนมุดดิน — จับต้นตอ error FPS:1044 ได้แล้ว):
--- จากคอนโซลผู้เล่น (ภาพล่าสุด): "ทุกนัดที่ยิง" ตอนเปิดโหมดมุดดิน เกม crash ที่
--- ReplicatedStorage.Modules.FPS:1044 "attempt to index nil with 'y'" — แม้แต่นัด
--- ที่เป้าไม่ได้มุดดิน (buried=false) ก็ crash เหมือนกัน แสดงว่าไม่ใช่ปัญหา "เป้าใต้ดิน"
--- แต่เป็นปัญหาที่ hook "แทนที่ finalAim ด้วยตารางใหม่ {CFrame=...} ซึ่งขาดฟิลด์
--- ที่เกมอ่าน" (v7 เคยสรุปไว้แล้วว่าเกมอ่าน "position ใน finalAim") เกม crash
--- กลางทางทุกนัดแล้ว fallback ยิงตาม crosshair จากปากกระบอกที่ลอยเหนือดิน
--- = กระสุนลอยเหนือผิวดินทั้งนัด ไม่เคยดิ่งลงไปโดนคนมุดดินเลย
--- v15 แก้โดย "คงโครงสร้างเดิมของ aimPart ไว้ทุกฟิลด์" แล้ว override เฉพาะ
--- CFrame (แนวยิงเข้าหาเป้า) กับ Position (จุดเกิดกระสุนระดับตาเหนือผิวดิน —
--- สูตร v7 ที่พิสูจน์แล้ว) โดยรักษารูปแบบข้อมูลเดิม (Vector3 หรือตาราง {x,y,z})
--- เกมจะได้ struct ครบเหมือนเดิมทุกอย่าง ไม่ crash กระสุนออกตามแนวที่สั่งจริง
--- จึงดิ่งลงใต้ดินไปโดนเป้าได้ (เกมทะลุดินได้ พิสูจน์แล้วตั้งแต่ยุค v7)
 local ugAimProxy = nil
 local function ugGetAimProxy()
         if ugAimProxy and ugAimProxy.Parent then
@@ -1670,8 +1507,7 @@ local function ugGetAimProxy()
         part.Anchored = true
         part.CanCollide = false
         part.CanTouch = false
-        -- CanQuery=false = ห้าม ray ทั้งของเกมและของสคริปต์โดน part นี้
-        -- (มันอยู่ตรงจุดเกิดกระสุน ถ้าโดน ray จะสแดชทันที)
+
         part.CanQuery = false
         part.CastShadow = false
         part.Parent = workspace
@@ -1681,13 +1517,13 @@ end
 
 local function ugBuildAimOverride(aimPart, origin, aimPoint)
         local aimCFrame = CFrame.new(origin, aimPoint)
-        -- เดิมเป็นตาราง: คัดลอกฟิลด์เดิมให้ครบ (เกมอ่านฟิลด์อื่นด้วย เช่น position)
+
         if typeof(aimPart) == "table" then
                 local newAim = {}
                 for k, v in pairs(aimPart) do
                         newAim[k] = v
                 end
-                -- struct บางแบบใช้ metatable __index ฟิลด์จึงไม่โผล่ตอน pairs — ดึงคีย์ยอดนิยมเพิ่ม
+
                 for _, k in {"CFrame", "Position", "position", "Origin", "origin", "Direction", "direction", "Look", "look", "Target", "target", "Aim", "aim"} do
                         if newAim[k] == nil then
                                 local okV, v = pcall(function()
@@ -1699,7 +1535,7 @@ local function ugBuildAimOverride(aimPart, origin, aimPoint)
                         end
                 end
                 newAim.CFrame = aimCFrame
-                -- จุดเกิดกระสุน = ระดับตาเหนือผิวดิน (รักษารูปแบบเดิมของฟิลด์)
+
                 local ugOldPos = newAim.Position
                 if typeof(ugOldPos) == "table" and type(ugOldPos.x) == "number" then
                         newAim.Position = { x = origin.X, y = origin.Y, z = origin.Z }
@@ -1714,8 +1550,7 @@ local function ugBuildAimOverride(aimPart, origin, aimPoint)
                 end
                 return newAim
         end
-        -- เดิมเป็น Part: ยืม part ล่องหนวางที่จุดยิงระดับตา หันเข้าเป้า
-        -- (เกมอ่าน .Position จุดเกิดกระสุน + .CFrame แนวยิง จาก part นี้แทน)
+
         if typeof(aimPart) == "Instance" and aimPart:IsA("BasePart") then
                 local proxy = ugGetAimProxy()
                 if proxy then
@@ -1728,22 +1563,6 @@ local function ugBuildAimOverride(aimPart, origin, aimPoint)
         return { CFrame = aimCFrame, Position = origin, position = origin }
 end
 
--- ★ 2026-11-01 v17 (อ่านซอร์สเกมจริงจาก dump ของผู้เล่น — เจอต้นตอที่แท้จริง 2 จุด):
--- [1] FPS:1044 "attempt to index nil with 'y'" = เกมอ่าน v88.y.Value โดย v88 = ค่า
---     return ตัวที่ 4 ของ Bullet:CreateBullet = RecoilPattern (ซอร์ส Bullet บรรทัด
---     266-280: v83 = v76.RecoilPattern:FindFirstChild(tostring(หมายเลขนัดยิง)) —
---     เมื่อหมายเลขนัดยิงเกินจำนวน pattern ที่ปืนมี = ได้ nil = crash) และมันเกิด
---     "หลัง" กระสุนถูกยิงออกไปแล้ว ไม่เกี่ยวกับ aimPart ที่เราส่งเลยแม้แต่นิดเดียว
--- [2] ทิศกระสุน = aimPart.CFrame.LookVector (เกมอ่านที่ Bullet บรรทัด 364) แต่
---     "จุดเริ่ม ray ของกระสุน" = FunctionLibraryExtension:GetEstimatedCameraPosition
---     (Bullet บรรทัด 382) ซึ่งตอนยิงตัวถูกยกขึ้น "เหนือผิวดิน" และเกมนี้กระสุน
---     ทะลุ Terrain ไม่ได้ (โดนดิน = ตาย/เด้งทันที บรรทัด 544-591) ray จึงตายที่
---     ผิวดินก่อนถึงหัวเป้ามุดดินทุกนัด = สาเหตุจริงที่ "ยิงเป้ามุดดินไม่เคยโดน"
--- v17 แก้: hook GetEstimatedCameraPosition — เฉพาะนัดที่เป้าเป็น "คนมุดดิน"
---     บังคับจุดเริ่ม ray ลงไป "ใต้ผิวดินข้างหัวเป้า" (ระดับเดียวกับหัวเป้า ถอยหลัง
---     1-3 หน่วย = อยู่ในโพรงว่างใต้ดินตรงตัวเป้าพอดี) กระสุนวิ่งในโพรงเข้าหาหัว
---     เป้า ไม่เจอดินเลย = โดน แล้วปลด hook ทันทีหลัง CreateBullet คืนค่า (กระสุน
---     อ่านจุดเริ่มแค่ตอนสร้างครั้งเดียว ไม่กระทบนัดอื่น / คนยืนปกติเหมือนเดิมทุกอย่าง)
 local ugTick = tick
 local ugUnderRayUntil = 0
 local ugUnderRayOrigin = nil
@@ -1764,8 +1583,7 @@ pcall(function()
                         if typeof(hookfunction) == "function" then
                                 local okEst, hookedEst = pcall(hookfunction, ugBypassEst, ugNewGetEst)
                                 if okEst and typeof(hookedEst) == "function" then
-                                        -- hookfunction แทนที่ตัวเดิมในตารางโมดูลแล้ว (เกมเรียกผ่านตาราง = เข้า hook เอง)
-                                        -- hookedEst = ตัวหลบ hook สำหรับเรียกของเดิมตรง ๆ (กัน recursion)
+
                                         ugBypassEst = hookedEst
                                         ugEstDone = true
                                 end
@@ -1779,30 +1597,6 @@ pcall(function()
         end
 end)
 
--- ★ 2026-11-01 v18 (ยิงโดนแล้ว "แต่ดาเมจไม่เข้า" — ตัดต้นตอ FPS:1044 ที่ยังเหลือ):
--- จากภาพคอนโซลล่าสุด (14:59) error FPS:1044 ยังโผล่ "ทุกนัดที่ยิง" — จุดตายคือเกม
--- อ่านค่า return ตัวที่ 4 ของ Bullet:CreateBullet (= RecoilPattern ของนัดยิงนั้น)
--- ทันทีที่ได้ค่ากลับ (v88.y.Value) ถ้าเป็น nil = crash "attempt to index nil with 'y'"
--- แล้วโค้ดส่วน "คิด/ส่งดาเมจ" ที่อยู่ถัดจากบรรทัดนั้นไม่เคยทำงาน = เห็นกระสุนปลิว
--- ทรายโดน มาร์กขึ้น แต่เลือดเป้าไม่ลดเลย (ยิงโดนแต่ดาเมจไม่เข้า)
--- ต้นตอ 3 ทางที่พบ (แก้ครบ): [1] NoRecoil เดิมแทนที่ "หมายเลขนัดยิง" (param ตัวที่ 9
---     เป็นตัวเลข) ด้วยตาราง {0,0,0,0} → เกม FindFirstChild(tostring(ตาราง)) หาไม่เจอ
---     → คืน nil ทุกนัด; [2] hook เก็บค่า return แค่ 4 ตัว (r1..r4) ถ้าเกมคืนมากกว่านั้น
---     ตัวที่เกินหายหมด → nil; [3] เกมหา pattern นัดที่เกินจำนวนที่ปืนมีไม่เจอเอง
--- v18 แก้: ห้ามแตะ param ตัวเลข + เก็บค่า return "ครบทุกตัว" (table.pack/unpack) +
---     ถ้าค่าตัวที่ 4 เป็น nil เติม pattern จริงจากโฟลเดอร์ RecoilPattern ของปืน (หรือ
---     ของสังเคราะห์ x/y = 0 ถ้าหาไม่เจอ) เกมอ่านต่อได้ = ดาเมจเข้าปกติทุกนัด
--- ★ 2026-11-01 v19 (ยิงโดนแล้ว "ดาเมจไม่เข้า" — จากภาพคอนโซลล่าสุดเจอ error ตัวจริง):
--- error เก่า FPS:1044 หายไปแล้ว (v18 ซ่อม RecoilPattern สำเร็จ) แต่เจอ error ใหม่
--- "ทุกนัดที่ยิง": FPS:904 "invalid argument #2 to 'random' (interval is empty)"
--- ใน RangedWeaponDefault = เกมเรียก math.random(ต่ำ, สูง) แต่ค่าที่คำนวณได้กลับด้าน
--- (ต่ำ > สูง) ช่วงสุ่มจึงว่าง → เกม crash กลางขั้นตอน "คิด/ส่งดาเมจหลังกระสุนโดน"
--- ทุกนัด = เห็น hit marker แต่เลือดเป้าไม่ลด (ยิงโดนแต่ดาเมจไม่เข้า)
--- แนวโน้มต้นเขื่อม: ช็อตมุดดินบังคับทิศกระสุนลงใต้ดิน (เบี่ยงจากกล้องมาก) เกมคิดค่า
--- spread/ความคลาดเคลื่อนจากมุมนั้นแล้วติดลบ → ช่วง random ว่าง
--- v19 แก้: กันดาม math.random ทั่วเกม — ถ้าช่วงว่างให้สลับ a,b ให้เกมเอง (ช็อตไม่
--- crash โค้ดส่วนดาเมจทำงานต่อจนดาเมจเข้า) พร้อมพิมพ์ "บรรทัดต้นทาง + ค่าจริง"
--- ออกคอนโซล ถ้าดาเมจยังไม่เข้า ภาพบรรทัด [Miko] v19 random-guard จะชี้จุดแก้เชิงลึก
 if not _G.__MikoRandomGuard19 then
         _G.__MikoRandomGuard19 = true
         local ugOrigRandom = math.random
@@ -1816,7 +1610,7 @@ if not _G.__MikoRandomGuard19 then
                 end
                 if b == nil then
                         if type(a) == "number" and a < 1 then
-                                ugGuardLogs += 1
+                                ugGuardLogs  = ugGuardLogs + (1)
                                 if ugGuardLogs <= 8 then
                                         local ugSrc, ugLn = "?", "?"
                                         if type(debug) == "table" and type(debug.info) == "function" then
@@ -1839,7 +1633,7 @@ if not _G.__MikoRandomGuard19 then
                         return ugOrigRandom(a)
                 end
                 if type(a) == "number" and type(b) == "number" and a > b then
-                        ugGuardLogs += 1
+                        ugGuardLogs  = ugGuardLogs + (1)
                         if ugGuardLogs <= 8 then
                                 local ugSrc, ugLn = "?", "?"
                                 if type(debug) == "table" and type(debug.info) == "function" then
@@ -1866,7 +1660,7 @@ if not _G.__MikoRandomGuard19 then
         if typeof(hookfunction) == "function" then
                 local okH, origH = pcall(hookfunction, math.random, ugSafeRandom)
                 if okH and typeof(origH) == "function" then
-                        ugOrigRandom = origH -- ตัวจริงที่ hookfunction คืน (กันเรียกซ้ำเข้า hook ตัวเอง)
+                        ugOrigRandom = origH
                         ugGuardHooked = true
                 end
         end
@@ -1877,17 +1671,7 @@ if not _G.__MikoRandomGuard19 then
         end
         print("[Miko] v19: ติดตั้ง math.random guard แล้ว (แก้ FPS:904 'interval is empty' ที่ทำให้ยิงโดนแต่ดาเมจไม่เข้า)")
 end
--- ★ 2026-11-01 v20 (guard แก้ FPS:904 สำเร็จ — ช็อตไม่ crash แล้ว แต่ดาเมจยังไม่เข้า):
--- จากภาพคอนโซลล่าสุด: random-guard จับ math.random(u85*3, u85*5) ช่วงว่างได้ครบ
--- (ค่า recoil ติดลบ -2.07/-3.45 = บั๊กของเกมเอง) ช็อตวิ่งต่อได้ทั้งเส้นทางแล้ว
--- แต่ดาเมจยังไม่เข้า = มีตัวขวางอีกจุดในสาย "ส่งดาเมจเข้า server"
--- v20 เพิ่ม 2 เครื่องมือหาจุดขวาง: [1] remote logger จับ FireServer/InvokeServer
--- ทุกตัว (ชื่อ remote + args ย่อ) จะได้เห็นว่ายิงโดนแล้วเกม "ส่งอะไร" ไป server
--- หรือไม่ส่งเลย [2] สแกนซอร์สเกมหาโค้ดส่วนดาเมจ (damage/humanoid/health/
--- fireserver) ทั้ง FPS_main และ FPS_Bullet + รายชื่อโมดูลทั้งหมดใน Modules
--- ★ v21: logger นี้ "ปิดค่าเริ่มต้น" — hook __namecall ครอบการเรียกเมธอดของเกมทุกครั้ง
--- เสี่ยงเป็นตัวจุด error :14781 'Disconnect' ทุกเฟรม จะเปิดเฉพาะเมื่อตั้ง
--- _G.MikoRemoteLogger = true ไว้บรรทัดแรกสุดก่อนรันสคริปต์
+
 if not _G.__MikoRemoteLogger20 and _G.MikoRemoteLogger == true then
         _G.__MikoRemoteLogger20 = true
         local ugRemoteSeen = {}
@@ -1945,31 +1729,7 @@ end
 if not _G.__MikoRemoteLogger20 then
         print("[Miko] v21: remote logger ปิดอยู่ (กัน hook ชนโค้ดเกม = ตัวที่สงสัยว่าจุด error :14781 'Disconnect') — ยิงทดสอบได้เลย ถ้าอยากเปิดดูว่าเกมส่ง remote ไหม ตั้ง _G.MikoRemoteLogger = true บรรทัดแรกสุดก่อนรัน")
 end
--- ★ 2026-11-02 v30: ถอด v23 Inflict watch ออกทั้งบล็อก — hook __namecall อีกชั้นที่ครอบ
--- “ทุกเมธอดของเกม” ตลอดเวลา (หนึ่งในผู้ต้องสงสัยหลักทำเกมค้าง) ยุคตามดาเมจจบไปแล้วตาม
--- คำตัดสินของผู้ใช้ (เอาตัวนิ่ง ไม่ไล่ดาเมจ) โค้ดที่เหลืออ้าง _G.MikoV23_InflictLog
--- ปลอดภัยเพราะใช้รูปแบบ (_G.MikoV23_InflictLog or {}) ได้ค่าว่างเสมอ
--- ★ 2026-11-01 v25 (กั้นดาเมจรอ "ลงทะเบียน" + ยิงซ้ำอัตโนมัติ): ผล v24 จากคอนโซลล่าสุด
--- นัดแรก FireProjectile:InvokeServer -> server ตอบ nil "ทุกนัด" แต่ลองซ้ำเอง 0.15 วิ
--- (id เดิม ทิศเดิม) -> server ตอบ true "ทุกนัด" = server รับกระสุน แต่ "ช้ากว่า" ดาเมจ
--- นัดใกล้ ๆ กระสุนโดนเป้าใน ~0.05 วิ ทั้งที่ server เพิ่งจดจำกระสุนตอน +0.15 วิ
--- = ดาเมจไปถึง server "ก่อน" กระสุนถูกจดจำ -> server ทิ้งทุกนัด (ยิงโดน เลือดไม่ลด)
--- v25 แก้ 2 ชั้น:
---   [1] ดาเมจที่จะส่งตอน id ยังไม่ถูกจดจำ = กั้นไว้ก่อน (ไม่ยิงออก) พอ server ตอบ true
---       ส่งดาเมจนัดนั้นออกทันที -> บรรทัด [Miko] v25 ส่งดาเมจที่รอไว้
---   [2] ถ้าส่งแล้ว 0.6 วิ ยังไม่มีเลือดใครลดเลย = ส่งซ้ำอีกครั้ง -> [Miko] v25 ยิงซ้ำ
--- นาฬิกาเลือด [Miko] v24 HP ยังเฝ้าทุกตัว: เลือดลดหลังส่งดาเมจ = เข้าจริง
--- ถ้ากั้น/ยิงซ้ำแล้วยังไม่เข้าเลย = server ตรวจ "เส้นยิงจริง" เอง (ต้องยิงจากเหนือดิน
--- เทียบกับนัดมุดดิน — ดูวิธีทดสอบในคำตอบของ Miko)
--- ★ 2026-11-02 v30 (ตัดระบบวินิจฉัยหนัก v24-v26 ออกทั้งชุด — แก้ “ยิงได้ไม่กี่นัดเกมค้าง”):
--- ของหนักที่ถอดออก (ยุคตามดาเมจที่เลิกไปแล้ว แต่ยังทำงานสะสมทุกนัดที่ยิง):
---   [1] hook __namecall ครอบ “ทุกเมธอดของเกม” ตลอดเวลา (v24/v25 gate)
---   [2] loop while true สแกน workspace:GetDescendants() ทุก 2 วิ เก็บ Humanoid ทั้งแมพ
---       + ต่อ HealthChanged ทุกตัวไม่มีวันปลด (ยิ่งเล่นนานยิ่งอึด)
---   [3] กั้นดาเมจค้างไว้ 1.5 วิ + ยิงซ้ำอัตโนมัติ (resend) + ลองลงทะเบียนซ้ำถึง 40 ครั้ง
---   [4] v26 probe raycast ต่อทุก event
--- เก็บไว้เฉพาะ v28 “จุดยิงล่องหน” (ตัวแก้ค้างตัวจริง): ตอนมุดดิน จุดเริ่มกระสุนของเกม
--- ถูกชี้ขึ้นไปอยู่ระดับตา “เหนือผิวดิน” กระสุนบินปกติไม่เกิดในดิน ตัวละครไม่ขยับนิดเดียว
+
 if not _G.__MikoUG_EyeHook30 then
         _G.__MikoUG_EyeHook30 = true
         local ugEyeMod30 = nil
@@ -1995,22 +1755,19 @@ if not _G.__MikoUG_EyeHook30 then
                 end
         end)
 end
--- ★ 2026-11-03 v36: Damage Gate — ดาเมจรอให้ "กระสุนถูกลงทะเบียนกับ server" ก่อนส่งเสมอ
--- (แก้: เปิด Underground ยิงคนใกล้ ๆ โดนตัวแต่ดาเมจไม่เข้า — รายละเอียดในหัวไฟล์)
--- จับเฉพาะ 2 remote ของสายยิง: FireProjectile (ลงทะเบียน) + ProjectileInflict (ดาเมจ)
--- ไม่มีของหนักยุค v24-v26 (สแกนแมพ/HealthChanged/ลูปถาวร/ยิงซ้ำ) = ไม่ทำเกมค้าง
+
 if not _G.__MikoDamageGate36 then
         _G.__MikoDamageGate36 = true
         local ugGateRemotes = nil
-        local ugGateRegDone = {} -- [id] = true = server รับกระสุน id นี้แล้ว
-        local ugGateRegArgs = {} -- [id] = { ทิศ, id, tick } จากตอนเกมยิงจริง
-        local ugGatePending = {} -- [id] = { args ดาเมจที่กั้นไว้, ... } (ส่งตามลำดับเดิม)
-        local ugGateSeen = {}    -- คิว id ล่าสุด (จำกัด 64 ตัว กันตารางโตไม่จำกัด)
+        local ugGateRegDone = {}
+        local ugGateRegArgs = {}
+        local ugGatePending = {}
+        local ugGateSeen = {}
         local ugGateNotes = 0
         local ugGateUnpack = table.unpack or unpack
 
         local function ugGateNote(ugText)
-                ugGateNotes += 1
+                ugGateNotes  = ugGateNotes + (1)
                 if ugGateNotes <= 8 then
                         print("[Miko] v36 " .. ugText)
                 end
@@ -2044,7 +1801,6 @@ if not _G.__MikoDamageGate36 then
                 ugGateNote("ส่งดาเมจที่กั้นไว้ " .. #ugList .. " นัด (id " .. tostring(ugId) .. ") — กระสุนถูกจดจำแล้ว")
         end
 
-        -- ลองลงทะเบียนกระสุน (dot-call ตรง ๆ = ไม่วิ่งกลับเข้า hook ตัวเอง)
         local function ugGateRegister(ugDir, ugId, ugT)
                 local ugRemote = ugGateRemotes and ugGateRemotes.fire
                 if not ugRemote then
@@ -2063,7 +1819,6 @@ if not _G.__MikoDamageGate36 then
                 return false
         end
 
-        -- server ตอบ nil ตอนเกมยิง = ลองซ้ำในพื้นหลัง (id/ทิศเดิม) จน server รับ
         local function ugGateRetry(ugDir, ugId, ugT)
                 task.spawn(function()
                         for _ = 1, 15 do
@@ -2134,7 +1889,7 @@ if not _G.__MikoDamageGate36 then
                                                                         ugGateRegister(ugRec[1], ugRec[2], ugRec[3])
                                                                 end
                                                                 if ugGateRegDone[ugId] ~= true then
-                                                                        ugGateFlush(ugId) -- รอ 1 วิ ยังไม่ได้ = ปล่อยออกไปเอง กันค้างขยะ
+                                                                        ugGateFlush(ugId)
                                                                 end
                                                         end
                                                 end)
@@ -2183,16 +1938,15 @@ local function ugGetSynthPattern()
         return ugSynthPattern
 end
 
--- เติมค่า return ตัวที่ 4 ถ้าเป็น nil (RecoilPattern ที่เกมอ่านที่ FPS:1044) กัน crash
 local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shotNum)
         if (ugR.n or 0) < 4 then
-                ugR.n = 4 -- เกมอ่านตัวที่ 4 เสมอ ถ้าไม่ครบต้องเติมให้ครบก่อน
+                ugR.n = 4
         end
         if ugR[4] ~= nil then
                 return
         end
         local ugFolder = nil
-        for _, ugInst in { idk, model, model2, model3 } do
+                for _, ugInst in pairs({ idk, model, model2, model3 }) do
                 if ugFolder then
                         break
                 end
@@ -2205,7 +1959,7 @@ local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shot
         if not ugFolder then
                 local ugRW = ReplicatedStorage:FindFirstChild("RangedWeapons")
                 if ugRW then
-                        for _, ugInst in { model, model2, model3 } do
+                                                for _, ugInst in pairs({ model, model2, model3 }) do
                                 if ugFolder then
                                         break
                                 end
@@ -2224,7 +1978,7 @@ local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shot
         if ugFolder then
                 local ugKids = ugFolder:GetChildren()
                 if type(shotNum) == "number" then
-                        for _, ugKid in ugKids do
+                                                for _, ugKid in pairs(ugKids) do
                                 if ugKid.Name == tostring(shotNum) then
                                         ugPick = ugKid
                                         break
@@ -2232,7 +1986,7 @@ local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shot
                         end
                 end
                 if not ugPick then
-                        for _, ugKid in ugKids do
+                                                for _, ugKid in pairs(ugKids) do
                                 if ugKid:FindFirstChild("y") then
                                         ugPick = ugKid
                                         break
@@ -2254,7 +2008,6 @@ local function ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shot
         end
 end
 
--- ทางออกเดียวของทุกเส้นทางยิง: ซ่อมค่า + พิมพ์โครงสร้าง return ครั้งแรก + คืน "ครบทุกตัว"
 local function ugFinishCreateBullet(ugR, idk, model, model2, model3, shotNum)
         ugRepairCreateBulletReturns(ugR, idk, model, model2, model3, shotNum)
         if not ugRetPrinted then
@@ -2264,29 +2017,6 @@ local function ugFinishCreateBullet(ugR, idk, model, model2, model3, shotNum)
         return ugUnpack(ugR, 1, ugR.n)
 end
 
--- ★ 2026-11-01 v16 (ยืมตัวจริง — ตัดต้นตอ FPS:1044 ให้ถึงราก):
--- จากซอร์สเกมที่ dump ได้ (Miko_FPS_1044_dump.txt): RangedWeaponDefault เรียก
--- Bullet:CreateBullet(u83.weapon, u83.worldModel, u83.viewModel, u83.aimPart, ...)
--- และเกมอ่าน aimPart.CFrame "ตัวจริง" ตรง ๆ (เช่นบรรทัด 2744) — การส่งตาราง/part
--- ปลอมแทน aimPart ทำให้ CreateBullet คืนค่าไม่ครบ เกมอ่าน .y ของ nil ทันทีที่
--- บรรทัดถัดจาก CreateBullet ~17 บรรทัด (orig 1044) = crash ทุกนัด แล้ว fallback
--- ยิงตาม crosshair = กระสุนลอยเหนือดิน ไม่เคยโดนคนมุดดิน
--- v16 = ย้าย aimPart "ตัวจริง" ไปจุดยิงระดับตาเหนือผิวดิน หันเข้าหัวเป้า ยิงผ่าน
--- CreateBullet เดิมด้วย instance ตัวจริง (เกมได้ข้อมูลถูกต้อง 100%) แล้วคืน
--- CFrame เดิมทันทีใน call เดียวกัน — ไม่มีอะไรเห็น ไม่มีอะไรผิดปกติให้ตรวจจับ
--- ★ 2026-11-01 v22 (Cube Punch — ตัวจริงที่ทำให้ "ยิงโดนแต่ดาเมจไม่เข้า"):
--- จากคอนโซลล่าสุด Los=BLOCKED:Cube.197 + โค้ดเกมที่ dump ได้ (FPS_Bullet มีเงื่อนไข
--- ClassName == "Model" แล้วค่อย ProjectileInflict:FireServer) สรุปสายดาเมจคือ:
--- เกม raycast หา "ตัวที่กระสุนปะทะ" -> เอา hit.Instance ไล่หา Model ที่มี Humanoid
--- -> ต้องผ่านเงื่อนไข Model เท่านั้นถึงจะยิง ProjectileInflict เข้า server = หักเลือด
--- ปัญหา: คนมุดดินอยู่ "ในชั้นก้อนดินของแมพ" (Cube.NNN) เส้น ray ของเกมจากโพรง
--- ใต้ดินเข้าหัวเป้า "ทะลุก้อนดินไม่ได้" = โดนก้อนดินแทนคนทุกนัด → hit.Instance เป็น
--- ก้อนดิน ไม่ใช่ตัวละคร → เงื่อนไข Model ไม่ผ่าน → ไม่มีการส่งดาเมจเลย (เห็นเอฟเฟกต์
--- กระสุนปะทะดิน แต่เลือดเป้าเดิมทุกครั้ง)
--- v22 แก้: ก่อนยิงเป้ามุดดิน เดิน ray ของเราเอง 2 เส้น (จุดยิง->เป้า และกล้อง->เป้า)
--- เก็บ "ทุก part ที่คั่นกลาง" (ยกเว้นตัวละครผู้เล่น) แล้วปิด CanQuery+CanTouch ชั่วคราว
--- 1.2 วิ = ray ของเกมทะลุก้อนดินเข้าโดนตัวเป้าโดยตรง → hit.Instance เป็นของคน
--- → ProjectileInflict ทำงาน → ดาเมจเข้า แล้วคืนค่าเดิมให้แมพอัตโนมัติ
 local ugCubeRestore = {}
 local ugCubeGen = 0
 local ugCubePrints = 0
@@ -2295,7 +2025,7 @@ local ugBlockPrints23 = 0
 
 local function ugReleaseCubes(ugMyGen)
         if ugMyGen and ugMyGen ~= ugCubeGen then
-                return -- นัดยิงใหม่เพิ่งเคลียร์ทับรายการ รอบเก่าห้ามปลดของรอบใหม่
+                return
         end
         for ugPart, ugRec in pairs(ugCubeRestore) do
                 pcall(function()
@@ -2309,9 +2039,9 @@ local function ugReleaseCubes(ugMyGen)
 end
 
 local function ugClearShotPath(origin, aimPoint)
-        do return end -- ★ 2026-11-02 v30: ปิด Cube Punch (การ raycast หลายเส้น + สลับ CanQuery/CanTouch ต่อนัดยิง = หนักเครื่องสะสม) — ยุคตามดาเมจจบแล้ว
+        do return end
         pcall(function()
-                ugCubeGen += 1
+                ugCubeGen  = ugCubeGen + (1)
                 local ugMyGen = ugCubeGen
                 local ugCams = workspace.CurrentCamera
                 local ugStarts = { origin }
@@ -2347,7 +2077,7 @@ local function ugClearShotPath(origin, aimPoint)
                                         local ugInst = ugHit.Instance
                                         local ugModel = ugInst:FindFirstAncestorOfClass("Model")
                                         if ugModel and ugModel:FindFirstChildOfClass("Humanoid") then
-                                                break -- ถึงตัวละคร (เป้า) แล้ว — ห้ามปิดอะไรต่อ
+                                                break
                                         end
                                         local ugSavedQ, ugSavedT
                                         local ugIsTerrain23 = ugInst == workspace:FindFirstChildOfClass("Terrain")
@@ -2360,27 +2090,27 @@ local function ugClearShotPath(origin, aimPoint)
                                         if ugOkSet then
                                                 if ugCubeRestore[ugInst] == nil then
                                                         ugCubeRestore[ugInst] = { q = ugSavedQ, t = ugSavedT }
-                                                        ugCleared += 1
+                                                        ugCleared  = ugCleared + (1)
                                                 end
                                                 if ugIsTerrain23 and not ugTerrainPunched23 then
                                                         ugTerrainPunched23 = true
                                                         print("[Miko] v23: เส้นยิงขวางด้วย Terrain — ปิด CanQuery/CanTouch ของ Terrain ชั่วคราว 1.2 วิ ให้กระสุนทะลุผิวดินได้")
                                                 end
                                         else
-                                                -- ปิด CanQuery ไม่ได้ = กระสุนของเกมจะตายที่ตัวนี้แน่ ๆ เดินต่อก็ไร้ความหมาย
+
                                                 if ugBlockPrints23 < 3 then
-                                                        ugBlockPrints23 += 1
+                                                        ugBlockPrints23  = ugBlockPrints23 + (1)
                                                         print("[Miko] v23: มีสิ่งกีดขวางปิด CanQuery ไม่ได้: " .. ugInst.Name .. " (" .. ugInst.ClassName .. ") @ ระยะ " .. string.format("%.1f", ugHit.Distance) .. " จากจุดยิง — นัดนี้กระสุนจะตายที่ตัวนี้")
                                                 end
                                                 break
                                         end
-                                        ugDone += ugHit.Distance + 0.05
+                                        ugDone  = ugDone + (ugHit.Distance + 0.05)
                                         ugPos = ugFrom + ugDir * ugDone
                                 end
                         end
                 end
                 if ugCleared > 0 and ugCubePrints < 6 then
-                        ugCubePrints += 1
+                        ugCubePrints  = ugCubePrints + (1)
                         print("[Miko] UG v23 Cube Punch: ปิด CanQuery/CanTouch สิ่งกีดขวาง " .. ugCleared
                                 .. " ชิ้นตามเส้นยิง (คืนค่าอัตโนมัติใน 1.2 วิ) — ให้ ray ของเกมโดนตัวเป้าโดยตรง")
                 end
@@ -2395,16 +2125,13 @@ local ugWatchPrints23 = 0
 local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern, origin, aimPoint, isBuriedShot)
         if typeof(origin) ~= "Vector3" or typeof(aimPoint) ~= "Vector3"
                 or (aimPoint - origin).Magnitude < 0.5 then
-                -- ★ v18: คืนค่า "ครบทุกตัว" + ซ่อม pattern ถ้า nil (เดิม return ตรง ๆ ไม่ซ่อม)
+
                 return ugFinishCreateBullet(
                         ugPack(oldCreateBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)),
                         idk, model, model2, model3, recoilPattern
                 )
         end
-        -- ★ v17: นัดเป้ามุดดิน = ย้าย "จุดเริ่ม ray ของเกม" ลงไปใต้ผิวดินข้างหัวเป้า
-        -- (ระดับเดียวกับหัวเป้า ถอยหลังเข้าหาเรา 1-3 หน่วย = โพรงว่างใต้ดินตรงตัวเป้า)
-        -- ray จะวิ่งในโพรงเข้าหาหัวเป้าโดยไม่เจอ Terrain เลย (เกมกระสุนทะลุดินไม่ได้
-        -- จุดเริ่มเหนือดิน = ตายที่ผิวดินทุกนัด) แล้วปลด hook ทันทีหลัง CreateBullet คืนค่า
+
         if isBuriedShot then
                 local ugFlat = Vector3.new(aimPoint.X - origin.X, 0, aimPoint.Z - origin.Z)
                 if ugFlat.Magnitude > 0.05 then
@@ -2415,7 +2142,7 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                                 aimPoint.Z - ugFlat.Unit.Z * ugBack
                         )
                 else
-                        -- เป้าอยู่ใต้ตัวเราเป๊ะ ๆ: ถอยไปทางขวาของกล้องแทน (แนวนอน 2 หน่วย)
+
                         local ugCam17 = workspace.CurrentCamera
                         local ugRight = ugCam17 and ugCam17.CFrame.RightVector or Vector3.new(1, 0, 0)
                         local ugRightFlat = Vector3.new(ugRight.X, 0, ugRight.Z)
@@ -2431,40 +2158,30 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                 ugUnderRayOrigin = origin
                 ugUnderRayUntil = ugTick() + 5
                 if ugFireModePrints < 3 then
-                        ugFireModePrints += 1
+                        ugFireModePrints  = ugFireModePrints + (1)
                         print(string.format(
                                 "[Miko] UG v18 fire: จุดเริ่ม ray ใต้ดิน (%.1f, %.1f, %.1f) -> หัวเป้า (%.1f, %.1f, %.1f) กระสุนวิ่งในโพรงใต้ดิน",
                                 origin.X, origin.Y, origin.Z, aimPoint.X, aimPoint.Y, aimPoint.Z
                         ))
                 end
         end
-        -- ★ v22: ช็อตเป้ามุดดิน = เคลียร์ก้อนดิน/สิ่งกีดขวางตามเส้นยิงก่อนยิงทุกนัด
-        -- (เกม raycast เจอก้อนดินแทนตัวเป้า = hit ไม่ใช่ Model คน = ดาเมจไม่ถูกส่ง)
+
         if isBuriedShot and typeof(origin) == "Vector3" and typeof(aimPoint) == "Vector3" then
                 ugClearShotPath(origin, aimPoint)
         end
         if typeof(aimPart) == "Instance" then
                 local ugCharFire = LocalPlayer and LocalPlayer.Character
-                -- ห้ามย้ายถ้าเป็นส่วนของตัวผู้เล่นเอง (กันตัวโผล่เหนือดินตอนยิง)
+
                 if not (ugCharFire and aimPart:IsDescendantOf(ugCharFire)) then
                         local okMove, savedCFrame = pcall(function()
                                 local saved = aimPart.CFrame
-                                -- ★ 2026-11-02 v31 (ยิงคนบนที่สูงไม่โดน): คิดทิศกระสุนจาก
-                                -- "จุดเริ่ม ray จริง" ของเกม ไม่ใช่จากปากกระบอก (aimPart)
-                                -- เกมเริ่ม ray กระสุนที่ GetEstimatedCameraPosition (จุดตาที่เกม
-                                -- ประมาณค่า) แต่เราหัน aimPart จากตำแหน่ง aimPart เข้าหาเป้า
-                                -- เส้นกระสุนที่วิ่งจริง (จากจุดตา) จึงเยื้องออกจากเป้าเท่าระยะ
-                                -- เยื้องกล้อง-ปากกระบอก ยิงระดับเดียวกันแทบไม่เห็นผล แต่ยิง
-                                -- "ขึ้นใส่คนบนที่สูง" มุมสูงพอกัน กระสุนหลุดหัวเป้าทั้งนัด
-                                -- -> หัน aimPart ด้วยทิศ (จุดเล็ง - จุดเริ่ม ray จริง) กระสุนจาก
-                                -- จุดตาจะพุ่งเข้าเป้าเป๊ะทุกมุม (ตอนมุดดิน จุดตา = จุดยิงล่องหน
-                                -- เหนือดินที่คำนวณไว้แล้ว = ผลลัพธ์เท่าเดิมทุกอย่าง)
+
                                 local ugAimDir31 = aimPoint - origin
                                 pcall(function()
                                         local ugMod31 = game.ReplicatedStorage.Modules:FindFirstChild("FunctionLibraryExtension")
                                         local ugFLE31 = ugMod31 and require(ugMod31)
                                         if type(ugFLE31) == "table" and type(ugFLE31.GetEstimatedCameraPosition) == "function" then
-                                                -- เรียกแบบ method (: ) ให้ตรง convention เกม (self, player)
+
                                                 local ugEcp31 = ugFLE31:GetEstimatedCameraPosition(LocalPlayer)
                                                 if typeof(ugEcp31) == "Vector3" then
                                                         local ugDir31 = aimPoint - ugEcp31
@@ -2482,7 +2199,7 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                         end)
                         if okMove and savedCFrame then
                                 if ugFireModePrints < 3 then
-                                        ugFireModePrints += 1
+                                        ugFireModePrints  = ugFireModePrints + (1)
                                         print("[Miko] UG v18 fire mode: ยืม aimPart ตัวจริง (" .. aimPart.Name .. ") หันเข้าเป้าชั่วขณะแล้วคืนค่าทันที")
                                 end
                                 local okFire, ugPacked = pcall(function()
@@ -2491,11 +2208,8 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                                 pcall(function()
                                         aimPart.CFrame = savedCFrame
                                 end)
-                                ugUnderRayUntil = 0 -- ★ v17: ปลด hook ทันที (กระสุนอ่านจุดเริ่มจบใน call นี้แล้ว)
-                                -- ★ 2026-11-01 v23 (watchdog สายดาเมจ): จับเวลานัดมุดดิน — 0.8 วิ มี remote
-                                -- ดาเมจ (Inflict/Damage) ออกจากเครื่องเราไหม? ถ้าไม่มีเลย = ray ของเกมไม่ถึง
-                                -- ตัวเป้า (โดนดิน/ก้อนดินตายก่อน) ถ้ามี = เกมส่งดาเมจแล้วที่เหลือคือ server
-                                -- ปฏิเสธ (ดู args จากบรรทัด [Miko] v23 ดาเมจ เทียบกับนัดยิงเหนือดินปกติ)
+                                ugUnderRayUntil = 0
+
                                 if isBuriedShot then
                                         local ugShotT23 = ugTick()
                                         local ugTgtName23 = "?"
@@ -2508,7 +2222,7 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                                                         if ugWatchPrints23 >= 10 then
                                                                 return
                                                         end
-                                                        ugWatchPrints23 += 1
+                                                        ugWatchPrints23  = ugWatchPrints23 + (1)
                                                         local ugLog23 = _G.MikoV23_InflictLog or {}
                                                         local ugFound23 = nil
                                                         for i23 = #ugLog23, 1, -1 do
@@ -2528,14 +2242,10 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                                         end)
                                 end
                                 if okFire and ugPacked then
-                                        -- ★ v18: คืนค่า "ครบทุกตัว" (เดิมเก็บแค่ r1..r4 ตัวที่เกินหาย = nil ที่ FPS:1044)
+
                                         return ugFinishCreateBullet(ugPacked, idk, model, model2, model3, recoilPattern)
                                 end
-                                -- ★ 2026-11-02 v29 (F9 เงียบสนิท — ตามที่ผู้ใช้ขอ): ห้ามคืน nil เด็ดขาด
-                                -- เกมอ่าน v88.y.Value ที่ FPS:1044 ทันทีที่ได้ค่ากลับ ถ้าคืน nil = error แดง
-                                -- "attempt to index nil with 'y'" ขึ้น F9 ทุกครั้ง → คืนชุดเต็มแทน
-                                -- (u85/u86 = 0 กระจายศูนย์ + pattern สังเคราะห์ x/y = 0) เกมอ่านต่อได้
-                                -- ทันที ไม่มี error แดงอีก (ของเดิมคืน nil แล้วให้เกมพังเอง)
+
                                 return ugFinishCreateBullet(
                                         ugPack(0, 0, nil, ugGetSynthPattern()),
                                         idk, model, model2, model3, recoilPattern
@@ -2543,20 +2253,17 @@ local function ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType,
                         end
                 end
         end
-        -- ย้ายตัวจริงไม่ได้ (ไม่ใช่ Instance/ตั้ง CFrame ไม่ได้) → struct สำรองแบบคงฟิลด์เดิม (v15)
+
         if ugFireModePrints < 3 then
-                ugFireModePrints += 1
+                ugFireModePrints  = ugFireModePrints + (1)
                 print("[Miko] UG v18 fire mode: struct สำรอง (typeof=" .. typeof(aimPart) .. ")")
         end
         local ugR = ugPack(oldCreateBullet(idk, model, model2, model3, ugBuildAimOverride(aimPart, origin, aimPoint), idk2, ammoType, tick, recoilPattern))
-        ugUnderRayUntil = 0 -- ★ v17: ปลด hook ทันที
-        -- ★ v18: คืนค่า "ครบทุกตัว" + ซ่อม pattern ถ้า nil
+        ugUnderRayUntil = 0
+
         return ugFinishCreateBullet(ugR, idk, model, model2, model3, recoilPattern)
 end
 
--- ★ v14: หา "คนมุดดิน" ในกรวยเล็ง (สำหรับยิงเล็งมือ ไม่ผ่าน Silent Aim)
--- คืน aimPoint (พร้อม prediction/drop แล้ว) กับ part ของเป้า หรือ nil,nil
--- เงื่อนไข: หัวเป้าต้องอยู่ "ใต้ผิวดินจริง" (ray ลงจากเหนือหัวเจอผิวดินก่อนหัว)
 local function ugFindBuriedTargetInCone(eyePos, lookDir)
         if typeof(eyePos) ~= "Vector3" or typeof(lookDir) ~= "Vector3"
                 or lookDir.Magnitude < 1e-4 then
@@ -2578,7 +2285,7 @@ local function ugFindBuriedTargetInCone(eyePos, lookDir)
                                 return
                         end
                         ugHead = ugRoot
-                        ugOffset = Vector3.new(0, 2.2, 0) -- จุดระดับหัวจาก root
+                        ugOffset = Vector3.new(0, 2.2, 0)
                 end
                 local ugTo = ugHead.Position - eyePos
                 local ugDist = ugTo.Magnitude
@@ -2589,7 +2296,7 @@ local function ugFindBuriedTargetInCone(eyePos, lookDir)
                 if ugDot < bestDot then
                         return
                 end
-                -- ตรวจว่าหัวอยู่ใต้ผิวดินจริงไหม (ray ลงจากเหนือหัว ตัดตัวเรา/ตัวเป้า)
+
                 local ugSurfY = nil
                 pcall(function()
                         local ugP = RaycastParams.new()
@@ -2611,24 +2318,24 @@ local function ugFindBuriedTargetInCone(eyePos, lookDir)
                         end
                 end)
                 if not ugSurfY or ugHead.Position.Y >= ugSurfY - 0.15 then
-                        return -- หัวอยู่เหนือผิวดิน = คนยืนปกติ ไม่ใช่เป้ามุดดิน
+                        return
                 end
                 bestDot = ugDot
                 bestPart = ugHead
                 bestOffset = ugOffset
         end
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                         ugConsider(player.Character)
                 end
         end
-        for _, character in GetAiCharacters() do
+                for _, character in pairs(GetAiCharacters()) do
                 ugConsider(character)
         end
         if not bestPart then
                 return nil, nil
         end
-        -- prediction + drop ด้วยสูตรเดียวกับ silent aim (ค่า speed/drop ปกติของเกม)
+
         local ugAim = bestPart.Position + bestOffset
         local ugAccel, ugSpeed = 0, 1000
         if SilentAim.Prediction then
@@ -2638,7 +2345,6 @@ local function ugFindBuriedTargetInCone(eyePos, lookDir)
         return ugAim, bestPart
 end
 
--- Move bullet origin past walls so the shot has clear LoS (real damage, not fake client hits)
 local function ResolveWallbangAim(aimPart, forcedTargetPos)
         local origin = GetAimOrigin(aimPart)
         if not origin and Camera then
@@ -2686,12 +2392,12 @@ local function ResolveWallbangAim(aimPart, forcedTargetPos)
                 end
 
                 if IsWorldWallPart(result.Instance) then
-                        -- Spawn just past this wall surface
+
                         lastClearOrigin = result.Position + look * 0.2
                 end
 
                 local step = (result.Position - current).Magnitude + 0.05
-                traveled += step
+                traveled  = traveled + (step)
                 current = result.Position + look * 0.05
         end
 
@@ -2700,7 +2406,7 @@ local function ResolveWallbangAim(aimPart, forcedTargetPos)
         end
 
         if lastClearOrigin and hitPos then
-                -- ★ v15: คงโครงสร้างเดิมของ aimPart (กัน error FPS:1044)
+
                 return ugBuildAimOverride(aimPart, lastClearOrigin, hitPos)
         end
 
@@ -2735,7 +2441,7 @@ SyncSilentAimFromUI = function()
 end
 
 InitGunSignalNet = function()
-        -- Keep the independent client-side kick hook when removing gun repair.
+
         if _G.MikoGunNetHooked then
                 return
         end
@@ -2761,7 +2467,6 @@ InitGunSignalNet = function()
                 end)
         end
 
-        -- แบบ dot-call: LocalPlayer.Kick(LocalPlayer, "...") = ไม่ผ่าน __namecall
         pcall(function()
                 if hookfunction and typeof(LocalPlayer.Kick) == "function" then
                         local kickFunc = LocalPlayer.Kick
@@ -2778,8 +2483,8 @@ InitSilentAim = function()
                 return
         end
         if not (BulletModule and typeof(BulletModule.CreateBullet) == "function") then
-                -- ★ Silent Aim fix v4: โมดูลยังหาไม่เจอ -> ลองใหม่อัตโนมัติ 10 ครั้ง
-                ugBulletRetry += 1
+
+                ugBulletRetry  = ugBulletRetry + (1)
                 if ugBulletRetry <= 10 then
                         if ugBulletRetry == 1 then
                                 print("[Miko] Silent Aim: ยังหาโมดูล Bullet ไม่เจอ - จะลองใหม่อัตโนมัติ")
@@ -2796,18 +2501,9 @@ InitSilentAim = function()
                 return
         end
 
-        -- ★ Silent Aim fix v4: ดึง body ของ hook ออกมาเป็นฟังก์ชันตั้งชื่อ
-        -- เพื่อติดตั้งได้หลายวิธี (hookfunction / table replace / namecall)
         local function ugSilentWrapper(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern)
                 SyncSilentAimFromUI()
 
-                -- ★ v18: (ยกเลิก pre-check ของ v17 ที่เคย nil "หมายเลขนัดยิง" ทิ้ง) — การ nil
-                -- เลขไม่ช่วยเลย เพราะเกม FindFirstChild(tostring(nil)) ก็หาไม่เจอเหมือนเดิม
-                -- แถมเสี่ยง nil ทับหมายเลขที่ปืนจริงมี (โฟลเดอร์ที่เราตรวจกับที่เกมใช้ไม่จำเป็น
-                -- ต้องเป็นตัวเดียวกัน) → ปล่อยเลขผ่านทุกกรณี แล้วซ่อมที่ "ค่า return" แทน
-                -- (ugFinishCreateBullet เติม pattern ให้เกมอ่านต่อ ไม่ crash FPS:1044)
-
-                -- ★ Silent Aim fix v4: พิสูจน์ว่าเกมเรียก hook ของเราจริง
                 if not ugHookSeenPrinted then
                         ugHookSeenPrinted = true
                         print("[Miko] CreateBullet hook ACTIVE - เกมเรียกใช้ hook แล้ว")
@@ -2821,7 +2517,7 @@ InitSilentAim = function()
                 end
 
                 if Misc and Misc.NoRecoil then
-                        -- Zero recoil values but keep pattern length (empty table can break full-auto)
+
                         if type(recoilPattern) == "table" then
                                 local function zeroRecoil(tbl, depth)
                                         if depth > 5 then
@@ -2842,14 +2538,7 @@ InitSilentAim = function()
                                 end
                                 zeroRecoil(recoilPattern, 0)
                         end
-                        -- ★ v18 (ต้นตอ "ยิงโดนแต่ดาเมจไม่เข้า" ทุกนัด): ห้ามแทนที่ recoilPattern
-                        -- ที่เป็น "ตัวเลข" ด้วยตาราง {0,0,0,0} อีกต่อไป — ตามซอร์ส Bullet (266-280)
-                        -- ตัวเลขนี้คือ "หมายเลขนัดยิง" ที่เกมใช้ FindFirstChild ในโฟลเดอร์ RecoilPattern
-                        -- ของปืน การแทนที่ด้วยตารางทำให้หาไม่เจอ = CreateBullet คืน pattern = nil =
-                        -- crash FPS:1044 ทุกนัด โค้ดส่วนส่งดาเมจหลังจากนั้นจึงไม่เคยทำงาน
-                        -- (ส่วนลดแรงพุ่งใช้การล้าง attribute ของ AmmoTypes ด้านล่างแทน ซึ่งพออยู่แล้ว)
 
-                        -- Project Delta camera climb uses RecoilStrength / related AmmoTypes attrs
                         if ammo then
                                 for _, attrName in {
                                         "RecoilStrength",
@@ -2916,22 +2605,11 @@ InitSilentAim = function()
 
                 local finalAim = aimPart
 
-                -- ★ Underground fix v7: โมเดลสรุปจากผลทุกรอบ + error FPS:1044 ในคอนโซลผู้เล่น
-                -- เกมคำนวณการยิงจาก "position ใน finalAim" — ถ้า position อยู่ใต้ผิวดิน ray
-                -- ของเกมจะติดดิน (attempt to index nil with 'y' ทุกนัด) แล้วตกไปยิงตาม
-                -- crosshair ซึ่งจากใต้ดิน = เข้าขาเสมอ จึงต้องส่ง position ระดับตาเหนือผิวดิน
-                -- (ส่วนการเล็งปกติไม่ถูกแตะต้องเลย)
                 local ugChar = LocalPlayer and LocalPlayer.Character
                 local ugRoot = ugChar and (ugChar:FindFirstChild("HumanoidRootPart") or ugChar.PrimaryPart)
 
-                -- ★ UG fix v12: ทุกการยิงตอนมุดดิน = ยกตัวขึ้น "ยืน" เหนือผิวดินชั่วขณะ "แบบล่องหน"
-                -- (เกมตรวจการยิงที่ตำแหน่งผู้ยิง ณ เวลากระสุนถึงเป้า — v9/v10 ยกแวบเดียว พอกระสุน
-                --  ถึงเป้าตัวกลับลงใต้ดินแล้ว = เส้นตรวจโดนดิน = กระสุนทะลุตัว จึงต้องค้างยืนช่วงสั้น ๆ)
-                -- v12 ทำให้ไม่มีใครเห็นการยกตัว: ตัว/ป้าย/เอฟเฟกต์ถูกซ่อนหมด + Anchored กัน replicate
-                --  ขึ้นเซิร์ฟเวอร์ (ถ้ายิงไม่เข้า = เกมตรวจฝั่งเซิร์ฟเวอร์ ปิดด้วย _G.MikoUG_StealthServer = false)
                 local ugActivePre = (Misc and (Misc.Underground or Misc.UndergroundFaceDown)) and true or false
-                -- ★ v27: ยิงตอนมุดดิน = ไม่ยกตัวอีกต่อไป (ตัวนิ่ง ไม่เด้งขึ้น — ตามที่ผู้ใช้ขอ)
-                -- กลับไปยกตัวแบบเดิมได้: พิมพ์ _G.MikoUG_NoPopUp = false ในคอนโซล
+
                 if ugActivePre and _G.MikoUG_NoPopUp ~= true then
                     pcall(function()
                         if _G.MikoUG_SurfaceNow then
@@ -2946,28 +2624,23 @@ InitSilentAim = function()
                 if SilentAim.Enabled then
                         local target, targetOffset = GetSilentTarget(model, model2, model3, aimPart)
                         if target then
-                                -- ★ Silent Aim fix v4: พิมพ์ครั้งเดียวว่าล็อกเป้าอะไร
+
                                 if not ugTargetPrinted then
                                         ugTargetPrinted = true
                                         print("[Miko] Silent Aim: ล็อกเป้า " .. (target.Parent and target.Parent.Name or "?") .. " -> " .. target.Name)
                                 end
-                                -- ★ Underground fix v7 (มุดดินแล้วโดนขา — แก้รอบที่ 7):
-                                -- v6 ส่ง position = root ใต้ดิน → ray ของเกมติดดิน → error FPS:1044 ทุกนัด
-                                -- → เกม fallback ยิงตาม crosshair จากใต้ดิน = โดนขา ส่วนเส้นที่เห็น
-                                -- "เลยหัวไปนิด" มาจาก entryComp ที่ยกจุดเล็งสูงเกิน
-                                -- → v7: position = ระดับตาเหนือผิวดิน + สูตรเดียวกับยืนปกติ (prediction
-                                -- + drop วัดจากจุดตา) ตัด entryComp ออกทั้งหมด
+
                                 local ugActive = (Misc and (Misc.Underground or Misc.UndergroundFaceDown)) and true or false
                                 if ugActive then
                                     if not ugSilentUgPrinted then
                                         ugSilentUgPrinted = true
                                         print("[Miko] Silent Aim: มุดดิน - ยิงเข้าหัวแบบตัวล่องหน ตัวไม่โผล่ให้ใครเห็นรวมถึงเซิร์ฟเวอร์ (UG fix v12) | เวลายกตัว: _G.MikoUG_HoldTime = 0.45 | ถ้ายิงไม่เข้าให้ปิด stealth: _G.MikoUG_StealthServer = false")
                                     end
-                                    -- ★ UG fix v8: พิมพ์โค้ดเกมรอบ error FPS:1044 ครั้งเดียว เพื่อแก้ตรงจุดรอบหน้า
+
                                     if not ugSourceDumped then
                                         ugSourceDumped = true
                                         pcall(function()
-                                            -- ★ v16: จับโครงสร้าง aimPart + โค้ดจุด crash + ดัมพ์เต็มลงไฟล์
+
                                             local ugReport = {}
                                             local function ugLog(s)
                                                 ugReport[#ugReport + 1] = tostring(s)
@@ -2988,11 +2661,11 @@ InitSilentAim = function()
                                             end
                                             local ugModules = ReplicatedStorage:FindFirstChild("Modules")
                                             local ugFps = ugModules and ugModules:FindFirstChild("FPS")
-                                            -- ★ v20: รายชื่อโมดูลทั้งหมดใน ReplicatedStorage.Modules (หาโมดูลดาเมจ/คอมแบต)
+
                                             if ugModules then
                                                 pcall(function()
                                                     local ugModList = {}
-                                                    for _, ugKid in ugModules:GetDescendants() do
+                                                                                                        for _, ugKid in pairs(ugModules:GetDescendants()) do
                                                         if ugKid:IsA("ModuleScript") then
                                                             ugModList[#ugModList + 1] = ugKid.Name
                                                         end
@@ -3010,7 +2683,7 @@ InitSilentAim = function()
                                                     ugDumpTargets[#ugDumpTargets + 1] = { ugB, "FPS_Bullet(CreateBullet)", "Miko_FPS_Bullet_dump.txt" }
                                                 end
                                             end
-                                            for _, ugT in ugDumpTargets do
+                                                                                        for _, ugT in pairs(ugDumpTargets) do
                                                 local ugSrc = nil
                                                 pcall(function()
                                                     ugSrc = ugT[1].Source
@@ -3032,14 +2705,11 @@ InitSilentAim = function()
                                                     local ugLines = string.split(ugSrc, "\n")
                                                     ugLog("=== " .. ugT[2] .. ": " .. #ugLines .. " lines (ไฟล์เต็ม: " .. ugT[3] .. ") ===")
                                                     if ugT[2] == "FPS_main" then
-                                                        -- จุด crash: RangedWeaponDefault เริ่ม decomp 888 (orig 1001)
-                                                        -- error orig 1044 ≈ decomp ~931 = หลัง CreateBullet (decomp 914) ~17 บรรทัด
+
                                                         for i = 880, math.min(1010, #ugLines) do
                                                             ugLog(("%d| %s"):format(i, ugLines[i]))
                                                         end
-                                                        -- ★ v19: error FPS:904 "interval is empty" = เกมเรียก math.random
-                                                        -- ด้วยช่วงว่าง — สแกนหา "ทุกจุดที่เรียก random" ทั้งไฟล์ เรียงจาก
-                                                        -- ใกล้บรรทัด 904 มากไปน้อย พร้อมบริบทรอบ ๆ ให้จับสาเหตุได้ทันที
+
                                                         local ugRandHits = {}
                                                         for i = 1, #ugLines do
                                                             if ugLines[i]:lower():find("random", 1, true) then
@@ -3050,11 +2720,11 @@ InitSilentAim = function()
                                                             return math.abs(x - 904) < math.abs(y - 904)
                                                         end)
                                                         local ugRandShown = 0
-                                                        for _, i in ugRandHits do
+                                                                                                                for _, i in pairs(ugRandHits) do
                                                             if ugRandShown >= 12 then
                                                                 break
                                                             end
-                                                            ugRandShown += 1
+                                                            ugRandShown  = ugRandShown + (1)
                                                             ugLog(("--- random #%d @ บรรทัด %d ---"):format(ugRandShown, i))
                                                             for j = math.max(1, i - 2), math.min(#ugLines, i + 2) do
                                                                 ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
@@ -3064,10 +2734,7 @@ InitSilentAim = function()
                                                             ugLog("(ยังมีจุดเรียก random อีก " .. (#ugRandHits - 12) .. " จุด — ดูได้จากไฟล์เต็ม)")
                                                         end
                                                     end
-                                                    -- ★ 2026-11-01 v23: ดัมพ์ลึกช่วง "ตัดสินว่าโดนอะไร" ของ FPS_Bullet
-                                                    -- (544-591 = กระสุนตายที่ดิน/ก้อนดิน, 593-594 = สาย Humanoid,
-                                                    --  614-616 = สาย Health + ProjectileInflict:FireServer)
-                                                    -- หมุดด้วยคำ FindFirstChild("Humanoid") กันเลขบรรทัดเหลื่อม
+
                                                     if ugT[2] == "FPS_Bullet(CreateBullet)" then
                                                         local ugHLine = nil
                                                         for i = 1, #ugLines do
@@ -3088,24 +2755,23 @@ InitSilentAim = function()
                                                                 ugFsHits[#ugFsHits + 1] = i
                                                             end
                                                         end
-                                                        for _, i in ugFsHits do
+                                                                                                                for _, i in pairs(ugFsHits) do
                                                             ugLog(("--- FireServer @ บรรทัด %d (±6) ---"):format(i))
                                                             for j = math.max(1, i - 6), math.min(#ugLines, i + 6) do
                                                                 ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
                                                             end
                                                         end
                                                     end
-                                                    -- ★ v20: สแกนหา "โค้ดส่วนดาเมจ" ในทุกโมดูลที่อ่านได้
-                                                    -- (FPS_main + FPS_Bullet) — จุดที่เกมคิด/ส่งดาเมจจริง
+
                                                     local ugScanWords = { { "damage", 8 }, { "fireserver", 8 }, { "humanoid", 4 }, { "health", 4 } }
-                                                    for _, ugSW in ugScanWords do
+                                                                                                        for _, ugSW in pairs(ugScanWords) do
                                                         local ugCount = 0
                                                         for i = 1, #ugLines do
                                                             if ugCount >= ugSW[2] then
                                                                 break
                                                             end
                                                             if ugLines[i]:lower():find(ugSW[1], 1, true) then
-                                                                ugCount += 1
+                                                                ugCount  = ugCount + (1)
                                                                 ugLog(("--- %s #%d @ %s บรรทัด %d ---"):format(ugSW[1], ugCount, ugT[2], i))
                                                                 for j = math.max(1, i - 1), math.min(#ugLines, i + 1) do
                                                                     ugLog(("%s%d| %s"):format(j == i and ">>" or "  ", j, ugLines[j]))
@@ -3129,7 +2795,7 @@ InitSilentAim = function()
                                                 end)
                                             end
                                             print("[Miko][SRC] aimPart = " .. typeof(aimPart) .. (typeof(aimPart) == "Instance" and (" (" .. aimPart.Name .. " / " .. aimPart.ClassName .. ")") or ""))
-                                            for _, ugLn in ugReport do
+                                                                                        for _, ugLn in pairs(ugReport) do
                                                 print("[Miko][SRC] " .. ugLn)
                                             end
                                             if ugWrote then
@@ -3139,22 +2805,11 @@ InitSilentAim = function()
                                         end
                                 end
 
-                                -- ★ UG fix v11: สูตรเล็งแบบ "ยืนปกติ" ทั้งสองโหมด — ตอนยิงมุดดิน ตัวถูกยกขึ้นยืน
-                                -- เหนือผิวดินจริงแล้ว (SurfaceNow) จึงใช้คณิตชุดเดิมที่พิสูจน์ว่าโดนหัว ไม่ต้อง
-                                -- ชดเชย eye-origin/AimLower/Position อีกต่อไป (ตัวที่ทำให้เพี้ยนมาตั้งแต่ v7)
                                 local origin = GetAimOrigin(aimPart)
                                     or (Camera and Camera.CFrame.Position)
-                                -- ★ UG FD fix 2026-11-01 (ยิงจากใต้ดินให้เข้าจริง):
-                                -- Face Down กล้องจมดิน ถ้าจุดยิงเอาจากกล้อง/ปากกระบอกใต้ดิน
-                                -- ray ของเกมจะติดดินทุกนัด = ยิงไม่เข้าเลย (กระสุนหายในดิน)
-                                -- ถ้าจุดยิงอยู่ใต้ผิวดิน ให้ย้ายขึ้นเป็น "ระดับตาเหนือผิวดิน"
-                                -- (UG เดิมกล้องลอยเหนือดินอยู่แล้ว จุดยิงไม่ต่ำกว่าระดับตา
-                                --  จึงไม่เข้าเงื่อนไข = สูตรเดิมที่พิสูจน์ว่าโดนหัวไม่ถูกแตะ)
+
                                 local ugEyeOrigin = GetUndergroundEyeOrigin()
-                                -- ★ 2026-11-01 (ยิงแล้วไม่เห็นตัวเด้ง): ใช้จุดยิง "ระดับตาเหนือผิวดิน"
-                                -- ทุกนัด รวมถึงช่วง hold ที่ตัวถูกยกขึ้นยืนเบื้องหลัง — กระสุน/tracer
-                                -- จะออกจากระดับตาเหนือดินเสมอ ไม่พุ่งออกจากความสูงยืนของตัวที่ถูกยก
-                                -- (prediction/drop คิดจาก origin เดียวกัน = ความแม่นเท่าเดิม)
+
                                 if ugEyeOrigin and origin then
                                         origin = ugEyeOrigin
                                 end
@@ -3163,18 +2818,6 @@ InitSilentAim = function()
 
                                     local aimPoint = target.Position + targetOffset
 
-                                    -- ★ 2026-11-01 v14 (ยิงโดนคนเปิดมุดดิน — แก้ใหม่ทั้งชุด):
-                                    -- สาเหตุที่แท้จริงจากคลิปล่าสุด: v13 เดิม "ย้ายจุดเกิดกระสุนไปใต้ดินข้างหัวเป้า"
-                                    -- (ห่างตัวผู้ยิง 12+ หน่วย) เกมตรวจว่าจุดเกิดกระสุนต้องอยู่ใกล้ตัวผู้ยิง จึง
-                                    -- ปฏิเสธทุกนัด แล้ว fallback ยิงตาม crosshair จากปากกระบอกที่ยกขึ้นยืน = กระสุน
-                                    -- ลอยเหนือผิวดิน ไม่เคยดิ่งลงไปโดนเป้าเลย (ตรงตามคลิปที่ส่งมา)
-                                    -- v14 กลับไปใช้สูตรเดิมที่พิสูจน์แล้วว่า "UG ยิงโดนคนมุดดิน": จุดเกิดกระสุน =
-                                    -- ระดับตาเหนือผิวดิน (ใกล้ปากกระบอก) แล้วดิ่งเข้าหัวเป้า — กระสุนของเกมทะลุ
-                                    -- ดินได้ (พิสูจน์แล้วตั้งแต่ยุค v7 ยิงจากใต้ดินแล้วโดนขาคนยืน)
-                                    -- ส่วน "หมุดนิรนาม" ย้ายไปวาง "บนแนว crosshair ของกล้อง เลยเป้าออกไป 15 หน่วย"
-                                    -- เพราะกล้อง FD จมอยู่ใต้ผิวดิน แนวมองระดับพื้นวิ่งอยู่ในโพรงใต้ดินที่ว่างเปล่า
-                                    -- ray ของเกมจึงไม่เจออะไรเลย = error FPS:1044 ทุกนัด หมุดนี้ทำให้ ray มีของให้
-                                    -- โดน ไม่คืน nil และอยู่ไกลกว่าหัวเป้า = กระสุนโดนหัวเป้าก่อนเสมอ
                                     local ugTgtBuried = false
                                     local ugTgtSurfaceY = nil
                                     pcall(function()
@@ -3195,29 +2838,24 @@ InitSilentAim = function()
                                             Vector3.new(0, -160, 0),
                                             ugTgtParams
                                         )
-                                        -- ★ v14: เกณฑ์หลวมกว่าเดิม (0.3 -> 0.15) ตัวมุดดินลึกแค่ 0.1-1 หน่วยใต้ผิว
-                                        -- ถ้าใช้เกณฑ์ 0.3 เป้าที่จมตื้นจะไม่ถูกนับว่าอยู่ใต้ดินเลย
+
                                         if ugTgtHit and aimPoint.Y < ugTgtHit.Position.Y - 0.15 then
                                             ugTgtBuried = true
                                             ugTgtSurfaceY = ugTgtHit.Position.Y
                                         end
                                     end)
-                                    
-                                    -- ★ v14: สูตรเดิมที่พิสูจน์แล้ว (prediction + drop) ใช้กับเป้าทุกประเภท ทั้งคนยืน
-                                    -- และคนมุดดิน — ห้ามย้ายจุดเกิดกระสุนหนีตัวผู้ยิงอีกต่อไป (ต้องอยู่ใกล้ปากกระบอก)
+
                                     if ammo then
                                         local acceleration = ammo:GetAttribute("ProjectileDrop") or 0
                                         local projectileSpeed = ammo:GetAttribute("MuzzleVelocity") or 1000
                                         ammo:SetAttribute("Drag", 0)
-                                    
+
                                         if SilentAim.Prediction then
                                             aimPoint = PredictTarget(target, origin, projectileSpeed, acceleration) + targetOffset
                                         end
                                         aimPoint = aimPoint + ProjectileDrop(origin, aimPoint, projectileSpeed, acceleration)
                                     end
-                                    
-                                    -- ★ v14: เป้าใต้ดิน = วางหมุดนิรนามบนแนว crosshair ของกล้องเลยเป้าออกไป 15 หน่วย
-                                    -- กัน ray ตามแนวมองของกล้องจมดินคืน nil (error FPS:1044 -> fallback ยิงพลาด)
+
                                     if ugTgtBuried then
                                         pcall(function()
                                             local ugCam = workspace.CurrentCamera
@@ -3236,10 +2874,8 @@ InitSilentAim = function()
                                         end)
                                     end
 
-                                    -- ★ UG fix v11: diagnostic เฉพาะช็อตมุดดิน (5 นัดแรก) — los=clear = เส้นยิงจาก
-                                    -- ตัวที่ยืนอยู่เหนือผิวดินมองเห็นเป้าตรง ๆ ไม่มีอะไรบัง
                                     if ugActive and ugDiagCount < 5 then
-                                        ugDiagCount += 1
+                                        ugDiagCount  = ugDiagCount + (1)
                                         local ugLosText = "clear"
                                         pcall(function()
                                             local ugLosParams = RaycastParams.new()
@@ -3271,13 +2907,6 @@ InitSilentAim = function()
                                     ))
                                     end
 
-                                    -- ★ v16 (จากซอร์สเกมที่ dump ได้): RangedWeaponDefault เรียก
-                                    -- Bullet:CreateBullet(weapon, worldModel, viewModel, aimPart, ...)
-                                    -- แล้วเกมอ่าน aimPart.CFrame "ตัวจริง" ตรง ๆ — การส่งตาราง/part
-                                    -- ปลอมทำให้ CreateBullet คืนค่าไม่ครบ เกมอ่าน .y ของ nil ทันที
-                                    -- หลัง CreateBullet ~17 บรรทัด = crash FPS:1044 ทุกนัด แล้ว
-                                    -- fallback ยิงตาม crosshair = กระสุนลอยเหนือดิน
-                                    -- → ห้ามส่งของปลอมอีกต่อไป: ใช้ "ยืมตัวจริง" ผ่าน ugFireBullet
                                     finalAim = aimPart
                                     local ugFireFrom, ugFireAt = origin, aimPoint
                                     if Misc and Misc.WallPenetration and not ugTgtBuried then
@@ -3293,24 +2922,12 @@ InitSilentAim = function()
                         end
                 end
 
-                -- Wallbang without silent aim: fire from past walls along aim line
-                -- (Underground: finalAim = aimPart ดั้งเดิมของเกม การเล็งปกติไม่ถูก
-                -- แทรกแซง ส่วนการแก้ "ยิงโดนขา" ทำใน silent aim branch ด้านบนเท่านั้น)
-                -- ★ UG FD fix 2026-11-01: เล็งปกติ (ไม่ผ่าน Silent Aim) ตอน Face Down —
-                -- กล้องจมดิน ยิงตาม crosshair จากใต้ดิน = กระสุนติดดินตายทุกนัด
-                -- จึงย้ายจุดยิงขึ้นระดับตาเหนือผิวดินแล้วยิงตามแนวมอง crosshair เดิม
-                -- (Underground เดิมไม่แตะเลย — กล้องอยู่เหนือดิน เล็งปกติได้อยู่แล้ว)
-                local ugConeUsed = false -- ★ v14: ธง "ช็อตนี้ดิ่งเข้าเป้ามุดดิน" (คุมการข้าม ResolveWallbangAim)
-                local ugFireFrom, ugFireAt = nil, nil -- ★ v16: จุดยิง/จุดเป้าสำหรับ ugFireBullet (ยืม aimPart ตัวจริง)
+                local ugConeUsed = false
+                local ugFireFrom, ugFireAt = nil, nil
                 if Misc and Misc.UndergroundFaceDown and not Misc.Underground then
                         local ugEyeCross = GetUndergroundEyeOrigin()
                         if ugEyeCross then
-                                -- ★ v14: ก่อนยิงตาม crosshair ลองหา "คนมุดดิน" ในกรวยเล็ง 7° ก่อน —
-                                -- ป้ายชื่อลอยเหนือผิวดิน ยิงตาม crosshair ตรง ๆ แล้วกระสุนจะลอยเหนือ
-                                -- ตัวเป้าไปทั้งนัด ถ้าเจอเป้ามุดดินให้ดิ่งเข้าหัวเป้าแทน พร้อมวางหมุด
-                                -- นิรนามบนแนว crosshair กัน ray ของเกมคืน nil
-                                -- (กันโกงเป้า: ถ้าแนว crosshair โดนตัว "คนยืนปกติ" ก่อน = ยิงตาม
-                                --  crosshair ปกติ ห้ามดึงไปหาเป้ามุดดินข้าง ๆ เด็ดขาด)
+
                                 local ugConeAim, ugConePart = nil, nil
                                 pcall(function()
                                         local ugLookC = GetAimLook(aimPart)
@@ -3347,32 +2964,28 @@ InitSilentAim = function()
                                                         end
                                                 end
                                         end)
-                                        -- ★ v16: ยืม aimPart ตัวจริง (ugFireBullet) แทน struct ปลอม
+
                                         ugFireFrom, ugFireAt = ugEyeCross, ugConeAim
                                 else
                                         ugFireFrom, ugFireAt = ugEyeCross, ugEyeCross + GetAimLook(aimPart) * 500
                                 end
                         end
                 end
-                -- ★ v14: ช็อต cone-aim เป้าใต้ดินห้ามผ่าน ResolveWallbangAim — เส้นยิงดิ่งลง
-                -- ใต้ผิวดิน ray เดินหากำแพงใต้ดินไม่เจอแล้วย้ายจุดยิงเสียเอง
+
                 if Misc and Misc.WallPenetration and not ugConeUsed then
                         finalAim = ResolveWallbangAim(finalAim, nil)
                 end
-                -- ★ v16: ช็อตมุดดิน (FD) = ยืม aimPart ตัวจริงยิง ไม่ส่ง struct ปลอม
+
                 if ugFireFrom and ugFireAt then
                         return ugFireBullet(idk, model, model2, model3, aimPart, idk2, ammoType, tick, recoilPattern, ugFireFrom, ugFireAt, ugConeUsed == true)
                 end
 
-                -- ★ v18: คืนค่าครบทุกตัว + ซ่อม pattern ถ้า nil (กัน FPS:1044 ทุกเส้นทางยิง)
                 return ugFinishCreateBullet(
                         ugPack(oldCreateBullet(idk, model, model2, model3, finalAim, idk2, ammoType, tick, recoilPattern)),
                         idk, model, model2, model3, recoilPattern
                 )
         end
 
-        -- ★ Silent Aim fix v4: ติดตั้ง hook แบบมี fallback 3 ชั้น เพราะ
-        -- executor บางตัว (เช่น Solara) hookfunction อาจไม่รองรับ/ไม่ผล
         local ugInstallMsg = nil
 
         if typeof(hookfunction) == "function" then
@@ -3384,12 +2997,11 @@ InitSilentAim = function()
         end
 
         if not ugInstallMsg then
-                -- ชั้นสำรอง 1: แทนที่ฟิลด์ CreateBullet ในตารางโมดูล (จับ dot-call)
+
                 oldCreateBullet = BulletModule.CreateBullet
                 BulletModule.CreateBullet = ugSilentWrapper
                 ugInstallMsg = "table replace"
 
-                -- ชั้นสำรอง 2: แยก __namecall จับ colon-call (BulletModule:CreateBullet)
                 if typeof(hookmetamethod) == "function" and typeof(getnamecallmethod) == "function" then
                         pcall(function()
                                 local wrapFn = typeof(newcclosure) == "function" and newcclosure or function(fn)
@@ -3587,9 +3199,6 @@ SilentAimBox:AddToggle("SilentAimPrediction", {
         end,
 })
 
-----------------------------------------------------------------
--- Visuals / ESP (ScreenGui lines â€” works without Drawing API)
-----------------------------------------------------------------
 local ESP = {
         Bone = false,
         Box = false,
@@ -3726,7 +3335,7 @@ local LastCrateLabelRefresh = 0
 local CrateScanInterval = 4
 local LandmineScanInterval = 2
 local CrateLabelRefreshInterval = 0.15
--- ★ FPS fix v37: 0.75 -> 2 วิ (สแกนทั้งแมพบ่อยเกิน ของใหม่ยังโผล่ทันทีผ่าน hook DescendantAdded)
+
 local ExtractionScanInterval = 2
 local ExtractionDescendantHook = false
 local LandmineDescendantHook = false
@@ -3809,7 +3418,7 @@ local function HideGuiLines(lines)
         if not lines then
                 return
         end
-        for _, line in lines do
+                for _, line in pairs(lines) do
                 if line then
                         line.Visible = false
                 end
@@ -4122,7 +3731,7 @@ local function ClearWireAdornments(data)
         end
 
         if data.WireCharacter and data.WireCharacter.Parent then
-                for _, child in data.WireCharacter:GetChildren() do
+                                for _, child in pairs(data.WireCharacter:GetChildren()) do
                         if child:IsA("BasePart") then
                                 local wire = child:FindFirstChild("Wireframe")
                                 if wire then
@@ -4141,15 +3750,11 @@ local function ClearWireframeChams(data)
         ClearWireAdornments(data)
 end
 
-----------------------------------------------------------------
--- WireFrame ESP — exact WireframeHandleAdornment method you provided
-----------------------------------------------------------------
 local function createWireframe(part, color, thickness)
         if not part:IsA("BasePart") then
                 return nil
         end
 
-        -- Skip invisible/helper parts
         if part.Transparency >= 1 then
                 return nil
         end
@@ -4187,7 +3792,6 @@ local function createWireframe(part, color, thickness)
         local p7 = Vector3.new(half.X, half.Y, half.Z)
         local p8 = Vector3.new(-half.X, half.Y, half.Z)
 
-        -- Outer edges
         wire:AddLine(p1, p2)
         wire:AddLine(p2, p3)
         wire:AddLine(p3, p4)
@@ -4203,7 +3807,6 @@ local function createWireframe(part, color, thickness)
         wire:AddLine(p3, p7)
         wire:AddLine(p4, p8)
 
-        -- A couple of diagonals for the triangular look
         wire:AddLine(p1, p3)
         wire:AddLine(p5, p7)
 
@@ -4213,7 +3816,6 @@ end
 local function ApplyWireframeChams(character, data, color)
         DestroyChamsHighlight(data)
 
-        -- New character (respawn) — re-run setup like your CharacterAdded hook
         if data.WireCharacter and data.WireCharacter ~= character then
                 ClearWireAdornments(data)
         end
@@ -4222,7 +3824,6 @@ local function ApplyWireframeChams(character, data, color)
         data.WireAdornments = data.WireAdornments or {}
         data.WireCharacter = character
 
-        -- Same as your setupCharacter: only direct BasePart children
         for _, object in ipairs(character:GetChildren()) do
                 if object:IsA("BasePart") then
                         local wire = createWireframe(object, color, thickness)
@@ -4232,7 +3833,6 @@ local function ApplyWireframeChams(character, data, color)
                 end
         end
 
-        -- Same as your ChildAdded hook (once per character)
         if not data.WireChildConn then
                 data.WireChildConn = character.ChildAdded:Connect(function(object)
                         if object:IsA("BasePart") then
@@ -4248,7 +3848,7 @@ local function ApplyWireframeChams(character, data, color)
                         end
                 end)
         else
-                -- Keep color in sync while WireFrame stays on
+
                 for part, wire in pairs(data.WireAdornments) do
                         if wire and wire.Parent and part.Parent then
                                 wire.Color3 = color
@@ -4265,7 +3865,7 @@ local function ClearPlayerESP(player)
         end
 
         if data.Lines then
-                for _, line in data.Lines do
+                                for _, line in pairs(data.Lines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4273,7 +3873,7 @@ local function ClearPlayerESP(player)
         end
 
         if data.BoxLines then
-                for _, line in data.BoxLines do
+                                for _, line in pairs(data.BoxLines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4281,7 +3881,7 @@ local function ClearPlayerESP(player)
         end
 
         if data.HatLines then
-                for _, line in data.HatLines do
+                                for _, line in pairs(data.HatLines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4500,7 +4100,7 @@ local function ClearCharacterESPData(data)
         end
 
         if data.Lines then
-                for _, line in data.Lines do
+                                for _, line in pairs(data.Lines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4508,7 +4108,7 @@ local function ClearCharacterESPData(data)
         end
 
         if data.BoxLines then
-                for _, line in data.BoxLines do
+                                for _, line in pairs(data.BoxLines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4516,7 +4116,7 @@ local function ClearCharacterESPData(data)
         end
 
         if data.HatLines then
-                for _, line in data.HatLines do
+                                for _, line in pairs(data.HatLines) do
                         if line then
                                 line:Destroy()
                         end
@@ -4919,7 +4519,7 @@ local function IsLikelyBulletPart(part)
         end
 
         local name = part.Name:lower()
-        for _, keyword in BulletPartKeywords do
+                for _, keyword in pairs(BulletPartKeywords) do
                 if name:find(keyword, 1, true) then
                         return true
                 end
@@ -5003,7 +4603,7 @@ local function HookBulletTracerCharacter(character)
                 return
         end
 
-        for _, child in character:GetChildren() do
+                for _, child in pairs(character:GetChildren()) do
                 HookBulletTracerTool(child)
         end
 
@@ -5034,6 +4634,10 @@ local NameMatchesContainer, NameMatchesContainerModel
 local GunChamHighlight = nil
 local GunChamTarget = nil
 local GunChamPartCache = {}
+
+local GunChamLastColor = nil
+local GunChamLastApplyAt = 0
+local GunLookupCache = { Character = nil, Gun = nil, At = 0 }
 
 local GunChamFolder = Instance.new("Folder")
 GunChamFolder.Name = "WallhackGunCham"
@@ -5113,7 +4717,7 @@ local CharacterBodyNames = {
 
 local function NameLooksLikeGun(name)
         name = name:lower()
-        for _, keyword in GunNameKeywords do
+                for _, keyword in pairs(GunNameKeywords) do
                 if name:find(keyword, 1, true) then
                         return true
                 end
@@ -5126,7 +4730,7 @@ local function ModelHasHumanoid(model)
 end
 
 local function ModelHasWeaponPart(model)
-        for _, desc in model:GetDescendants() do
+                for _, desc in pairs(model:GetDescendants()) do
                 if desc:IsA("Attachment") then
                         local partName = desc.Name:lower()
                         if partName:find("muzzle", 1, true)
@@ -5226,9 +4830,9 @@ end
 
 local function CountGunParts(model)
         local count = 0
-        for _, part in model:GetDescendants() do
+                for _, part in pairs(model:GetDescendants()) do
                 if part:IsA("BasePart") and not IsExcludedGunPart(part) then
-                        count += 1
+                        count  = count + (1)
                 end
         end
         return count
@@ -5242,29 +4846,29 @@ local function FindWeaponModelInContainer(container)
         local best = nil
         local bestScore = 0
 
-        for _, desc in container:GetDescendants() do
+                for _, desc in pairs(container:GetDescendants()) do repeat
                 if desc:IsA("Model") and not ModelHasHumanoid(desc) and not IsCharacterBodyModel(desc) then
                         if not ModelHasWeaponPart(desc) then
-                                continue
+                                break
                         end
 
                         local score = 0
                         local name = desc.Name:lower()
 
-                        score += 40
+                        score  = score + (40)
                         if NameLooksLikeGun(name) then
-                                score += 25
+                                score  = score + (25)
                         end
                         if name:find("arm", 1, true) or name:find("hand", 1, true) or name:find("sleeve", 1, true) then
-                                score -= 60
+                                score  = score - (60)
                         end
 
                         local partCount = CountGunParts(desc)
 
                         if partCount >= 1 and partCount <= 35 then
-                                score += math.min(partCount, 12)
+                                score  = score + (math.min(partCount, 12))
                         else
-                                continue
+                                break
                         end
 
                         if score > bestScore then
@@ -5272,6 +4876,7 @@ local function FindWeaponModelInContainer(container)
                                 best = desc
                         end
                 end
+        until true
         end
 
         if best and bestScore >= 20 then
@@ -5303,7 +4908,7 @@ local function FindWeaponByMuzzle(root)
                 return nil
         end
 
-        for _, desc in root:GetDescendants() do
+                for _, desc in pairs(root:GetDescendants()) do
                 if desc:IsA("Attachment") then
                         local name = desc.Name:lower()
                         if name:find("muzzle", 1, true)
@@ -5350,7 +4955,7 @@ local function GetWeaponFromHands(character)
         end
 
         local bodyParts = {}
-        for _, part in character:GetDescendants() do
+                for _, part in pairs(character:GetDescendants()) do
                 if part:IsA("BasePart") then
                         bodyParts[part] = true
                 end
@@ -5363,7 +4968,7 @@ local function GetWeaponFromHands(character)
                                 return hand:GetConnectedParts(true)
                         end)
                         if ok and connected then
-                                for _, part in connected do
+                                                                for _, part in pairs(connected) do
                                         if not bodyParts[part] then
                                                 local model = part:FindFirstAncestorOfClass("Model")
                                                 if model and model ~= character and not ModelHasHumanoid(model) then
@@ -5386,9 +4991,9 @@ local function FindGunInRoot(root, results, seen, preferViewModel)
                 return
         end
 
-        for _, desc in root:GetDescendants() do
+                for _, desc in pairs(root:GetDescendants()) do repeat
                 if seen[desc] then
-                        continue
+                        break
                 end
 
                 if desc:IsA("Tool") then
@@ -5398,29 +5003,30 @@ local function FindGunInRoot(root, results, seen, preferViewModel)
                         local score = 0
                         local name = desc.Name:lower()
                         if preferViewModel then
-                                score += 25
+                                score  = score + (25)
                         end
                         if NameLooksLikeGun(name) then
-                                score += 15
+                                score  = score + (15)
                         end
                         if name:find("viewmodel", 1, true) or name:find("view_model", 1, true) or name:find("arms", 1, true) then
-                                score += 20
+                                score  = score + (20)
                         end
                         if ModelHasWeaponPart(desc) then
-                                score += 12
+                                score  = score + (12)
                         end
                         local partCount = 0
-                        for _, part in desc:GetDescendants() do
+                                                for _, part in pairs(desc:GetDescendants()) do
                                 if part:IsA("BasePart") then
-                                        partCount += 1
+                                        partCount  = partCount + (1)
                                 end
                         end
-                        score += math.min(partCount, 8)
+                        score  = score + (math.min(partCount, 8))
                         if score >= 4 then
                                 seen[desc] = true
                                 table.insert(results, { Object = desc, Score = score })
                         end
                 end
+        until true
         end
 end
 
@@ -5432,7 +5038,7 @@ local function FindCameraGunModel(camera)
         local best = nil
         local bestScore = 0
 
-        for _, desc in camera:GetDescendants() do
+                for _, desc in pairs(camera:GetDescendants()) do repeat
                 if desc:IsA("Tool") then
                         return desc
                 end
@@ -5442,25 +5048,25 @@ local function FindCameraGunModel(camera)
                         if (name:find("arm", 1, true) or name:find("hand", 1, true) or name:find("sleeve", 1, true))
                                 and not NameLooksLikeGun(name)
                         then
-                                continue
+                                break
                         end
 
                         local score = 0
                         if ModelHasWeaponPart(desc) then
-                                score += 35
+                                score  = score + (35)
                         end
                         if NameLooksLikeGun(name) then
-                                score += 25
+                                score  = score + (25)
                         end
                         if name:find("viewmodel", 1, true) or name:find("view_model", 1, true) or name:find("item", 1, true) then
-                                score += 15
+                                score  = score + (15)
                         end
 
                         local partCount = CountGunParts(desc)
                         if partCount >= 1 and partCount <= 45 then
-                                score += math.min(partCount, 12)
+                                score  = score + (math.min(partCount, 12))
                         else
-                                continue
+                                break
                         end
 
                         if score > bestScore then
@@ -5468,6 +5074,7 @@ local function FindCameraGunModel(camera)
                                 best = desc
                         end
                 end
+        until true
         end
 
         if best and bestScore >= 8 then
@@ -5503,7 +5110,7 @@ local function GetEquippedGun(character)
                         return handGun
                 end
 
-                for _, child in character:GetChildren() do
+                                for _, child in pairs(character:GetChildren()) do
                         if child:IsA("Tool") then
                                 return child
                         end
@@ -5515,7 +5122,7 @@ local function GetEquippedGun(character)
 
                 local best = nil
                 local bestScore = 0
-                for _, entry in results do
+                                for _, entry in pairs(results) do
                         if entry.Score > bestScore then
                                 bestScore = entry.Score
                                 best = entry.Object
@@ -5570,6 +5177,7 @@ ClearGunCham = function()
         end
 
         GunChamTarget = nil
+        GunChamLastColor = nil
 end
 
 local function EnsureGunGlowLight(part, color)
@@ -5582,10 +5190,21 @@ local function EnsureGunGlowLight(part, color)
                 light.Name = "WallhackGunGlow"
                 light.Shadows = false
                 light.Parent = part
+                light.Color = color
+                light.Brightness = 4.5
+                light.Range = 12
+                return light
         end
-        light.Color = color
-        light.Brightness = 4.5
-        light.Range = 12
+
+        if light.Color ~= color then
+                light.Color = color
+        end
+        if light.Brightness ~= 4.5 then
+                light.Brightness = 4.5
+        end
+        if light.Range ~= 12 then
+                light.Range = 12
+        end
         return light
 end
 
@@ -5601,13 +5220,27 @@ local function ApplyGunCham(gun)
                 return
         end
 
+        local color = ESP.GunChamColor
+
+        local nowGun = tick()
+        if GunChamTarget == gun and GunChamLastColor == color and (nowGun - GunChamLastApplyAt) < 0.2 then
+                for part in pairs(GunChamPartCache) do
+                        if part.Parent and part.LocalTransparencyModifier ~= -0.35 then
+                                pcall(function()
+                                        part.LocalTransparencyModifier = -0.35
+                                end)
+                        end
+                end
+                return
+        end
+        GunChamLastApplyAt = nowGun
+
         if GunChamTarget ~= gun then
                 ClearGunCham()
                 GunChamTarget = gun
         end
+        GunChamLastColor = color
 
-        local color = ESP.GunChamColor
-        -- Punch the color brighter so Neon reads as a real glow
         local glowColor = Color3.new(
                 math.clamp(color.R * 1.35 + 0.15, 0, 1),
                 math.clamp(color.G * 1.35 + 0.15, 0, 1),
@@ -5627,16 +5260,22 @@ local function ApplyGunCham(gun)
                         }
                 end
 
-                part.Material = Enum.Material.Neon
-                part.Color = glowColor
-                pcall(function()
-                        part.LocalTransparencyModifier = -0.35
-                end)
+                if part.Material ~= Enum.Material.Neon then
+                        part.Material = Enum.Material.Neon
+                end
+                if part.Color ~= glowColor then
+                        part.Color = glowColor
+                end
+                if part.LocalTransparencyModifier ~= -0.35 then
+                        pcall(function()
+                                part.LocalTransparencyModifier = -0.35
+                        end)
+                end
                 EnsureGunGlowLight(part, glowColor)
-                appliedParts += 1
+                appliedParts  = appliedParts + (1)
         end
 
-        for _, part in gun:GetDescendants() do
+                for _, part in pairs(gun:GetDescendants()) do
                 stylePart(part)
         end
 
@@ -5659,24 +5298,51 @@ local function ApplyGunCham(gun)
                 GunChamHighlight = highlight
         end
 
-        GunChamHighlight.Adornee = gun
-        GunChamHighlight.FillColor = glowColor
-        GunChamHighlight.OutlineColor = Color3.new(1, 1, 1)
-        GunChamHighlight.FillTransparency = 0.05
-        GunChamHighlight.OutlineTransparency = 0
-        GunChamHighlight.Enabled = true
+        if GunChamHighlight.Adornee ~= gun then
+                GunChamHighlight.Adornee = gun
+        end
+        if GunChamHighlight.FillColor ~= glowColor then
+                GunChamHighlight.FillColor = glowColor
+        end
+        if GunChamHighlight.OutlineColor ~= Color3.new(1, 1, 1) then
+                GunChamHighlight.OutlineColor = Color3.new(1, 1, 1)
+        end
+        if GunChamHighlight.FillTransparency ~= 0.05 then
+                GunChamHighlight.FillTransparency = 0.05
+        end
+        if GunChamHighlight.OutlineTransparency ~= 0 then
+                GunChamHighlight.OutlineTransparency = 0
+        end
+        if not GunChamHighlight.Enabled then
+                GunChamHighlight.Enabled = true
+        end
+end
+
+local function GetEquippedGunCached(character)
+        local nowLookup = os.clock()
+        if GunLookupCache.Character == character and (nowLookup - GunLookupCache.At) < 0.1 then
+                return GunLookupCache.Gun
+        end
+        local gun = GetEquippedGun(character)
+        GunLookupCache.Character = character
+        GunLookupCache.Gun = gun
+        GunLookupCache.At = nowLookup
+        return gun
 end
 
 UpdateGunCham = function()
         SyncESPFromUI()
 
         if not ESP.GunCham then
-                ClearGunCham()
+
+                if GunChamTarget ~= nil or GunChamHighlight ~= nil or next(GunChamPartCache) ~= nil then
+                        ClearGunCham()
+                end
                 return
         end
 
         local character = LocalPlayer.Character
-        local gun = GetEquippedGun(character)
+        local gun = GetEquippedGunCached(character)
         if gun then
                 ApplyGunCham(gun)
         else
@@ -5756,7 +5422,7 @@ end
 
 IsLikelyNPC = function(name)
         name = name:lower()
-        for _, keyword in NPCKeywords do
+                for _, keyword in pairs(NPCKeywords) do
                 if name:find(keyword, 1, true) then
                         return true
                 end
@@ -5800,7 +5466,7 @@ IsExcludedWorldProp = function(name)
                 "mesh",
                 "union",
         }
-        for _, word in excluded do
+                for _, word in pairs(excluded) do
                 if name:find(word, 1, true) then
                         return true
                 end
@@ -5810,7 +5476,7 @@ end
 
 NameMatchesContainer = function(name)
         name = name:lower()
-        for _, keyword in ContainerKeywords do
+                for _, keyword in pairs(ContainerKeywords) do
                 if name:find(keyword, 1, true) then
                         return true
                 end
@@ -5887,20 +5553,20 @@ NameMatchesContainerModel = function(name)
                 return false
         end
 
-        for _, exact in ContainerNameKeys do
+                for _, exact in pairs(ContainerNameKeys) do
                 local normalizedExact = exact:gsub("%s", "")
                 if key == normalizedExact or key:find(normalizedExact, 1, true) then
                         return true
                 end
         end
 
-        for _, keyword in StrictContainerKeywords do
+                for _, keyword in pairs(StrictContainerKeywords) do
                 if key:find(keyword:gsub("%s", ""), 1, true) then
                         return true
                 end
         end
 
-        for _, keyword in ContainerKeywords do
+                for _, keyword in pairs(ContainerKeywords) do
                 local normalizedKeyword = keyword:gsub("%s", "")
                 if normalizedKeyword ~= ""
                         and #normalizedKeyword >= 4
@@ -5937,14 +5603,13 @@ end)();
 
 local UpdateESP, UpdateNpcESP, UpdateCrateESP, UpdateLandmineESP, UpdateExtractionESP, EnsureExtractionDescendantHook
 local DrawCharacterESP
-local ScanNPCs -- forward decl: NPC ESP, TP target list and radar map share one scan
-local MapESPStatusLabel -- forward decl: the label is created in the
--- World ESP UI section (different IIFE) and used by the Map ESP
--- engine at the bottom, so it must live at chunk scope like ScanNPCs
-local EspMapFullOpen, EspMapFullClose -- forward decl: the ESP Map UI toggle (another IIFE) calls these engine functions
-local EspMapFullSyncing -- re-entrancy guard: the Misc mirror toggle and the World ESP original sync each other, must live at chunk scope
-local EspMapMiscStatusLabel -- forward decl: mirror status label created in the Misc UI section (another IIFE), updated by EspMapFullSetStatus
-local EspMapFullGetHoverPlayer -- forward decl: returns the player whose map marker the mouse is hovering (assigned in the Map ESP engine IIFE); Item X-Ray reads this
+local ScanNPCs
+local MapESPStatusLabel
+
+local EspMapFullOpen, EspMapFullClose
+local EspMapFullSyncing
+local EspMapMiscStatusLabel
+local EspMapFullGetHoverPlayer
 local GetInstanceWorldPosition, PromptMatchesExtraction
 local ExtractionTags, ExtractionKeywords, ExtractionFolderNames, ExtractionAttributeNames
 local HasExtractionAttribute, NameMatchesExtraction, HasExtractionTag, TextMatchesExtraction
@@ -6245,7 +5910,6 @@ local function UpdateChams(character, data, cfg)
                 ApplyWireframeChams(character, data, GetVisColor(cfg, character, cfg.ChamsColor))
                 return
         end
-
 
         ClearWireframeChams(data)
 
@@ -6560,7 +6224,7 @@ UpdateESP = function()
 
         local hasESP = PlayerNeedsESP()
 
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 if player ~= LocalPlayer then
                         local character = player.Character
                         local shouldDraw = hasESP and character ~= nil
@@ -6606,7 +6270,7 @@ end
 end)(); (function()
 
 local function IsDescendantOfAnyPlayerCharacter(model)
-        for _, player in Players:GetPlayers() do
+                for _, player in pairs(Players:GetPlayers()) do
                 local character = player.Character
                 if character and (model == character or model:IsDescendantOf(character)) then
                         return true
@@ -6670,28 +6334,41 @@ local function NpcNeedsESP()
                 or NpcESP.HealthText
 end
 
--- ★ FPS fix v37: แคชผลสแกน NPC 1 วิ แชร์ทุกผู้ใช้ (NPC ESP / เรดาร์ / ลิสต์ TP ของ FreeCam /
---   แผนที่ใหญ่) เดิมแต่ละระบบสแกนแยกกันเอง ตอนแมพไม่มี AiZones = เดิน workspace ทั้งแมพ
---   คนละรอบซ้อนเวลากัน ทุกคนได้ชุดผลลัพธ์เดิม (ตารางถูกอ่านอย่างเดียว ไม่มีใครแก้)
 local ScanNpcCache = nil
 local ScanNpcCacheAt = 0
+local MikoNpcWorkerBusy = false
+local MikoNpcScanRequest = false
 local ScanNPCsRaw = nil
 ScanNPCs = function()
-        if ScanNpcCache and (os.clock() - ScanNpcCacheAt) < 1 then
+        local nowC = os.clock()
+        if ScanNpcCache and (nowC - ScanNpcCacheAt) < 1.25 then
                 return ScanNpcCache
         end
-        local resultNpc = ScanNPCsRaw()
-        ScanNpcCache = resultNpc
-        ScanNpcCacheAt = os.clock()
-        return resultNpc
+        if MikoNpcWorkerBusy then
+                return ScanNpcCache or {}
+        end
+        MikoNpcScanRequest = true
+        if ScanNpcCache then
+                return ScanNpcCache
+        end
+
+        MikoNpcWorkerBusy = true
+        local okFirst, firstResult = pcall(ScanNPCsRaw)
+        MikoNpcWorkerBusy = false
+        if okFirst and type(firstResult) == "table" then
+                ScanNpcCache = firstResult
+                ScanNpcCacheAt = os.clock()
+                return firstResult
+        end
+        return {}
 end
 ScanNPCsRaw = function()
         local found = {}
         local aiZones = workspace:FindFirstChild("AiZones")
 
         if aiZones then
-                for _, zone in aiZones:GetChildren() do
-                        for _, character in zone:GetChildren() do
+                                for _, zone in pairs(aiZones:GetChildren()) do
+                                                for _, character in pairs(zone:GetChildren()) do
                                 if character:IsA("Model") and IsNpcCharacter(character) then
                                         found[character] = {
                                                 Instance = character,
@@ -6703,16 +6380,42 @@ ScanNPCsRaw = function()
                 return found
         end
 
-        for _, obj in workspace:GetDescendants() do
+        local npcDescs = workspace:GetDescendants()
+        for ni = 1, #npcDescs do
+                local obj = npcDescs[ni]
                 if obj:IsA("Model") and IsNpcCharacter(obj) then
                         found[obj] = {
                                 Instance = obj,
                                 Name = obj.Name:gsub("_", " "),
                         }
                 end
+                if ni % 2000 == 0 then
+                        task.wait()
+                end
         end
 
         return found
+end
+
+do
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        local nowC = os.clock()
+                        local stale = (ScanNpcCache == nil) or ((nowC - ScanNpcCacheAt) >= 1)
+                        if not MikoNpcWorkerBusy and stale
+                                and (MikoNpcScanRequest or NpcNeedsESP()) then
+                                MikoNpcScanRequest = false
+                                MikoNpcWorkerBusy = true
+                                local okNpcW, npcWResult = pcall(ScanNPCsRaw)
+                                MikoNpcWorkerBusy = false
+                                if okNpcW and type(npcWResult) == "table" then
+                                        ScanNpcCache = npcWResult
+                                        ScanNpcCacheAt = os.clock()
+                                end
+                        end
+                end
+        end)
 end
 
 local function DrawNpcESP(npc, npcData)
@@ -6859,7 +6562,7 @@ local function PromptMatchesLootContainer(prompt, targetName)
 end
 
 local function HasContainerTag(instance)
-        for _, tag in ContainerTags do
+                for _, tag in pairs(ContainerTags) do
                 if CollectionService:HasTag(instance, tag) then
                         return true
                 end
@@ -6868,7 +6571,7 @@ local function HasContainerTag(instance)
 end
 
 local function HasLootPrompt(model)
-        for _, desc in model:GetDescendants() do
+                for _, desc in pairs(model:GetDescendants()) do
                 if desc:IsA("ProximityPrompt") and PromptMatchesLootContainer(desc, model.Name) then
                         return true
                 end
@@ -7009,7 +6712,7 @@ local function GetCrateScreenBounds(crate, crateData)
         local maxX, maxY = -math.huge, -math.huge
         local any = false
 
-        for _, corner in corners do
+                for _, corner in pairs(corners) do
                 local p, ok = WorldToScreenAny(corner)
                 if ok then
                         any = true
@@ -7048,9 +6751,6 @@ local function GetCrateScreenBounds(crate, crateData)
         }
 end
 
--- ★ FPS fix v37: แคชฟอลเดอร์ของ Container ESP (เดิม workspace:FindFirstChild(name, true)
---   ทีละชื่อ 9 ชื่อ = เดินทั้งแมพ 9 รอบทุกครั้งที่สแกน) หาใหม่เฉพาะตอนฟอลเดอร์หาย/ยังไม่เกิด
---   (พยายามซ้ำไม่บ่อยกว่าทุก 5 วิ) ผลลัพธ์เท่าเดิม
 local CrateFolderCache = {}
 local CrateFolderMissAt = {}
 local function FindCrateFolderCached(folderName)
@@ -7076,8 +6776,8 @@ end
 local function ScanCrates()
         local found = {}
 
-        for _, tag in ContainerTags do
-                for _, obj in CollectionService:GetTagged(tag) do
+                for _, tag in pairs(ContainerTags) do
+                                for _, obj in pairs(CollectionService:GetTagged(tag)) do
                         local model = GetContainerModel(obj)
                         if model then
                                 TryAddContainer(found, model)
@@ -7085,10 +6785,10 @@ local function ScanCrates()
                 end
         end
 
-        for _, folderName in ContainerFolderNames do
+                for _, folderName in pairs(ContainerFolderNames) do
                 local folder = FindCrateFolderCached(folderName)
                 if folder then
-                        for _, obj in folder:GetDescendants() do
+                                                for _, obj in pairs(folder:GetDescendants()) do
                                 if obj:IsA("ProximityPrompt") then
                                         TryAddContainerFromPrompt(found, obj)
                                 elseif obj:IsA("Model") then
@@ -7109,9 +6809,14 @@ local function ScanCrates()
                 end
         end
 
-        for _, obj in workspace:GetDescendants() do
+        local crateDescs = workspace:GetDescendants()
+        for ci = 1, #crateDescs do
+                local obj = crateDescs[ci]
                 if obj:IsA("ProximityPrompt") then
                         TryAddContainerFromPrompt(found, obj)
+                end
+                if ci % 2000 == 0 then
+                        task.wait()
                 end
         end
 
@@ -7138,21 +6843,6 @@ UpdateCrateESP = function()
 
         if not EnsureESPGuiAttached() then
                 return
-        end
-
-        local now = tick()
-        if now - LastCrateScan >= CrateScanInterval then
-                LastCrateScan = now
-                local ok, result = pcall(ScanCrates)
-                if ok and type(result) == "table" then
-                        CrateList = result
-                end
-
-                for crate in pairs(CrateCache) do
-                        if not CrateList[crate] or not crate.Parent then
-                                ClearCrateESP(crate)
-                        end
-                end
         end
 
         local root = GetLocalRoot()
@@ -7217,6 +6907,31 @@ UpdateCrateESP = function()
                 end
         end
 end
+
+do
+        local CrateScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldNeedsCrateESP()
+                                and not CrateScanBusy
+                                and (tick() - LastCrateScan) >= CrateScanInterval then
+                                LastCrateScan = tick()
+                                CrateScanBusy = true
+                                local okCrate, crateResult = pcall(ScanCrates)
+                                CrateScanBusy = false
+                                if okCrate and type(crateResult) == "table" then
+                                        CrateList = crateResult
+                                        for crate in pairs(CrateCache) do
+                                                if not CrateList[crate] or not crate.Parent then
+                                                        ClearCrateESP(crate)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
+end
 end)(); (function()
 
 ExtractionTags = { "Extraction", "Extract", "Exit", "EVAC", "Exfil", "ExtractionPoint", "ExtractPoint", "ExtractZone", "ExitPoint" }
@@ -7270,7 +6985,7 @@ HasExtractionAttribute = function(instance)
                 return false
         end
 
-        for _, attributeName in ExtractionAttributeNames do
+                for _, attributeName in pairs(ExtractionAttributeNames) do
                 local value = instance:GetAttribute(attributeName)
                 if value == true or value == "true" or value == 1 then
                         return true
@@ -7282,7 +6997,7 @@ end
 
 NameMatchesExtraction = function(name)
         name = name:lower()
-        for _, keyword in ExtractionKeywords do
+                for _, keyword in pairs(ExtractionKeywords) do
                 if name:find(keyword, 1, true) then
                         return true
                 end
@@ -7291,7 +7006,7 @@ NameMatchesExtraction = function(name)
 end
 
 HasExtractionTag = function(instance)
-        for _, tag in ExtractionTags do
+                for _, tag in pairs(ExtractionTags) do
                 if CollectionService:HasTag(instance, tag) then
                         return true
                 end
@@ -7341,7 +7056,7 @@ GetInstanceWorldPosition = function(instance)
 end
 
 HasExtractPrompt = function(model)
-        for _, desc in model:GetDescendants() do
+                for _, desc in pairs(model:GetDescendants()) do
                 if desc:IsA("ProximityPrompt") and PromptMatchesExtraction(desc) then
                         return true
                 end
@@ -7350,7 +7065,7 @@ HasExtractPrompt = function(model)
                         if name:find("extract", 1, true) or name:find("exit", 1, true) or name:find("marker", 1, true) then
                                 return true
                         end
-                        for _, child in desc:GetDescendants() do
+                                                for _, child in pairs(desc:GetDescendants()) do
                                 if child:IsA("TextLabel") and TextMatchesExtraction(child.Text) then
                                         return true
                                 end
@@ -7390,7 +7105,7 @@ IsInExtractionFolder = function(instance)
         local current = instance
         while current and current ~= workspace do
                 local name = current.Name:lower()
-                for _, folderName in ExtractionFolderNames do
+                                for _, folderName in pairs(ExtractionFolderNames) do
                         local folderLower = folderName:lower()
                         if name == folderLower or name:find(folderLower, 1, true) then
                                 return true
@@ -7547,28 +7262,29 @@ local function ScanMapRoots()
         return roots
 end
 
--- ★ FPS fix v37: เดิมเดิน workspace ครบ 3 รอบ (prompt / ป้าย+โมเดล / attribute ตาม map roots)
---   + ลูป 12 ฟอลเดอร์ (FindFirstChild(name, true) ทีละชื่อ = เดินทั้งแมพอีก 12 รอบ) ทุก 0.75 วิ
---   ขณะเปิด Extraction ESP = สตัตเตอร์หนัก -> เหลือเดิน 2 รอบ (prompt ก่อนตามเดิม แล้วรวม
---   ป้าย/โมเดล/attribute ในรอบเดียว) เพราะทุกอย่างที่เช็คเป็นลูกของ workspace อยู่แล้ว
---   และ TryAddExtraction เช็ค attribute/tag ของตัวเองครบอยู่แล้ว = ชุดผลลัพธ์เท่าเดิมทุกจุด
---   (รอบ tags ย้ายไปท้าย — เรียก TryAddExtraction เดียวกันกับรอบโมเดล ผลเดิมทุกกรณี)
 ScanExtractions = function()
         local found = {}
 
-        for _, obj in workspace:GetDescendants() do
+        local extractionDescs = workspace:GetDescendants()
+
+        for ei = 1, #extractionDescs do
+                local obj = extractionDescs[ei]
                 if obj:IsA("ProximityPrompt") then
                         TryAddExtractionFromPrompt(found, obj)
                 end
+                if ei % 2000 == 0 then
+                        task.wait()
+                end
         end
 
-        for _, obj in workspace:GetDescendants() do
+        for ei = 1, #extractionDescs do
+                local obj = extractionDescs[ei]
                 if obj:IsA("BillboardGui") then
                         local name = obj.Name:lower()
                         if name:find("extract", 1, true) or name:find("exit", 1, true) or name:find("marker", 1, true) then
                                 TryAddExtraction(found, obj.Parent)
                         else
-                                for _, child in obj:GetDescendants() do
+                                                                for _, child in pairs(obj:GetDescendants()) do
                                         if child:IsA("TextLabel") and TextMatchesExtraction(child.Text) then
                                                 TryAddExtraction(found, obj.Parent)
                                                 break
@@ -7580,10 +7296,13 @@ ScanExtractions = function()
                 elseif obj:IsA("Model") or obj:IsA("BasePart") then
                         TryAddExtraction(found, obj)
                 end
+                if ei % 2000 == 0 then
+                        task.wait()
+                end
         end
 
-        for _, tag in ExtractionTags do
-                for _, obj in CollectionService:GetTagged(tag) do
+                for _, tag in pairs(ExtractionTags) do
+                                for _, obj in pairs(CollectionService:GetTagged(tag)) do
                         TryAddExtraction(found, obj)
                 end
         end
@@ -7636,21 +7355,6 @@ UpdateExtractionESP = function()
 
         EnsureExtractionDescendantHook()
 
-        local now = tick()
-        if now - LastExtractionScan >= ExtractionScanInterval then
-                LastExtractionScan = now
-                local ok, result = pcall(ScanExtractions)
-                if ok then
-                        ExtractionList = result
-                end
-
-                for extraction in pairs(ExtractionCache) do
-                        if not ExtractionList[extraction] or not extraction.Parent then
-                                ClearExtractionESP(extraction)
-                        end
-                end
-        end
-
         local root = GetLocalRoot()
         local maxDistance = WorldESP.ExtractionMaxDistance or 5000
 
@@ -7681,6 +7385,31 @@ UpdateExtractionESP = function()
                         ClearExtractionESP(extraction)
                 end
         end
+end
+
+do
+        local ExtractionScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldESP.Extractions
+                                and not ExtractionScanBusy
+                                and (tick() - LastExtractionScan) >= ExtractionScanInterval then
+                                LastExtractionScan = tick()
+                                ExtractionScanBusy = true
+                                local okExt, extResult = pcall(ScanExtractions)
+                                ExtractionScanBusy = false
+                                if okExt and type(extResult) == "table" then
+                                        ExtractionList = extResult
+                                        for extraction in pairs(ExtractionCache) do
+                                                if not ExtractionList[extraction] or not extraction.Parent then
+                                                        ClearExtractionESP(extraction)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
 end
 
 end)(); (function()
@@ -7731,7 +7460,7 @@ local function HasLandmineTag(instance)
         if not instance then
                 return false
         end
-        for _, tag in LandmineTags do
+                for _, tag in pairs(LandmineTags) do
                 if CollectionService:HasTag(instance, tag) then
                         return true
                 end
@@ -7750,7 +7479,7 @@ local function IsInDeployablesFolder(instance)
         local current = instance
         while current and current ~= workspace do
                 local name = current.Name:lower()
-                for _, folderName in DeployableFolderNames do
+                                for _, folderName in pairs(DeployableFolderNames) do
                         if name == folderName:lower() then
                                 return true
                         end
@@ -7766,7 +7495,7 @@ local function NameLooksLikeLandmine(name)
         if key ~= "" and LandmineDisplayNames[key] then
                 return true
         end
-        for _, word in LandmineNameKeywords do
+                for _, word in pairs(LandmineNameKeywords) do
                 if lower:find(word, 1, true) then
                         return true
                 end
@@ -7803,7 +7532,7 @@ local function PartLooksOliveMineGreen(part)
                 return false
         end
         local c = part.Color
-        -- Olive / military green disc (PMN2-style) — not bright neon grass
+
         local isGreen = c.G > c.R + 0.05 and c.G > c.B + 0.05 and c.G >= 0.28 and c.G <= 0.72
         local muted = c.R <= 0.55 and c.B <= 0.45
         return isGreen and muted
@@ -7825,12 +7554,10 @@ local function LooksLikeDiscMinePart(part)
                 return false
         end
 
-        -- Skip huge floors / terrain-looking slabs
         if size.X >= 4.5 and size.Z >= 4.5 and size.Y <= 0.4 then
                 return false
         end
 
-        -- Prefer olive disc mines; still allow unnamed grey/dark pressure plates in deployables
         if PartLooksOliveMineGreen(part) then
                 return true
         end
@@ -7862,7 +7589,7 @@ local function ModelLooksLikeDiscMine(model)
                 end
         end
 
-        for _, desc in model:GetDescendants() do
+                for _, desc in pairs(model:GetDescendants()) do
                 if LooksLikeDiscMinePart(desc) then
                         return true
                 end
@@ -7915,9 +7642,8 @@ local function IsProjectDeltaLandmine(target, instance)
                 return true
         end
 
-        -- Check nested part names (pressure plate / hitbox / mesh)
         if target:IsA("Model") then
-                for _, child in target:GetChildren() do
+                                for _, child in pairs(target:GetChildren()) do
                         if NameLooksLikeLandmine(child.Name) or HasLandmineAttribute(child) then
                                 return true
                         end
@@ -7931,7 +7657,7 @@ local function IsProjectDeltaLandmine(target, instance)
                 if LooksLikeDiscMinePart(target) or LooksLikeDiscMinePart(instance) then
                         return true
                 end
-                -- Any small deployable model in those folders is likely a trap/mine
+
                 if target:IsA("Model") then
                         local part = target.PrimaryPart or target:FindFirstChildWhichIsA("BasePart", true)
                         if part and part.Size.Magnitude <= 10 then
@@ -7940,7 +7666,6 @@ local function IsProjectDeltaLandmine(target, instance)
                 end
         end
 
-        -- Shape fallback: flat green disc mines like PMN2 in the open world
         if target:IsA("Model") and ModelLooksLikeDiscMine(target) then
                 return true
         end
@@ -7970,7 +7695,6 @@ local function TryAddLandmine(found, instance)
                 return
         end
 
-        -- Skip obvious loot containers, but never block named/shaped mines
         if NameMatchesContainer(target.Name)
                 and not NameLooksLikeLandmine(target.Name)
                 and not ModelLooksLikeDiscMine(target)
@@ -8006,9 +7730,6 @@ local function TryAddLandmine(found, instance)
         }
 end
 
--- ★ FPS fix v37: แคชผลเช็ครูปทรงทุ่น (ModelLooksLikeDiscMine เรียก GetBoundingBox = คิวรี่
---   ฟิสิกส์แพงสุดของรอบสแกน) ต่อโมเดล 10 วิ กันตรวจซ้ำทั้งแมพทุก 2 วิ โมเดลที่ตรวจแล้วไม่ใช่
---   จะไม่ถูกตรวจรูปทรงซ้ำ ส่วนทุ่นที่เกิดใหม่ = อินสแตนซ์ใหม่ ไม่อยู่ในแคช = ตรวจเต็มทันที
 local DiscMineCheckCache = {}
 local DiscMineCacheClearAt = 0
 local function ModelLooksLikeDiscMineCached(model)
@@ -8028,8 +7749,6 @@ local function ModelLooksLikeDiscMineCached(model)
         return isDiscMine
 end
 
--- ★ FPS fix v37: แคชฟอลเดอร์ของ Landmine ESP (เดิม FindFirstChild(name, true) ทีละชื่อ =
---   เดินทั้งแมพทุกชื่อทุกรอบสแกน) หาใหม่เฉพาะตอนฟอลเดอร์หาย/ยังไม่เกิด (ทุก 5 วิ)
 local MineFolderCache = {}
 local MineFolderMissAt = {}
 local function FindMineFolderCached(folderName)
@@ -8055,16 +7774,16 @@ end
 local function ScanLandmines()
         local found = {}
 
-        for _, tag in LandmineTags do
-                for _, obj in CollectionService:GetTagged(tag) do
+                for _, tag in pairs(LandmineTags) do
+                                for _, obj in pairs(CollectionService:GetTagged(tag)) do
                         TryAddLandmine(found, obj)
                 end
         end
 
-        for _, folderName in DeployableFolderNames do
+                for _, folderName in pairs(DeployableFolderNames) do
                 local folder = FindMineFolderCached(folderName)
                 if folder then
-                        for _, obj in folder:GetDescendants() do
+                                                for _, obj in pairs(folder:GetDescendants()) do
                                 if obj:IsA("Model") or obj:IsA("BasePart") then
                                         TryAddLandmine(found, obj)
                                 end
@@ -8072,9 +7791,10 @@ local function ScanLandmines()
                 end
         end
 
-        -- Full workspace scan for mines (name + flat disc shape like your screenshot)
-        for _, obj in workspace:GetDescendants() do
-                -- ★ FPS fix v37: จัดลำดับเช็คจากถูกไปแพง (ชื่อ -> attribute -> tag -> รูปทรง)
+        local mineDescs = workspace:GetDescendants()
+        for mi = 1, #mineDescs do
+                local obj = mineDescs[mi]
+
                 if obj:IsA("Model") then
                         if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or ModelLooksLikeDiscMineCached(obj) then
                                 TryAddLandmine(found, obj)
@@ -8083,6 +7803,9 @@ local function ScanLandmines()
                         if NameLooksLikeLandmine(obj.Name) or HasLandmineAttribute(obj) or HasLandmineTag(obj) or LooksLikeDiscMinePart(obj) then
                                 TryAddLandmine(found, obj)
                         end
+                end
+                if mi % 2000 == 0 then
+                        task.wait()
                 end
         end
 
@@ -8114,15 +7837,8 @@ local function EnsureLandmineDescendantHook()
 end
 
 local function RefreshLandmineListIfNeeded(force)
-        local now = tick()
-        if not force and now - LastLandmineScan < LandmineScanInterval then
-                return
-        end
-
-        LastLandmineScan = now
-        local ok, result = pcall(ScanLandmines)
-        if ok and type(result) == "table" then
-                LandmineList = result
+        if force then
+                LastLandmineScan = 0
         end
 end
 
@@ -8159,7 +7875,6 @@ UpdateLandmineESP = function()
         end
 
         EnsureLandmineDescendantHook()
-        RefreshLandmineListIfNeeded(false)
 
         for mine in pairs(LandmineCache) do
                 if not LandmineList[mine] or not mine.Parent then
@@ -8207,6 +7922,31 @@ UpdateLandmineESP = function()
                         ClearLandmineESP(mine)
                 end
         end
+end
+
+do
+        local MineScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if WorldESP.Landmines
+                                and not MineScanBusy
+                                and (tick() - LastLandmineScan) >= LandmineScanInterval then
+                                LastLandmineScan = tick()
+                                MineScanBusy = true
+                                local okMine, mineResult = pcall(ScanLandmines)
+                                MineScanBusy = false
+                                if okMine and type(mineResult) == "table" then
+                                        LandmineList = mineResult
+                                        for mine in pairs(LandmineCache) do
+                                                if not LandmineList[mine] or not mine.Parent then
+                                                        ClearLandmineESP(mine)
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end)
 end
 
 Players.PlayerRemoving:Connect(ClearPlayerESP)
@@ -8697,9 +8437,6 @@ VisualsRight:AddToggle("NpcChineseHatESP", {
         end,
 })
 
-----------------------------------------------------------------
--- World ESP
-----------------------------------------------------------------
 local WorldBox = Tabs.WorldESP:AddLeftGroupbox("In World ESP")
 
 local EspMapBox = Tabs.WorldESP:AddRightGroupbox("ESP Map (Radar)")
@@ -8959,9 +8696,6 @@ WorldBox:AddSlider("ExtractionMaxDistance", {
 
 end)();
 
-----------------------------------------------------------------
--- ESP dead v3 — Project Delta (กล่องนิ่ง + Chams แยกอิสระจาก Box)
-----------------------------------------------------------------
 (function()
 local CorpseESP = {
     Enabled = false,
@@ -8995,7 +8729,7 @@ local CorpseKeywords = { "corpse", "dead", "ragdoll", "carcass", "remain", "body
 
 local function NameLooksLikeCorpse(name)
     name = tostring(name or ""):lower()
-    for _, keyword in CorpseKeywords do
+        for _, keyword in pairs(CorpseKeywords) do
         if name:find(keyword, 1, true) then
             return true
         end
@@ -9037,10 +8771,9 @@ local function FastScanCorpses()
     local found = {}
     local droppedNames = {}
 
-    -- 1) ศพใน Workspace.DroppedItems — จับก่อน
     local dropped = workspace:FindFirstChild("DroppedItems")
     if dropped then
-        for _, obj in dropped:GetChildren() do
+                for _, obj in pairs(dropped:GetChildren()) do
             if obj:IsA("Model") then
                 droppedNames[tostring(obj.Name):lower()] = true
 
@@ -9058,8 +8791,7 @@ local function FastScanCorpses()
         end
     end
 
-    -- 2) ตัวผู้เล่นที่ตาย — ข้ามถ้าเกมโยนศพลง DroppedItems แล้ว (กันกล่องซ้อน 2 ใบ)
-    for _, player in Players:GetPlayers() do
+        for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local character = player.Character
             if character and character:IsDescendantOf(workspace) and not found[character] then
@@ -9076,11 +8808,10 @@ local function FastScanCorpses()
         end
     end
 
-    -- 3) AI ตายใน AiZones
     local aiZones = workspace:FindFirstChild("AiZones")
     if aiZones then
-        for _, zone in aiZones:GetChildren() do
-            for _, character in zone:GetChildren() do
+                for _, zone in pairs(aiZones:GetChildren()) do
+                        for _, character in pairs(zone:GetChildren()) do
                 if character:IsA("Model") and not found[character] then
                     local humanoid = character:FindFirstChildOfClass("Humanoid")
                     if humanoid and humanoid.Health <= 0 then
@@ -9159,16 +8890,14 @@ local function EnsureCorpseData(model)
     return data
 end
 
--- ซ่อนเฉพาะของวาด 2D (ไม่แตะ Chams)
 local function HideCorpse2D(data)
-    for _, line in data.BoxLines do
+        for _, line in pairs(data.BoxLines) do
         line.Visible = false
     end
     data.NameLabel.Visible = false
     data.DistanceLabel.Visible = false
 end
 
--- ซ่อนทั้งหมด (ใช้ตอนศพหลุดเงื่อนไข เช่นเกินระยะ)
 local function HideCorpseAll(data)
     HideCorpse2D(data)
     if data.Highlight then
@@ -9181,7 +8910,7 @@ local function ClearCorpse(model)
     if not data then
         return
     end
-    for _, line in data.BoxLines do
+        for _, line in pairs(data.BoxLines) do
         line:Destroy()
     end
     data.NameLabel:Destroy()
@@ -9207,7 +8936,7 @@ local function GetCorpseBounds(model)
 end
 
 local function DrawCorpse(model, displayName, data)
-    -- ★ Chams ทำงานอิสระ — ปิด Box แล้ว Chams ไม่หาย
+
     if CorpseESP.Chams then
         if not data.Highlight or not data.Highlight.Parent then
             if data.Highlight then
@@ -9229,7 +8958,6 @@ local function DrawCorpse(model, displayName, data)
         data.Highlight.Enabled = false
     end
 
-    -- ถ้าไม่ต้องวาดอะไร 2D ซ่อนเฉพาะ 2D (เก็บ Chams ไว้)
     if not CorpseESP.Box and not CorpseESP.Name and not CorpseESP.Distance then
         HideCorpse2D(data)
         return
@@ -9247,7 +8975,6 @@ local function DrawCorpse(model, displayName, data)
         return
     end
 
-    -- ★ กล่องตั้งฉากนิ่ง ๆ — ไม่หมุน/บิดตามกล้อง ขนาดแปรตามระยะอย่างเดียว
     local boxWidth = math.max(size.X, size.Z, 1)
     local boxHeight = math.max(size.Y, boxWidth * 0.45)
     local pixelsPerStud = (Camera.ViewportSize.Y / 2)
@@ -9406,7 +9133,7 @@ local function DrawTick(now)
             end
             return
         end
-        count += 1
+        count  = count + (1)
         local ok, err = pcall(DrawCorpse, corpse, name, EnsureCorpseData(corpse))
         if not ok then
             warn("[Wallhack.gg CorpseESP]", err)
@@ -9497,9 +9224,6 @@ ESPGui.Destroying:Connect(function()
 end)
 end)();
 
-----------------------------------------------------------------
--- Item X-Ray v9 — ตัวละคร + Inventory จริง (อ่านเฉพาะลูกตรงของ RS/Players/<ชื่อ>)
-----------------------------------------------------------------
 (function()
 local XRay = {
     Enabled = false,
@@ -9557,12 +9281,12 @@ local function IsAttachmentName(n)
     if lower:find("mag", 1, true) or lower:find("suppressor", 1, true) then
         return true
     end
-    for _, p in FilterPrefixes do
+        for _, p in pairs(FilterPrefixes) do
         if n:sub(1, #p) == p then
             return true
         end
     end
-    for _, s in FilterSuffixes do
+        for _, s in pairs(FilterSuffixes) do
         if #n >= #s and n:sub(-#s) == s then
             return true
         end
@@ -9580,7 +9304,7 @@ local function BuildKnownSets()
         return false
     end
 
-    for _, v in list:GetChildren() do
+        for _, v in pairs(list:GetChildren()) do
         if v:IsA("StringValue") then
             KnownItems[v.Name] = true
         end
@@ -9589,7 +9313,7 @@ local function BuildKnownSets()
     for _, folderName in { "ItemsListModels", "ThirdPersonModels", "RealClothing" } do
         local f = ReplicatedStorage:FindFirstChild(folderName)
         if f then
-            for _, v in f:GetChildren() do
+                        for _, v in pairs(f:GetChildren()) do
                 KnownItems[v.Name] = true
             end
         end
@@ -9597,7 +9321,7 @@ local function BuildKnownSets()
 
     local rw = ReplicatedStorage:FindFirstChild("RangedWeapons")
     if rw then
-        for _, v in rw:GetChildren() do
+                for _, v in pairs(rw:GetChildren()) do
             WeaponSet[v.Name] = true
             KnownItems[v.Name] = true
         end
@@ -9605,7 +9329,7 @@ local function BuildKnownSets()
 
     local ammo = ReplicatedStorage:FindFirstChild("AmmoTypes")
     if ammo then
-        for _, v in ammo:GetChildren() do
+                for _, v in pairs(ammo:GetChildren()) do
             KnownItems[v.Name] = true
         end
     end
@@ -9642,8 +9366,6 @@ local function GetPlayerDataFolder(player)
         or pf:FindFirstChild(player.DisplayName)
 end
 
--- ★ อ่านเฉพาะลูกตรง (top-level) = ช่อง inventory จริง
--- ไม่ลงลึกโฟลเดอร์อื่น (สกิน/สถิติ) กันข้อมูลปลอม
 local InventoryFolderKeywords = {
     "inventory", "items", "gear", "equip", "backpack", "pocket", "carry", "loadout",
 }
@@ -9652,10 +9374,10 @@ local function ScanPlayerFolder(folder, found, depth)
     if depth > 1 then
         return
     end
-    for _, child in folder:GetChildren() do
+        for _, child in pairs(folder:GetChildren()) do
         if child:IsA("Folder") or child:IsA("Configuration") then
             local lower = child.Name:lower()
-            for _, keyword in InventoryFolderKeywords do
+                        for _, keyword in pairs(InventoryFolderKeywords) do
                 if lower:find(keyword, 1, true) then
                     ScanPlayerFolder(child, found, depth + 1)
                     break
@@ -9680,12 +9402,10 @@ local function CollectItems(model, player)
     BuildKnownSets()
     local found = {}
 
-    -- 1) ของที่ render บนตัว (ปืนที่ถือ เสื้อ หมวก เกราะ)
-    for _, desc in model:GetDescendants() do
+        for _, desc in pairs(model:GetDescendants()) do
         AddName(found, desc.Name)
     end
 
-    -- 2) ★ ของใน inventory ทั้งหมด (รวมของในกระเป๋า) จาก RS/Players/<ชื่อ>
     if player and XRay.ReadInventory then
         pcall(function()
             local folder = GetPlayerDataFolder(player)
@@ -9696,7 +9416,7 @@ local function CollectItems(model, player)
     end
 
     local normal, combat = {}, {}
-    for n in found do
+        for n in pairs(found) do
         local display = NameMap[n] or n
         if WeaponSet[n] or GearMark[n] then
             combat[#combat + 1] = display
@@ -9709,7 +9429,6 @@ local function CollectItems(model, player)
     return normal, combat
 end
 
--- Debug: ดิมพ์ลูกตรงของ RS/Players/<ชื่อ> พร้อมคลาส (ใช้ตรวจถ้ายังขาด)
 local function GetDebugLines(player)
     local lines = {}
     local folder = player and GetPlayerDataFolder(player)
@@ -9718,17 +9437,17 @@ local function GetDebugLines(player)
         return lines
     end
     lines[#lines + 1] = { Text = "-- RS/Players/" .. player.Name .. " --" }
-    for _, child in folder:GetChildren() do
+        for _, child in pairs(folder:GetChildren()) do
         local txt = child.Name .. " [" .. child.ClassName .. "]"
         if child:IsA("StringValue") then
-            txt ..= " = " .. child.Value
+            txt  = txt .. (" = " .. child.Value)
         end
         lines[#lines + 1] = { Text = txt }
         if child:IsA("Folder") then
-            for _, g in child:GetChildren() do
+                        for _, g in pairs(child:GetChildren()) do
                 local t2 = "  > " .. g.Name .. " [" .. g.ClassName .. "]"
                 if g:IsA("StringValue") then
-                    t2 ..= " = " .. g.Value
+                    t2  = t2 .. (" = " .. g.Value)
                 end
                 lines[#lines + 1] = { Text = t2 }
             end
@@ -9764,7 +9483,7 @@ local function GetCorpses()
     local out = {}
     local dropped = workspace:FindFirstChild("DroppedItems")
     if dropped then
-        for _, obj in dropped:GetChildren() do
+                for _, obj in pairs(dropped:GetChildren()) do
             if obj:IsA("Model") then
                 local humanoid = obj:FindFirstChildOfClass("Humanoid")
                 local alive = humanoid and humanoid.Health > 0
@@ -9789,7 +9508,7 @@ local function PickTarget(centerX, centerY, radius)
     local center = Vector2.new(centerX, centerY)
     local best, bestDist = nil, radius
 
-    for _, player in Players:GetPlayers() do
+        for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer then
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -9813,7 +9532,7 @@ local function PickTarget(centerX, centerY, radius)
     end
 
     if XRay.IncludeCorpses then
-        for _, corpse in GetCorpses() do
+                for _, corpse in pairs(GetCorpses()) do
             local anchor = corpse.PrimaryPart or corpse:FindFirstChildWhichIsA("BasePart", true)
             if anchor then
                 local v = Camera:WorldToViewportPoint(anchor.Position)
@@ -9976,8 +9695,6 @@ local function UpdatePanel()
         return
     end
 
-    -- ESP Map hover: เอาเมาส์ชี้ที่มาร์กเกอร์คนบนแมพใหญ่ = โชว์ของคนนั้นทันที
-    -- (ทำงานแม้ตอนนั้นปิด toggle Item X-Ray อยู่)
     local hoverPlayer = nil
     if typeof(EspMapFullGetHoverPlayer) == "function" then
         local okHover, hoverResult = pcall(EspMapFullGetHoverPlayer)
@@ -10061,33 +9778,33 @@ local function UpdatePanel()
 
     if XRay.Debug then
         local lines = GetDebugLines(target.Player)
-        for _, line in lines do
+                for _, line in pairs(lines) do
             if shown >= DEBUG_MAX then
                 body[#body + 1] = "... more"
                 break
             end
-            shown += 1
+            shown  = shown + (1)
             body[#body + 1] = EscapeText(line.Text)
         end
     else
         local normal, combat = CollectItems(target.Model, target.Player)
         local truncated = false
 
-        for _, n in normal do
+                for _, n in pairs(normal) do
             if shown >= MAX_LINES then
                 truncated = true
                 break
             end
-            shown += 1
+            shown  = shown + (1)
             body[#body + 1] = "- " .. EscapeText(n)
         end
 
-        for _, n in combat do
+                for _, n in pairs(combat) do
             if shown >= MAX_LINES then
                 truncated = true
                 break
             end
-            shown += 1
+            shown  = shown + (1)
             body[#body + 1] = '<font color="#ffd24a">[W]</font> ' .. EscapeText(n)
         end
 
@@ -10136,7 +9853,6 @@ XRayGroup:AddToggle("XRayReadInventory", {
     Default = false,
 })
 
-
 XRayGroup:AddSlider("XRayRadius", {
     Text = "Target Radius",
     Default = 300,
@@ -10176,7 +9892,7 @@ XRayGroup:AddSlider("XRayTextSize", {
 
 local XRayRenderConn = nil
 XRayRenderConn = RunService.RenderStepped:Connect(function()
-    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง (เดิมวิ่งต่อหลังปิดเมนู ฉีดซ้ำ = ลูปซ้อนทบ)
+
     if Library.Unloaded then
         if XRayRenderConn then
             XRayRenderConn:Disconnect()
@@ -10193,13 +9909,8 @@ XRayRenderConn = RunService.RenderStepped:Connect(function()
         warn("[Wallhack.gg]", "XRay", err)
     end
 end)
-end)(); 
+end)();
 
-----------------------------------------------------------------
--- Inventory Viewer (Target HUD) — พอร์ตจาก IDENTICAL
--- จ่อเป้าใส่ผู้เล่น (กลางจอ) = โชว์ ชื่อ / HP / ปืนที่ถือ / ความเร็ว+ระยะ
--- และไอคอนไอเทมทั้งกระเป๋า (อ่านจาก RS/Players/<ชื่อ>/Inventory)
-----------------------------------------------------------------
 (function()
 if _G.MikoInvViewUnload then
         pcall(_G.MikoInvViewUnload)
@@ -10210,10 +9921,9 @@ local InvView = {
         Enabled = false,
         TargetHUD = true,
         FovTrigger = true,
-        Scale = 1, -- ตัวคูณขนาดแผง (ขยาย/ย่อ ทั้งกรอบและไอคอน)
+        Scale = 1,
 }
 
--- แปลงขนาดพิกเซลพื้นฐาน -> ขนาดตาม Scale (ปัดเป็นจำนวนเต็ม)
 local function S(n)
         return math.floor((n * InvView.Scale) + 0.5)
 end
@@ -10231,7 +9941,6 @@ local INV_THEME = {
         Cell = Color3.fromRGB(10, 12, 16),
 }
 
--- มูลค่าโดยประมาณของไอเทม (ตารางจาก IDENTICAL) ใช้ระบายสีกรอบช่องไอคอน
 local ValueCache = {
         ["6B45"] = 16, ["AS Val"] = 16, ["ATC Key"] = 4, ["Airfield Key"] = 6, ["Altyn"] = 16,
         ["Altyn Visor"] = 8, ["Attak-5 60L"] = 16, ["Bolts"] = 1, ["Crane Key"] = 6, ["DAGR"] = 8,
@@ -10297,7 +10006,6 @@ local function BuildItemIcons()
         end
 end
 
--- ไอคอนตรงจากตัว item (ObjectValue -> model -> ItemProperties.ItemIcon)
 local function GetDirectIcon(holder)
         local ok, result = pcall(function()
                 local model = holder
@@ -10322,7 +10030,6 @@ local function GetDirectIcon(holder)
         return nil
 end
 
--- ชื่อไอเทม (ตาม ScanTargetInventory ของ IDENTICAL)
 local function ResolveItemName(itemObj)
         local ok, name = pcall(function()
                 if itemObj:IsA("ObjectValue") and itemObj.Value then
@@ -10362,7 +10069,6 @@ local function GetPlayerDataFolder(player)
                 or pf:FindFirstChild(player.DisplayName)
 end
 
--- รวมของในกระเป๋าเป้าหมาย: ชื่อ + ไอคอน + จำนวน (dedup ตามชื่อ)
 local function CollectInventory(player, char)
         local items = {}
         local indexByName = {}
@@ -10396,7 +10102,7 @@ local function CollectInventory(player, char)
                                         end
                                 end
                         else
-                                -- fallback: ไม่มีโฟลเดอร์ Inventory -> อ่านเฉพาะของชั้นบนสุด
+
                                 for _, itemObj in ipairs(folder:GetChildren()) do
                                         if itemObj:IsA("StringValue") or itemObj:IsA("ObjectValue") then
                                                 local name = ResolveItemName(itemObj)
@@ -10409,7 +10115,6 @@ local function CollectInventory(player, char)
                 end
         end
 
-        -- ของที่ถืออยู่ (มือ)
         if char then
                 local holding = char:FindFirstChild("Holding")
                 if holding and holding:IsA("ObjectValue") and holding.Value then
@@ -10426,7 +10131,6 @@ local function CollectInventory(player, char)
         return items
 end
 
--- ---------- GUI ----------
 local DefaultPos = UDim2.new(0.5, 200, 0.5, -110)
 
 local Gui = Instance.new("ScreenGui")
@@ -10531,7 +10235,6 @@ local invGrid = Instance.new("UIGridLayout", InvScroll)
 invGrid.CellPadding = UDim2.new(0, 4, 0, 4)
 invGrid.CellSize = UDim2.new(0, 34, 0, 34)
 
--- ลากย้ายแผงด้วยแถบหัวเรื่อง (สไตล์ IDENTICAL)
 do
         local isDragging = false
         local dragStart, startPos
@@ -10555,7 +10258,6 @@ do
         end)
 end
 
--- ---------- ช่องไอคอน (สร้างครั้งเดียวแล้วคืนกลับมาใช้ใหม่) ----------
 local Cells = {}
 
 local function GetCell(index)
@@ -10619,7 +10321,6 @@ local function HideCellsFrom(index)
         end
 end
 
--- ขยาย/ย่อ ทั้งกรอบ + ไอคอน (รูป) ตามค่า InvView.Scale
 local function ApplyScale()
         Main.Size = UDim2.new(0, S(200), 0, S(232))
         TitleBar.Size = UDim2.new(1, 0, 0, S(24))
@@ -10645,7 +10346,7 @@ local function ApplyScale()
                 cell.Count.Size = UDim2.new(0, S(16), 0, S(10))
                 cell.Count.TextSize = S(10)
         end
-        -- ตำแหน่ง/ขนาด InvScroll จะถูกตั้งใหม่ทุกรอบใน Tick() ด้วย S() อยู่แล้ว
+
 end
 
 local function UpdateGrid(items)
@@ -10676,12 +10377,10 @@ local function UpdateGrid(items)
         HideCellsFrom(index + 1)
 end
 
--- ---------- หาเป้าหมายจากจุดเล็ง (กลางจอ เหมือนหัวข้อเล็งของปืน) ----------
 local AimRayParams = RaycastParams.new()
 AimRayParams.FilterType = Enum.RaycastFilterType.Exclude
 AimRayParams.IgnoreWater = true
 
--- ---------- FOV Trigger (Silent Aim): เลือกคนในวง FOV รอบเมาส์ (แบบเดียวกับ Item X-Ray) ----------
 local function PickFovTarget()
         local cam = workspace.CurrentCamera
         if not cam then
@@ -10759,7 +10458,6 @@ local function GetAimedTarget()
         return nil, nil
 end
 
--- ---------- ลูปอัปเดต ----------
 local LastTargetPlr = nil
 local TargetLastPos = nil
 local TargetLastTick = 0
@@ -10807,7 +10505,6 @@ local function Tick()
         end
         InvScroll.Visible = InvView.Enabled
 
-        -- Target HUD: ชื่อ / HP / ปืนที่ถือ / ความเร็ว+ระยะ
         if InvView.TargetHUD then
                 StatName.Text = "NAME: " .. tostring(plr.Name)
                 local hum = char:FindFirstChildOfClass("Humanoid")
@@ -10860,7 +10557,6 @@ local function Tick()
 
         LastTargetPlr = plr
 
-        -- Inventory Viewer: ไอคอนของทั้งกระเป๋า
         if InvView.Enabled then
                 local now2 = tick()
                 if (now2 - LastGridTime) >= 0.35 or LastGridTarget ~= plr then
@@ -10895,7 +10591,6 @@ _G.MikoInvViewUnload = function()
         end)
 end
 
--- ---------- UI (Obsidian): แท็บ Visuals ----------
 local InvGroup = Tabs.Visuals:AddRightGroupbox("Inventory Viewer")
 
 InvGroup:AddToggle("InvViewEnabled", {
@@ -10944,17 +10639,6 @@ end)
 InvGroup:AddLabel("Inventory Viewer")
 end)();
 
-
-----------------------------------------------------------------
--- MON-50 ESP + Chams — พอร์ตจากสคริปต์ DeltaESP (mon-50) เข้า Miko Hub (v2 แก้ไม่ทำงาน)
--- หลักการเดิมจากต้นฉบับ: สแกน object ที่ชื่อมีคำค้น → Model/Parent Model
---   → Highlight แดงทะลุกำแพง (Chams) + Billboard 💣 ชื่อ+ระยะ (ESP)
--- แก้ 4 จุดที่ทำให้เวอร์ชันก่อนไม่ทำงาน:
---   1) อ่านสถานะ toggle ตรงจาก Toggles.* ทุกลูป — กัน SaveManager โหลด config แล้ว callback ไม่ยิง
---   2) ไม่ให้ Highlight ของระบบอื่น (เช่น Landmine ESP ที่แท็ก MON-50 ด้วย) บล็อก Chams
---   3) watchdog สแกนซ้ำทุก 1 วิ — ของ stream เข้าช้า/พลาดรอบแรก จะถูกจับเจอรอบหน้า
---   4) ป้ายสถานะจำนวนที่จับได้ใต้ toggle แบบสด ๆ (เห็นทันทีว่าระบบเห็นของหรือไม่)
-----------------------------------------------------------------
 (function()
 if _G.MikoMonEspUnload then
     pcall(_G.MikoMonEspUnload)
@@ -10967,12 +10651,11 @@ local MonEsp = {
     ChamsColor = Color3.fromRGB(255, 50, 50),
 }
 
-local TargetPattern = "mon-50" -- ตัวพิมพ์เล็ก (จับคู่แบบ plain find ในชื่อ object)
-local tracked = {}             -- [model] = { Highlight = hl?, Billboard = bb?, Label = lb? }
+local TargetPattern = "mon-50"
+local tracked = {}
 local ScanBusy = false
 local StatusRef = nil
 
--- อ่านสถานะ toggle จาก UI ตรง ๆ (self-sync) — กดเองหรือ SaveManager โหลดก็ถูกต้องเสมอ
 local function SyncFlags()
     pcall(function()
         local t = Toggles.MonEspChams
@@ -11042,7 +10725,6 @@ local function isMonObject(object)
     return ok and hit or false
 end
 
--- ยึด Model แม่เป็นเป้าหมาย (เหมือนสคริปต์ต้นฉบับ) กัน Highlight ซ้อนย่อย
 local function resolveTarget(object)
     local ok, target = pcall(function()
         if object:IsA("Model") then
@@ -11060,9 +10742,6 @@ local function resolveTarget(object)
     return nil
 end
 
--- ใส่ Chams แบบเดียวกับต้นฉบับ: เช็คเฉพาะชื่อ Highlight ของเรา (MikoMonChams)
--- ไม่สน Highlight ของแปลก (เวอร์ชันก่อนใช้ FindFirstChildOfClass แล้วข้ามทั้งชีวิต
--- ทำให้ Landmine ESP ใส่ WallhackLandmineESP ก่อน = Chams MON-50 ไม่มีวันขึ้น)
 local function ensureChams(targetObject, data)
     if data.Highlight and data.Highlight.Parent then
         return
@@ -11089,7 +10768,6 @@ local function ensureChams(targetObject, data)
     data.Highlight = hl
 end
 
--- ใส่ Billboard ชื่อ+ระยะ (แยก helper เพื่อ self-heal ตอนเปิด Name ทีหลังโดยไม่ต้องรีเฟรช)
 local function ensureBillboard(targetObject, data)
     if data.Billboard and data.Billboard.Parent then
         return
@@ -11154,7 +10832,6 @@ local function checkAndApply(item)
     end
 end
 
--- สแกนทั้งแมพแบบแบ่งชุด (ทุก 2000 ชิ้น yield 1 เฟรม) — กันหน้าจอค้างตอนเปิด
 local function fullScan()
     if ScanBusy then
         return
@@ -11173,7 +10850,7 @@ local function fullScan()
             local count = 0
             for _, item in ipairs(descendants) do
                 if not (MonEsp.Chams or MonEsp.Name) then
-                    break -- ถูกปิดระหว่างสแกน
+                    break
                 end
                 checkAndApply(item)
                 count = count + 1
@@ -11191,7 +10868,6 @@ local function refresh()
     fullScan()
 end
 
--- ลูปอัปเดต (throttle 0.1 วิ): self-sync + watchdog + ระยะ + self-heal Chams/Billboard
 local LastMonLoop = 0
 local NextWatchdog = 0
 local NextStatus = 0
@@ -11204,7 +10880,6 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
 
     SyncFlags()
 
-    -- ป้ายสถานะ (ทุก ~0.5 วิ): ON แต่จับได้ 0 ชิ้น = คำค้นไม่ตรง หรือของยังไม่ spawn
     if now >= NextStatus then
         NextStatus = now + 0.5
         if MonEsp.Chams or MonEsp.Name then
@@ -11218,8 +10893,6 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
         return
     end
 
-    -- watchdog: สแกนซ้ำทุก 3 วิ (fullScan มี ScanBusy กันสแกนซ้อนอยู่แล้ว)
-    -- ★ FPS fix v37: 1 -> 3 วิ (เดิมเดิน workspace:GetDescendants() ทั้งแมพทุกวินาทีตอนเปิด)
     if now >= NextWatchdog then
         NextWatchdog = now + 3
         fullScan()
@@ -11268,7 +10941,6 @@ local MonHeartbeat = RunService.Heartbeat:Connect(function()
     end
 end)
 
--- จับของ mon-50 ที่เกิดใหม่แบบสด ๆ (ส่วนที่พลาดมี watchdog ทุก 1 วิ คอยเก็บ)
 local MonAddedConn = workspace.DescendantAdded:Connect(function(item)
     if MonEsp.Chams or MonEsp.Name then
         checkAndApply(item)
@@ -11285,7 +10957,6 @@ _G.MikoMonEspUnload = function()
     clearAllESP()
 end
 
--- ---------- UI (Obsidian): แท็บ Visuals (ฝั่งซ้าย) ----------
 local MonGroup = Tabs.Visuals:AddLeftGroupbox("MON-50")
 
 MonGroup:AddToggle("MonEspChams", {
@@ -11331,10 +11002,6 @@ StatusRef = MonGroup:AddLabel("MON50: OFF")
 MonGroup:AddLabel("search MON50")
 end)();
 
-
-----------------------------------------------------------------
--- Item Finder v7 — cache + staggered scan (FPS friendly)
-----------------------------------------------------------------
 (function()
 local Finder = {
     Enabled = false,
@@ -11344,10 +11011,10 @@ local Finder = {
     IncludeCorpses = false,
 }
 
-local SCAN_INTERVAL = 0.5      -- รอบสแกนหลัก
-local CACHE_TTL = 2.0          -- ผลสแกนเก็บไว้ 2 วิ
-local CORPSE_TTL = 3.0         -- ศพสแกนถี่น้อยกว่า
-local PLAYERS_PER_TICK = 2     -- สแกนทีละ 2 เป้า
+local SCAN_INTERVAL = 0.5
+local CACHE_TTL = 2.0
+local CORPSE_TTL = 3.0
+local PLAYERS_PER_TICK = 2
 local MAX_NODES = 1500
 
 local SelectedTargets = {}
@@ -11362,13 +11029,13 @@ local NameHitCache = {}
 local KnownBuilt = false
 local StatusLabel
 
-local ItemCache = {}           -- [model] = { Items=set, Time, Version }
+local ItemCache = {}
 local PlayerQueue = {}
 local QueueIndex = 1
-local WorkQueue = {}           -- คิวเป้าที่ต้องสแกน (Model/Player/TTL)
-local QueuedSet = {}           -- กันเติมคิวซ้ำ (model -> true)
+local WorkQueue = {}
+local QueuedSet = {}
 local ActiveWorkers = 0
-local WORKER_CONCURRENCY = 3   -- สแกนพร้อมกันได้ 3 เป้า (ทุกตัว yield ทุก 300 โหนด)
+local WORKER_CONCURRENCY = 3
 
 local AttachmentKeywords = {
     "scope", "sight", "suppressor", "visor", "grip", "laser", "nvg",
@@ -11390,7 +11057,7 @@ local function BuildKnownItems()
     end
     local list = ReplicatedStorage:FindFirstChild("ItemsList")
     if list then
-        for _, v in list:GetChildren() do
+                for _, v in pairs(list:GetChildren()) do
             if v:IsA("StringValue") then
                 KnownItems[v.Name] = true
             end
@@ -11399,7 +11066,7 @@ local function BuildKnownItems()
     for _, folderName in { "ItemsListModels", "ThirdPersonModels", "RealClothing", "RangedWeapons", "AmmoTypes" } do
         local f = ReplicatedStorage:FindFirstChild(folderName)
         if f then
-            for _, v in f:GetChildren() do
+                        for _, v in pairs(f:GetChildren()) do
                 KnownItems[v.Name] = true
             end
         end
@@ -11407,7 +11074,7 @@ local function BuildKnownItems()
     for _, folderName in { "Charms", "Charm", "CharmList", "WeaponCharms" } do
         local f = ReplicatedStorage:FindFirstChild(folderName)
         if f then
-            for _, v in f:GetChildren() do
+                        for _, v in pairs(f:GetChildren()) do
                 KnownItems[v.Name] = true
                 CharmItems[v.Name] = true
             end
@@ -11419,21 +11086,21 @@ local function BuildKnownItems()
             AttachMatchers[key] = name
         end
     end
-    for name in KnownItems do
+        for name in pairs(KnownItems) do
         local lower = name:lower()
-        for _, kw in AttachmentKeywords do
+                for _, kw in pairs(AttachmentKeywords) do
             if lower:find(kw, 1, true) then
                 tryAddMatcher(name)
                 break
             end
         end
     end
-    for _, name in ManualAttachments do
+        for _, name in pairs(ManualAttachments) do
         if KnownItems[name] then
             tryAddMatcher(name)
         end
     end
-    for name in KnownItems do
+        for name in pairs(KnownItems) do
         local lower = name:lower()
         if lower:find("charm", 1, true) then
             CharmItems[name] = true
@@ -11484,8 +11151,8 @@ local SkipFolderKeywords = {
 
 local function CollectFromCharacter(character, items)
     local count = 0
-    for _, desc in character:GetDescendants() do
-        count += 1
+        for _, desc in pairs(character:GetDescendants()) do
+        count  = count + (1)
         if count > MAX_NODES then
             break
         end
@@ -11505,7 +11172,7 @@ local function CollectFromCharacter(character, items)
         end
         if desc:IsA("Tool") or desc:IsA("Model") then
             pcall(function()
-                for k, v in desc:GetAttributes() do
+                                for k, v in pairs(desc:GetAttributes()) do
                     MarkItem(items, k)
                     if typeof(v) == "string" then
                         MarkItem(items, v)
@@ -11521,8 +11188,8 @@ local function ScanPlayerFolder(folder, items, depth)
         return
     end
     local count = 0
-    for _, child in folder:GetChildren() do
-        count += 1
+        for _, child in pairs(folder:GetChildren()) do
+        count  = count + (1)
         if count > MAX_NODES then
             return
         end
@@ -11530,7 +11197,7 @@ local function ScanPlayerFolder(folder, items, depth)
         if cls == "Folder" or cls == "Configuration" then
             local lower = child.Name:lower()
             local skip = false
-            for _, kw in SkipFolderKeywords do
+                        for _, kw in pairs(SkipFolderKeywords) do
                 if lower:find(kw, 1, true) then
                     skip = true
                     break
@@ -11538,7 +11205,7 @@ local function ScanPlayerFolder(folder, items, depth)
             end
             if not skip then
                 local descend = false
-                for _, kw in InventoryFolderKeywords do
+                                for _, kw in pairs(InventoryFolderKeywords) do
                     if lower:find(kw, 1, true) then
                         descend = true
                         break
@@ -11597,7 +11264,6 @@ local function ScanPlayerData(player, items)
     end
 end
 
--- ★ มี cache: เรียกบ่อยแค่ไหนก็สแกนจริงแค่ทุก TTL
 local function GetItemsCached(model, player, ttl)
     local now = tick()
     local entry = ItemCache[model]
@@ -11617,8 +11283,6 @@ local function GetItemsCached(model, player, ttl)
     return items
 end
 
--- ★ v8 FPS fix: งานสแกนหนักทั้งหมดย้ายไปทำบน worker async (task.spawn + yield)
--- เฟรมเรนเดอร์ทำแค่จัดคิว + อ่าน cache = เปิด auto-Scan แล้ว FPS ไม่ตก
 local function PumpWorker()
     if not Finder.Enabled then
         return
@@ -11628,7 +11292,7 @@ local function PumpWorker()
         if not job then
             break
         end
-        ActiveWorkers += 1
+        ActiveWorkers  = ActiveWorkers + (1)
         task.spawn(function()
             local model = job.Model
             local okJob, errJob = pcall(function()
@@ -11640,7 +11304,7 @@ local function PumpWorker()
                 warn("[Wallhack.gg]", "ItemFinder", errJob)
             end
             QueuedSet[model] = nil
-            ActiveWorkers -= 1
+            ActiveWorkers  = ActiveWorkers - (1)
         end)
     end
 end
@@ -11649,7 +11313,7 @@ local function GetCorpseModels()
     local out = {}
     local dropped = workspace:FindFirstChild("DroppedItems")
     if dropped then
-        for _, obj in dropped:GetChildren() do
+                for _, obj in pairs(dropped:GetChildren()) do
             if obj:IsA("Model")
                 and (obj:FindFirstChild("Render") or obj.Name:match("^roblox_user_%d+$"))
             then
@@ -11716,7 +11380,7 @@ end
 
 local function MatchTargets(items)
     local matched = nil
-    for _, target in SelectedOrder do
+        for _, target in pairs(SelectedOrder) do
         if items[target] then
             matched = target
             break
@@ -11737,7 +11401,7 @@ local function RebuildSelectionFromValue(value)
     SelectedTargets = {}
     SelectedOrder = {}
     if typeof(value) == "table" then
-        for k, v in value do
+                for k, v in pairs(value) do
             local name
             if v == true then
                 name = tostring(k)
@@ -11759,19 +11423,19 @@ end
 local function UpdateDropdownValues(dd, query)
     BuildKnownItems()
     local knownList = {}
-    for name in KnownItems do
+        for name in pairs(KnownItems) do
         knownList[#knownList + 1] = name
     end
     table.sort(knownList)
     local q = tostring(query or ""):lower()
     local values = {}
     local seen = {}
-    for _, name in SelectedOrder do
+        for _, name in pairs(SelectedOrder) do
         values[#values + 1] = name
         seen[name] = true
     end
     if q ~= "" then
-        for _, name in knownList do
+                for _, name in pairs(knownList) do
             if #values >= 80 then
                 break
             end
@@ -11891,7 +11555,7 @@ end)
 
 local FinderRenderConn = nil
 FinderRenderConn = RunService.RenderStepped:Connect(function()
-    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+
     if Library.Unloaded then
         if FinderRenderConn then
             FinderRenderConn:Disconnect()
@@ -11916,11 +11580,10 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
         local foundCount = 0
         local foundNames = {}
 
-        -- ★ v8: ไม่สแกนอะไรในเฟรมเรนเดอร์ — แค่เติมคิวเป้าที่ cache หมดอายุ/ยังไม่สแกน
         local players = Players:GetPlayers()
         PlayerQueue = players
 
-        for _, player in players do
+                for _, player in pairs(players) do
             if player ~= LocalPlayer then
                 local character = player.Character
                 if character then
@@ -11946,7 +11609,7 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
         end
 
         if Finder.IncludeCorpses then
-            for _, corpse in GetCorpseModels() do
+                        for _, corpse in pairs(GetCorpseModels()) do
                 local entry = ItemCache[corpse]
                 if (not entry) or (tick() - entry.Time) >= CORPSE_TTL then
                     if not QueuedSet[corpse] then
@@ -11959,8 +11622,7 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
 
         PumpWorker()
 
-        -- นับผลรวม + ไฮไลต์จาก cache ทั้งหมด (อ่านอย่างเดียว ไม่สแกนในเฟรม)
-        for _, player in players do
+                for _, player in pairs(players) do
             if player ~= LocalPlayer then
                 local character = player.Character
                 if character then
@@ -11968,7 +11630,7 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
                     if entry and (tick() - entry.Time) < CACHE_TTL then
                         local matched = MatchTargets(entry.Items)
                         if matched then
-                            foundCount += 1
+                            foundCount  = foundCount + (1)
                             foundNames[#foundNames + 1] = player.Name .. " (" .. matched .. ")"
                             local h = EnsureHighlight(character)
                             if not Finder.Rainbow then
@@ -11984,14 +11646,14 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
         end
 
         if Finder.IncludeCorpses then
-            for _, corpse in GetCorpseModels() do
+                        for _, corpse in pairs(GetCorpseModels()) do
                 local entryC = ItemCache[corpse]
                 local matched = nil
                 if entryC and (tick() - entryC.Time) < CORPSE_TTL then
                     matched = MatchTargets(entryC.Items)
                 end
                 if matched then
-                    foundCount += 1
+                    foundCount  = foundCount + (1)
                     foundNames[#foundNames + 1] = corpse.Name .. " (" .. matched .. ")"
                     local h = EnsureHighlight(corpse)
                     if not Finder.Rainbow then
@@ -12020,7 +11682,7 @@ FinderRenderConn = RunService.RenderStepped:Connect(function()
 
         local text = "Targets Found: " .. foundCount
         if #foundNames > 0 then
-            text ..= "  |  " .. table.concat(foundNames, ", ")
+            text  = text .. ("  |  " .. table.concat(foundNames, ", "))
         end
         pcall(function()
             FoundLabel:SetText(text)
@@ -12034,7 +11696,7 @@ end)
 local LastRainbow = 0
 local RainbowConn = nil
 RainbowConn = RunService.RenderStepped:Connect(function()
-    -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+
     if Library.Unloaded then
         if RainbowConn then
             RainbowConn:Disconnect()
@@ -12061,9 +11723,6 @@ end)
 BuildKnownItems()
 end)();
 
-----------------------------------------------------------------
--- Misc (wrapped to avoid main-chunk 200 local register limit)
-----------------------------------------------------------------
 (function()
 local DefaultCameraFOV = 70
 local FOVSaved = false
@@ -12074,7 +11733,6 @@ local UpdateMisc, SyncMiscFromUI, ClearWaterPlatform, UpdateLighting
 local UpdateFullBright, UpdateSpinbot, UpdateThirdPerson
 local ClearFullBrightEffects
 local InitWallPenetration, UpdateWallTransparency, RestoreWallTransparency
--- Lighting helpers used by World ESP UI must be globals (assigned below)
 
 Misc = {
         Spinbot = false,
@@ -12277,7 +11935,7 @@ local function IsLocoAnimTrack(track)
                         names[#names + 1] = track.Animation.AnimationId
                 end
         end)
-        for _, name in names do
+                for _, name in pairs(names) do
                 local lower = tostring(name):lower()
                 if lower:find("walk", 1, true)
                         or lower:find("run", 1, true)
@@ -12298,7 +11956,7 @@ local function StopLocoAnimations(character)
         if not animator then
                 return
         end
-        for _, track in animator:GetPlayingAnimationTracks() do
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 if IsLocoAnimTrack(track) then
                         pcall(function()
                                 track:Stop(0)
@@ -12315,16 +11973,16 @@ local function GetSilentWalkMoveVector()
 
         local localMove = Vector3.zero
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                localMove += Vector3.new(0, 0, -1)
+                localMove  = localMove + (Vector3.new(0, 0, -1))
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                localMove += Vector3.new(0, 0, 1)
+                localMove  = localMove + (Vector3.new(0, 0, 1))
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                localMove += Vector3.new(-1, 0, 0)
+                localMove  = localMove + (Vector3.new(-1, 0, 0))
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                localMove += Vector3.new(1, 0, 0)
+                localMove  = localMove + (Vector3.new(1, 0, 0))
         end
 
         if localMove.Magnitude < 0.01 then
@@ -12369,7 +12027,7 @@ local function SilenceAnimationFootsteps(character)
                                                 return track:GetMarkerReachedSignal(markerName)
                                         end)
                                         if okSignal and signal then
-                                                for _, conn in getconnections(signal) do
+                                                                                                for _, conn in pairs(getconnections(signal)) do
                                                         pcall(function()
                                                                 conn:Disable()
                                                         end)
@@ -12380,7 +12038,7 @@ local function SilenceAnimationFootsteps(character)
                 end)
         end
 
-        for _, track in animator:GetPlayingAnimationTracks() do
+                for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 hookTrack(track)
         end
 
@@ -12410,7 +12068,7 @@ local function PatchFootstepModules()
                 if not modules then
                         return
                 end
-                for _, child in modules:GetDescendants() do
+                                for _, child in pairs(modules:GetDescendants()) do
                         if child:IsA("ModuleScript") then
                                 local name = child.Name:lower()
                                 if IsFootstepKeyword(name) or name:find("audio", 1, true) or name:find("sound", 1, true) then
@@ -12434,7 +12092,7 @@ local function PatchFootstepModules()
                 if not scripts then
                         return
                 end
-                for _, child in scripts:GetDescendants() do
+                                for _, child in pairs(scripts:GetDescendants()) do
                         if child:IsA("LocalScript") or child:IsA("Script") then
                                 local name = child.Name:lower()
                                 if name:find("character", 1, true) and name:find("sound", 1, true) then
@@ -12549,7 +12207,7 @@ local function ApplySilentWalkToCharacter(character)
         if not character then
                 return
         end
-        for _, desc in character:GetDescendants() do
+                for _, desc in pairs(character:GetDescendants()) do
                 if IsMovementSound(desc) then
                         MuteMovementSound(desc)
                 end
@@ -12588,7 +12246,6 @@ local function EnsureSilentWalkHook()
         end)
 end
 
--- ★ FPS fix v37: จับเวลาสแกนเสียงเดินของ Fast Walk (เดิมสแกนทุกเฟรม)
 local LastMovementSoundScan = 0
 
 UpdateFastWalk = function(deltaTime)
@@ -12625,7 +12282,6 @@ UpdateFastWalk = function(deltaTime)
                 SilentWalkSaved.WalkSpeed = humanoid.WalkSpeed
         end
 
-        -- Humanoid walk creates audible footsteps for other clients — move with CFrame instead
         if humanoid.WalkSpeed ~= 0 then
                 SilentWalkSaved.WalkSpeed = humanoid.WalkSpeed
                 humanoid.WalkSpeed = 0
@@ -12645,44 +12301,56 @@ UpdateFastWalk = function(deltaTime)
                 if baseSpeed < 8 then
                         baseSpeed = 16
                 end
-                -- Fast Walk: adjustable speed multiplier (0.1 - 10)
+
                 local multiplier = tonumber(Misc.FastWalkSpeed) or 2.6
                 if multiplier < 0.1 then
                         multiplier = 0.1
                 elseif multiplier > 10 then
                         multiplier = 10
                 end
-                -- Shift = sprint bonus (+30%) on top of the chosen multiplier
+
                 local speed = sprinting and (baseSpeed * multiplier * 1.3) or (baseSpeed * multiplier)
                 local nextPos = root.Position + move * speed * deltaTime
                 root.CFrame = CFrame.new(nextPos, nextPos + move)
         end
 
-        -- Kill horizontal velocity so other clients' footstep checks see you as idle
         local velocity = root.AssemblyLinearVelocity
         root.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
         pcall(function()
                 root.AssemblyAngularVelocity = Vector3.zero
         end)
 
-        -- ★ FPS fix v37: เดิมเดิน PlayerScripts:GetDescendants() ทุกเฟรมขณะเปิด Fast Walk
-        --   (สคริปต์เกมหลายพันชิ้นต่อเฟรม = ตกเฟรมหนัก) จำกัดเหลือทุก 0.5 วิ
-        --   เสียงเดินที่เกิดใหม่ยังถูกเด้งให้เงียบทันทีที่รู้ตัวเหมือนเดิม
-        local nowSound = tick()
-        if nowSound - LastMovementSoundScan >= 0.5 then
-                LastMovementSoundScan = nowSound
-                pcall(function()
-                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
-                        if not scripts then
-                                return
+end
+
+do
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.5)
+                        if Misc.FastWalk then
+                                pcall(function()
+                                        LastMovementSoundScan = tick()
+                                        for sound in pairs(SilentWalkSounds) do
+                                                if not sound.Parent then
+                                                        SilentWalkSounds[sound] = nil
+                                                end
+                                        end
+                                        local scripts = LocalPlayer:FindFirstChild("PlayerScripts")
+                                        if not scripts then
+                                                return
+                                        end
+                                        local soundDescs = scripts:GetDescendants()
+                                        for si = 1, #soundDescs do
+                                                if IsMovementSound(soundDescs[si]) then
+                                                        MuteMovementSound(soundDescs[si])
+                                                end
+                                                if si % 2000 == 0 then
+                                                        task.wait()
+                                                end
+                                        end
+                                end)
                         end
-                        for _, desc in scripts:GetDescendants() do
-                                if IsMovementSound(desc) then
-                                        MuteMovementSound(desc)
-                                end
-                        end
-                end)
-        end
+                end
+        end)
 end
 
 local FreeCamSaved = {
@@ -12695,18 +12363,15 @@ local FreeCamSaved = {
         Pitch = 0,
         Root = nil,
         RootAnchored = false,
-        FollowLastPos = nil, -- Bring Character: last camera pos while the body follows
+        FollowLastPos = nil,
 }
 
--- Hide/show our own character on this client only. Bring Character follow mode
--- would otherwise put the body right in front of the free camera. Uses
--- LocalTransparencyModifier so nothing replicates to other players.
 local function SetCharacterLocalInvisible(character, hidden)
         if not character then
                 return
         end
         local alpha = hidden and 1 or 0
-        for _, obj in character:GetDescendants() do
+                for _, obj in pairs(character:GetDescendants()) do
                 if obj:IsA("BasePart") then
                         obj.LocalTransparencyModifier = alpha
                 end
@@ -12736,7 +12401,7 @@ local function StopFreeCam()
                         FreeCamSaved.Root.Anchored = FreeCamSaved.RootAnchored == true
                 end)
         end
-        -- Bring Character cleanup: the body becomes visible again wherever it was dropped
+
         FreeCamSaved.FollowLastPos = nil
         local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
         if restoreChar then
@@ -12748,7 +12413,7 @@ local function StopFreeCam()
 end
 
 local function FreeCamLookCFrame()
-        -- Yaw around world up, then pitch around local right — never rolls upside down
+
         return CFrame.new(FreeCamSaved.Position)
                 * CFrame.Angles(0, FreeCamSaved.Yaw, 0)
                 * CFrame.Angles(FreeCamSaved.Pitch, 0, 0)
@@ -12762,9 +12427,6 @@ UpdateFreeCam = function(deltaTime)
                 deltaTime = 0.1
         end
 
-        -- Spectator runs while the Free Cam switch is on.
-        -- The V key flips the switch itself (single press, no holding
-        -- needed) via rising-edge detection in the RenderStepped key poll.
         if not Misc.FreeCam then
                 StopFreeCam()
                 return
@@ -12786,7 +12448,6 @@ UpdateFreeCam = function(deltaTime)
                 FreeCamSaved.Yaw = math.atan2(-look.X, -look.Z)
                 FreeCamSaved.Pitch = math.asin(math.clamp(look.Y, -1, 1))
 
-                -- Spectator: freeze our character in place while the camera flies free
                 local character = Players.LocalPlayer and Players.LocalPlayer.Character
                 local root = character and character:FindFirstChild("HumanoidRootPart")
                 if root and root:IsA("BasePart") then
@@ -12801,7 +12462,7 @@ UpdateFreeCam = function(deltaTime)
 
         local mouseDelta = UserInputService:GetMouseDelta()
         local sens = 0.0035
-        FreeCamSaved.Yaw -= mouseDelta.X * sens
+        FreeCamSaved.Yaw  = FreeCamSaved.Yaw - (mouseDelta.X * sens)
         FreeCamSaved.Pitch = math.clamp(FreeCamSaved.Pitch - mouseDelta.Y * sens, math.rad(-89), math.rad(89))
 
         local cf = FreeCamLookCFrame()
@@ -12815,40 +12476,35 @@ UpdateFreeCam = function(deltaTime)
 
         local move = Vector3.zero
         if UserInputService:IsKeyDown(Enum.KeyCode.W) then
-                move += flatLook
+                move  = move + (flatLook)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.S) then
-                move -= flatLook
+                move  = move - (flatLook)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.A) then
-                move -= right
+                move  = move - (right)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.D) then
-                move += right
+                move  = move + (right)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.E) or UserInputService:IsKeyDown(Enum.KeyCode.Space) then
-                move += Vector3.yAxis
+                move  = move + (Vector3.yAxis)
         end
         if UserInputService:IsKeyDown(Enum.KeyCode.Q) or UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then
-                move -= Vector3.yAxis
+                move  = move - (Vector3.yAxis)
         end
 
         local speed = typeof(Misc.FreeCamSpeed) == "number" and Misc.FreeCamSpeed or 60
         if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-                speed *= 2.2
+                speed  = speed * (2.2)
         end
 
         if move.Magnitude > 0 then
-                FreeCamSaved.Position += move.Unit * speed * deltaTime
+                FreeCamSaved.Position  = FreeCamSaved.Position + (move.Unit * speed * deltaTime)
         end
 
         cam.CFrame = FreeCamLookCFrame()
 
-        -- Bring Character (Follow Cam): slide our own body along with the camera so
-        -- the head pokes through doors/walls. ProximityPrompts on the far side (the
-        -- inside of a locked door) become usable for real: fly through, press E from
-        -- inside, or let Door Bypass fire it. Turning Free Cam off drops the body
-        -- right there, so you can walk around inside and open the door normally.
         if Misc.FreeCamFollow then
                 local followChar = Players.LocalPlayer and Players.LocalPlayer.Character
                 local followRoot = followChar and followChar:FindFirstChild("HumanoidRootPart")
@@ -12856,13 +12512,13 @@ UpdateFreeCam = function(deltaTime)
                         local camPos = cam.CFrame.Position
                         local lastPos = FreeCamSaved.FollowLastPos
                         if typeof(lastPos) == "Vector3" then
-                                -- smooth: move the body by the same delta the camera just moved
+
                                 local delta = camPos - lastPos
                                 if delta.Magnitude > 0.001 then
                                         followRoot.CFrame = followRoot.CFrame + delta
                                 end
                         else
-                                -- first tick after enabling: snap the body under the camera
+
                                 followRoot.CFrame = CFrame.new(camPos - Vector3.new(0, 2, 0))
                         end
                         FreeCamSaved.FollowLastPos = camPos
@@ -12870,7 +12526,7 @@ UpdateFreeCam = function(deltaTime)
                         pcall(SetCharacterLocalInvisible, followChar, true)
                 end
         elseif FreeCamSaved.FollowLastPos ~= nil then
-                -- follow got turned off mid-flight: keep the body where it was dropped
+
                 FreeCamSaved.FollowLastPos = nil
                 local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
                 if restoreChar then
@@ -12880,7 +12536,7 @@ UpdateFreeCam = function(deltaTime)
 end
 
 UpdateScriptUserESP = function()
-        -- Script-user nametags removed
+
 end
 
 local AmmoGunModCache = {
@@ -12922,11 +12578,7 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                 return
         end
 
-        -- ★ FPS fix v37: เดิมปิด closure ใหม่ทุก attribute ทุกตัวอามู่ทุก 0.15 วิ (ขยะ
-        --   ฟังก์ชันนับพันชิ้น/วิ) + เขียน SetAttribute ซ้ำทั้งที่ค่าเป็น 0 แล้ว -> เรียกตรง
-        --   ผ่าน pcall(fn, ...) ไม่มี closure + ข้ามเขียนเมื่อค่าเท่าเดิม (บังคับ 0 เหมือนเดิม
-        --   เพราะถ้าเกม restore ค่ากลับมาเป็นอย่างอื่น รอบถัดไปจะเขียนทับเป็น 0 ตามเดิม)
-        for _, attrName in attrNames do
+                for _, attrName in pairs(attrNames) do
                 local ok, value = pcall(ammo.GetAttribute, ammo, attrName)
                 if ok and typeof(value) == "number" then
                         local key = ammo.Name .. "::" .. attrName
@@ -12944,8 +12596,7 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                 end
         end
 
-        -- Also zero matching NumberValue / IntValue children
-        for _, child in ammo:GetDescendants() do
+                for _, child in pairs(ammo:GetDescendants()) do
                 if child:IsA("NumberValue") or child:IsA("IntValue") then
                         local lower = child.Name:lower()
                         local isRecoil = lower:find("recoil", 1, true) or lower:find("kick", 1, true)
@@ -12954,7 +12605,7 @@ local function CacheAndZeroAmmoAttributes(ammo, attrNames, cacheBucket, enabled)
                                 or lower:find("accuracy", 1, true)
                         local match = (enabled and cacheBucket == AmmoGunModCache.Recoil and isRecoil)
                                 or (enabled and cacheBucket == AmmoGunModCache.Spread and isSpread)
-                        -- ★ FPS fix v37: ไม่สร้าง GetFullName ทิ้งทุกลูกตอนโหมดบังคับ (เปิด = ไม่ต้อง restore)
+
                         local restore = false
                         if not enabled then
                                 restore = cacheBucket[ammo.Name .. "::child::" .. child:GetFullName()] ~= nil
@@ -12990,14 +12641,12 @@ ApplyAmmoGunMods = function(force)
         local wantRecoil = Misc and Misc.NoRecoil
         local wantSpread = Misc and Misc.NoSpread
 
-        for _, ammo in ammoFolder:GetChildren() do
+                for _, ammo in pairs(ammoFolder:GetChildren()) do
                 CacheAndZeroAmmoAttributes(ammo, RecoilAttributeNames, AmmoGunModCache.Recoil, wantRecoil)
                 CacheAndZeroAmmoAttributes(ammo, SpreadAttributeNames, AmmoGunModCache.Spread, wantSpread)
         end
 end
 
--- ★ NoRecoil/NoSpread แบบ IDENTICAL: บังคับค่าเป็น 0 ต่อเนื่อง (กันเกม restore ค่ากลับ)
---   และจับ AmmoTypes.ChildAdded เพื่อซีโร่อามู่ใหม่ที่เซิฟเติมมาทีหลังด้วย
 do
         local gunModsAmmoFolder = ReplicatedStorage:FindFirstChild("AmmoTypes")
         if gunModsAmmoFolder then
@@ -13013,7 +12662,7 @@ do
         task.spawn(function()
                 while true do
                         task.wait(1)
-                        -- ★ FPS fix v37: ออกจากลูปเมื่อ Unload (เดิมวิ่งต่อตลอดไปหลังปิดเมนู)
+
                         if Library.Unloaded then
                                 break
                         end
@@ -13030,8 +12679,6 @@ InitGunMods = function()
                 return
         end
 
-        -- Safe path only: do NOT hook FPS fire / gun modules (that broke full-auto).
-        -- Recoil climb is RecoilStrength on AmmoTypes + VFX camera kick.
         local wrap = typeof(newcclosure) == "function" and newcclosure or function(fn)
                 return fn
         end
@@ -13085,7 +12732,7 @@ end
                         return
                 end
 
-                for _, child in Lighting:GetChildren() do
+                                for _, child in pairs(Lighting:GetChildren()) do
                         if child:IsA("Atmosphere") and child.Name ~= "WallhackPurpleAtmosphere" then
                                 SavedAtmospheres[child] = {
                                         Density = child.Density,
@@ -13100,9 +12747,9 @@ end
         end
 
         RestoreAtmosphereDefaults = function()
-                for inst, props in SavedAtmospheres do
+                                for inst, props in pairs(SavedAtmospheres) do
                         if inst.Parent then
-                                for key, val in props do
+                                                                for key, val in pairs(props) do
                                         inst[key] = val
                                 end
                         end
@@ -13182,7 +12829,7 @@ end
 
                 ClearPurpleSkyEffects()
 
-                for _, child in Lighting:GetChildren() do
+                                for _, child in pairs(Lighting:GetChildren()) do
                         if child:IsA("Atmosphere") then
                                 child.Density = 0
                                 child.Haze = 0
@@ -13249,7 +12896,7 @@ end
                 cc.Brightness = 0.02
                 cc.Contrast = 0.08
 
-                for _, child in Lighting:GetChildren() do
+                                for _, child in pairs(Lighting:GetChildren()) do
                         if child:IsA("Atmosphere") and child.Name ~= "WallhackPurpleAtmosphere" then
                                 child.Density = 0
                         end
@@ -13294,7 +12941,20 @@ local function IsWaterHit(hit)
         return false
 end
 
+local WaterSurfaceCacheY = nil
+local WaterSurfaceCacheAt = 0
+local FindWaterSurfaceYRaw
 local function FindWaterSurfaceY(root)
+        local nowT = tick()
+        if nowT - WaterSurfaceCacheAt < 0.15 then
+                return WaterSurfaceCacheY
+        end
+        WaterSurfaceCacheAt = nowT
+        WaterSurfaceCacheY = FindWaterSurfaceYRaw(root)
+        return WaterSurfaceCacheY
+end
+
+FindWaterSurfaceYRaw = function(root)
         local character = LocalPlayer.Character
         WaterRayParams.FilterDescendantsInstances = { character, WaterPlatform }
 
@@ -13304,30 +12964,14 @@ local function FindWaterSurfaceY(root)
                 root.Position + Vector3.new(0, 80, 0),
         }
 
-        for _, origin in casts do
+                for _, origin in pairs(casts) do
                 local hit = workspace:Raycast(origin, Vector3.new(0, -200, 0), WaterRayParams)
                 if IsWaterHit(hit) then
                         return hit.Position.Y
                 end
         end
 
-        local now = tick()
-        if now - LastWaterPartScan >= 1 then
-                LastWaterPartScan = now
-                CachedWaterParts = {}
-                for _, obj in workspace:GetDescendants() do
-                        if obj:IsA("BasePart") then
-                                local isWater = obj.Material == Enum.Material.Water
-                                        or obj.Name:lower():find("water", 1, true)
-                                        or obj.Name:lower():find("ocean", 1, true)
-                                if isWater then
-                                        table.insert(CachedWaterParts, obj)
-                                end
-                        end
-                end
-        end
-
-        for _, obj in CachedWaterParts do
+                for _, obj in pairs(CachedWaterParts) do
                 if obj.Parent then
                         local topY = obj.Position.Y + (obj.Size.Y / 2)
                         local flatDist = (Vector2.new(root.Position.X, root.Position.Z) - Vector2.new(obj.Position.X, obj.Position.Z)).Magnitude
@@ -13367,6 +13011,43 @@ ClearWaterPlatform = function()
                 WaterPlatform:Destroy()
                 WaterPlatform = nil
         end
+end
+
+do
+        local WaterScanBusy = false
+        task.spawn(function()
+                while Library.Unloaded ~= true do
+                        task.wait(0.25)
+                        if Misc.WalkOnWater
+                                and not WaterScanBusy
+                                and (tick() - LastWaterPartScan) >= 1 then
+                                LastWaterPartScan = tick()
+                                WaterScanBusy = true
+                                task.spawn(function()
+                                        local waterFound = {}
+                                        pcall(function()
+                                                local waterDescs = workspace:GetDescendants()
+                                                for wi = 1, #waterDescs do
+                                                        local obj = waterDescs[wi]
+                                                        if obj:IsA("BasePart") then
+                                                                local isWater = obj.Material == Enum.Material.Water
+                                                                        or obj.Name:lower():find("water", 1, true)
+                                                                        or obj.Name:lower():find("ocean", 1, true)
+                                                                if isWater then
+                                                                        table.insert(waterFound, obj)
+                                                                end
+                                                        end
+                                                        if wi % 2000 == 0 then
+                                                                task.wait()
+                                                        end
+                                                end
+                                        end)
+                                        CachedWaterParts = waterFound
+                                        WaterScanBusy = false
+                                end)
+                        end
+                end
+        end)
 end
 
 local function UpdateWalkOnWater()
@@ -13472,15 +13153,7 @@ end
 
 end)(); (function()
 end)(); (function()
-----------------------------------------------------------------
--- Underground (มุดดิน) v5 — มุดใต้ผิวดินแล้วเดินด้วย WASD ได้จริง
--- ห้าม anchor ตัวละครเด็ดขาด! (anchor = client หยุดส่งตำแหน่งไป server)
--- v5: ตั้ง pose ครบ 3 จุดของเฟรม (Stepped ก่อน physics / Heartbeat หลัง
--- physics ก่อนส่งตำแหน่ง / RenderStepped ก่อน render) เพราะ controller
--- ตัวละครของเกมดึงตัวกลับขึ้นผิวดินในเฟส physics ถ้าสั่งแค่ RenderStepped
--- คนอื่นจะเห็นตัวเราโผล่-จม-นอนเอียงสลับไปมา
--- ไม่บังคับ Physics หรือ PlatformStand: สถานะเหล่านี้อาจขัดกับการถือและยิงปืน
-----------------------------------------------------------------
+
 if type(_G.MikoUG_ForceStop) == "function" then
         pcall(_G.MikoUG_ForceStop)
 end
@@ -13494,55 +13167,83 @@ local savedCameraHeightOffset = nil
 local savedCameraWorldOffset = nil
 local savedRootHeight = nil
 local initialRootY = nil
-local savedCameraY = nil -- ความสูงกล้องจริง ณ ตอนเปิดมุดดิน (ล็อกมุมมองไว้ที่ระดับนี้)
+local savedCameraY = nil
 local lastChar = nil
 local lastGroundY = nil
 local lastYaw = 0
 local printedGround = false
-local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
+local collideSaved = nil
 local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
--- ★ Camera fix 2026-10-31 (มุมกล้องล็อคตอนมุดดิน):
--- เดิมสคริปต์ (1) ล็อกแกน Y ของกล้องไว้ที่ระดับ "ตอนเปิด" ทุกเฟรม และ
--- (2) บังคับ root ให้หมุนตาม "ทิศเดิน" แบบนอนราบ ซึ่งกล้องของเกม FPS
--- อ่าน orientation จาก root ไปคำนวณมุมมอง -> เมาส์หมุนไม่ได้ กล้องค้าง
--- วิธีแก้: คุมกล้องเองทั้ง position + rotation แบบเดียวกับ FreeCam —
--- เก็บ yaw/pitch จากเมาส์แล้วเขียน cam.CFrame ใน render step ที่
--- priority สูงสุด (รันหลังกล้องของเกม จึงชนะทุกเฟรม)
-local ugViewYaw = 0      -- มุมหมุนซ้าย-ขวา (radians)
-local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
-local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
-local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
-local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัวยังถูกยกขึ้น "ยืน" เหนือผิวดินช่วงยิง
-local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
-local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
--- Hide the local character and any gear welded to its torso, including gear
--- that the game parents outside Character. Never modify replicated Transparency.
--- ★ FPS fix 2026-10-30 (ยิงปืนแล้วเกมค้าง): ไม่ต่อ GetPropertyChangedSignal
---   รายชิ้นอีกต่อไป — ตอนยิง เกม spawn VFX ใต้กล้องเป็นสิบชิ้นต่อนัด ทำให้เกิด
---   connect/disconnect + signal dispatch จำนวนมากต่อเฟรมจน FPS ตกหนัก
---   การซ่อนใช้การ re-assert ใน BindToRenderStep (รันหลังกล้อง) แทน ซึ่งชนะอยู่แล้ว
-local ugHiddenParts = {} -- [Instance] = { Value = LocalTransparencyModifier เดิม }
-local ugGhostFx = {} -- ★ UG fix v12: [Instance] = Enabled เดิม (ป้ายชื่อ/เอฟเฟกต์ที่ปิดชั่วคราวช่วง hold)
-local function UGHidePart(obj)
+local ugCollideParts = nil
+local ugCollidePartsChar = nil
+local ugCollidePartsAt = 0
+local ugCollidePartsConn = nil
+local function UGRebuildCollideParts(char)
+        local list = {}
+        for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                        list[#list + 1] = part
+                end
+        end
+        ugCollideParts = list
+        ugCollidePartsChar = char
+        ugCollidePartsAt = tick()
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+        end
+        ugCollidePartsConn = char.DescendantAdded:Connect(function(obj)
+                if obj:IsA("BasePart") and ugCollideParts then
+                        ugCollideParts[#ugCollideParts + 1] = obj
+                end
+        end)
+end
+local function UGSyncCollideParts(char)
+        if ugCollidePartsChar ~= char or (tick() - ugCollidePartsAt) >= 1 then
+                UGRebuildCollideParts(char)
+        end
+        return ugCollideParts
+end
+
+local ugViewYaw = 0
+local ugViewPitch = 0
+local ugEyeHeightY = nil
+local ugInputConn = nil
+local ugHoldUntil = 0
+local ugHoldFxNextScan = 0
+local ugHoldWasActive = false
+local ugStealthAnchored = false
+local UG_MOUSE_SENS = 0.0035
+
+local ugHiddenParts = {}
+local ugGhostFx = {}
+local function UGHidePart(obj, showBody)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
         end
-        if not ugHiddenParts[obj] then
-                local ok, oldValue = pcall(function()
-                        return obj.LocalTransparencyModifier
-                end)
-                if not ok then
-                        return
+
+        local saved = ugHiddenParts[obj]
+        if saved then
+                saved.ShowBody = showBody or false
+                local ugLtm = showBody and tick() >= ugHoldUntil and 0 or 1
+                if obj.LocalTransparencyModifier ~= ugLtm then
+                        obj.LocalTransparencyModifier = ugLtm
                 end
-                ugHiddenParts[obj] = { Value = oldValue }
+                return
         end
-        pcall(function()
-                obj.LocalTransparencyModifier = 1
+        local ok, oldValue = pcall(function()
+                return obj.LocalTransparencyModifier
         end)
+        if not ok then
+                return
+        end
+        ugHiddenParts[obj] = { Value = oldValue, ShowBody = showBody or false }
+        obj.LocalTransparencyModifier = showBody and tick() >= ugHoldUntil and 0 or 1
 end
 
 local function UGRestorePart(obj, saved)
@@ -13557,7 +13258,7 @@ local function UGHideLocalBody(char)
                 return
         end
         for _, obj in ipairs(char:GetDescendants()) do
-                UGHidePart(obj)
+                UGHidePart(obj, true)
         end
 end
 
@@ -13600,11 +13301,11 @@ local function UGHideAttachedGear(char)
                                         if allowed then
                                                 gear[other] = true
                                                 queue[#queue + 1] = other
-                                                UGHidePart(other)
+                                                UGHidePart(other, true)
                                                 for _, child in ipairs(other:GetDescendants()) do
                                                         if child:IsA("Decal") then
                                                                 gear[child] = true
-                                                                UGHidePart(child)
+                                                                UGHidePart(child, true)
                                                         end
                                                 end
                                         end
@@ -13612,16 +13313,18 @@ local function UGHideAttachedGear(char)
                         end
                 end
         end
-        -- Some games draw a separate body/backpack rig under CurrentCamera.
-        -- Hide EVERYTHING under the camera while underground EXCEPT weapon/arms
-        -- branches (ปืนกับมือในมุมมองบุคคลที่หนึ่งต้องยังเห็นตามปกติ) — ไม่เดาชื่อ model
+
         if camera then
                 for _, obj in ipairs(camera:GetDescendants()) do
                         if obj:IsA("BasePart") or obj:IsA("Decal") then
                                 local node = obj
                                 local weaponPart = false
                                 while node and node ~= camera do
-                                        local name = node.Name:lower():gsub("[%s_%-]", "")
+
+                                        local name = node.Name:lower()
+                                        if name:find("[%s_%-]") then
+                                                name = name:gsub("[%s_%-]", "")
+                                        end
                                         if node:IsA("Tool") or name:find("weapon", 1, true)
                                                 or name:find("rifle", 1, true) or name:find("gun", 1, true)
                                                 or name:find("pistol", 1, true) or name:find("viewmodel", 1, true)
@@ -13631,12 +13334,7 @@ local function UGHideAttachedGear(char)
                                         end
                                         node = node.Parent
                                 end
-                                -- ★ 2026-11-01 (ยิงแล้วไม่เห็นตัวเด้ง): ช่วง hold ยกตัวยิง ถ้าปืน/มือ
-                                -- (viewmodel) ถูกคุมตำแหน่งจากตัวละคร มันจะลอยขึ้นเหนือกล้องพร้อม
-                                -- ตัวที่ยืนขึ้น = ผู้เล่นเห็นเป็น "ตัวเด้งขึ้นยืน" — ชิ้นไหนลอยสูงกว่า
-                                -- กล้องเกิน 1.5 หน่วยช่วง hold ให้ซ่อนชั่วคราว (พ้น hold ลูป restore
-                                -- ด้านล่างคืนให้เอง) — viewmodel ปกติอยู่ระดับเดียวกับกล้อง
-                                -- = ไม่เข้าเงื่อนไข ไม่กระพริบ
+
                                 if not weaponPart then
                                         gear[obj] = true
                                         UGHidePart(obj)
@@ -13648,9 +13346,7 @@ local function UGHideAttachedGear(char)
                         end
                 end
         end
-        -- Restore gear immediately when it is detached or leaves the body model.
-        -- ★ 2026-11-01 (ยิงแล้วไม่เห็นตัวเด้ง): ข้าม viewmodel ที่ยังลอยเหนือกล้องช่วง hold
-        -- (ยังต้องซ่อนต่อ) — ไม่งั้นโดนคืนทุกรอบสแกนแล้วกระพริบระหว่างยิง
+
         local ugHoldActiveNow = camera and tick() < (ugHoldUntil or 0)
         for obj, saved in pairs(ugHiddenParts) do
                 if not obj:IsDescendantOf(char) and not gear[obj] then
@@ -13668,7 +13364,6 @@ local function UGRestoreLocalBody()
         end
 end
 
--- ★ UG fix v12: คืนป้ายชื่อ/เอฟเฟกต์ที่ถูกปิดช่วง hold (ยืนยิงแบบล่องหน)
 local function UGRestoreGhostFx()
         for obj, saved in pairs(ugGhostFx) do
                 if obj.Parent then
@@ -13680,10 +13375,6 @@ local function UGRestoreGhostFx()
         end
 end
 
--- แก้บัคเห็นตัวเองบังจอ: TransparencyController ของ Roblox รันที่ RenderPriority.Camera
--- (200) และล้าง LocalTransparencyModifier ที่เราเซ็ตไว้ก่อนหน้าทุกเฟรม ทำให้ตัว/เป้
--- โผล่มาบังครึ่งจอล่างตอนกล้องถูกชดเชยขึ้นไปเหนือหัวตอนมุดดิน ต้องเซ็ตซ้ำ "หลัง"
--- กล้องอัปเดตเสมอ (priority มากกว่า Camera) มุมกล้องตอนเปิดมุดดินจึงเหมือนตอนปิดจริง ๆ
 local UGHideStepName = "MikoUG_HideLocalBody"
 local ugHideStepBound = false
 local ugLastRescan = 0
@@ -13691,28 +13382,13 @@ local UGBindHideStep = function()
         if ugHideStepBound then
                 return
         end
-        -- priority 2147483000 = รันหลังกล้องของเกม/Roblox ทุกตัว (กล้องเกม FPS ส่วนใหญ่
-        -- เป็น Scriptable และมองข้าม Humanoid.CameraOffset) ทำให้ (1) การซ่อนตัวชนะแน่นอน
-        -- (2) ล็อกความสูงกล้องไว้ที่ระดับเดิมตอนเปิดมุดดิน = มุมมองอยู่ที่เดิม ไม่จมลงไปกับตัว
-        --
-        -- ★ FPS fix 2026-10-30 (ยิงปืนแล้ว FPS ตกเหลือ ~3): เดิม callback นี้ทำงานหนัก
-        --   ทุกเฟรม = GetDescendants ตัวละคร + camera:GetDescendants + GetConnectedParts
-        --   แถมช่วงยิง เกมเพิ่ม VFX ใต้กล้องทุกนัด งานต่อเฟรมเลยบานสะพรั่งจนขั้ว render
-        --   ถูกกินหมด (วัดจริง: Render เหลือ 2.1 ครั้ง/วินาที ทั้งที่ physics ยัง 62/วิ)
-        --   ตอนนี้แบ่งเป็น 2 ชั้น:
-        --   - ทุกเฟรม: re-assert LTM=1 เฉพาะชิ้นที่ track ไว้แล้ว (ไม่กี่สิบ write เท่านั้น)
-        --     + ล็อกความสูงกล้อง = ตัวยังถูกซ่อน 100% เพราะเรารันหลัง TransparencyController
-        --   - ทุก 0.12 วิ: สแกนหาตัว/เป้/อุปกรณ์ใหม่เท่านั้น (หน่วงได้เพราะชิ้นเดิมยังถูก
-        --     re-assert ทุกเฟรมอยู่แล้ว มุมมองไม่มีทางเห็นตัว)
-        -- ★ UG fix v16: หา "ระดับผิวน้ำ" รอบตัว (raycast ลงหา Terrain Water / part
-        -- ชื่อ water/ocean/sea/lake แบบเดียวกับ WalkOnWater) — ใช้ยกกล้องให้ลอย
-        -- "เหนือผิวน้ำ" เสมอตอนมุดดินลงน้ำ คืนค่า Y ของผิวน้ำ ไม่เจอคืน nil
+
         local ugWaterRay = RaycastParams.new()
         ugWaterRay.FilterType = Enum.RaycastFilterType.Exclude
         ugWaterRay.IgnoreWater = false
         local ugCachedPlatform = nil
         local ugLastWaterPrint = 0
-        local function UGWaterSurfaceY(fromPos, fromY)
+        local function UGWaterSurfaceYRaw(fromPos, fromY)
                 local exclude = {}
                 local c = LocalPlayer.Character
                 if c then
@@ -13730,8 +13406,7 @@ local UGBindHideStep = function()
                         end
                 end
                 ugWaterRay.FilterDescendantsInstances = exclude
-                -- ยิง ray ลงจากจุดสูงขึ้นหลายระดับ (ถ้าเริ่มลึกในน้ำ ระดับ +6 อาจยัง
-                -- อยู่ใต้ผิวน้ำ จึงมี +30/+80 สำรองให้เจอผิวน้ำที่ลึกขึ้น)
+
                 for _, dy in ipairs({ 6, 30, 80 }) do
                         local hit = workspace:Raycast(
                                 Vector3.new(fromPos.X, fromY + dy, fromPos.Z),
@@ -13758,44 +13433,65 @@ local UGBindHideStep = function()
                 return nil
         end
 
+        local ugWaterCacheY = nil
+        local ugWaterCacheAt = 0
+        local function UGWaterSurfaceY(fromPos, fromY)
+                local nowT = tick()
+                if nowT - ugWaterCacheAt < 0.15 then
+                        return ugWaterCacheY
+                end
+                ugWaterCacheAt = nowT
+                ugWaterCacheY = UGWaterSurfaceYRaw(fromPos, fromY)
+                return ugWaterCacheY
+        end
+
         local ok = pcall(function()
                 RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
                                 return
                         end
                         local c = LocalPlayer.Character
-                        for obj, _ in pairs(ugHiddenParts) do
+                        for obj, saved in pairs(ugHiddenParts) do
                                 if obj.Parent then
-                                        obj.LocalTransparencyModifier = 1
+
+                                        local ugLtm = saved.ShowBody and tick() >= ugHoldUntil and 0 or 1
+                                        if obj.LocalTransparencyModifier ~= ugLtm then
+                                                obj.LocalTransparencyModifier = ugLtm
+                                        end
                                 end
                         end
                         local now = tick()
-                        if now - ugLastRescan >= 0.12 then
+
+                        if now - ugLastRescan >= 0.2 then
                                 ugLastRescan = now
                                 if c then
                                         UGHideLocalBody(c)
                                         UGHideAttachedGear(c)
                                 end
                         end
-                        -- ★ 2026-11-01: ตัดทริกเกอร์ "คลิกซ้าย = ยกตัวขึ้นยืนเหนือผิวดิน" ออกแล้ว
-                        -- คลิกซ้ายมือเปล่า (ไม่ได้ถืออะไร) ตัวจะไม่โผล่ขึ้นมาบนดินอีก
-                        -- ช่วงยกตัวยังทำงานเฉพาะตอนยิงปืนจริง ผ่าน hook CreateBullet
-                        -- -> _G.MikoUG_SurfaceNow เท่านั้น (กระสุนยังเข้าเหมือนเดิม)
-                        -- ★ UG fix v12: ช่วง hold ตัวถูกยกขึ้น "ยืน" เหนือผิวดินเบื้องหลัง (ยิงแบบล่องหน)
-                        -- ตัวปกติถูกซ่อนด้วย LTM ทุกเฟรมอยู่แล้ว แต่ป้ายชื่อ/เลือด (BillboardGui/
-                        -- SurfaceGui) กับเอฟเฟกต์ (ParticleEmitter/Beam/Trail) ยังลอย/พ่นให้เห็นช่วง
-                        -- ยืน จึงปิดทิ้งระหว่าง hold แล้วคืนค่าเดิมทันทีที่หมด hold
+
                         if c then
                             if tick() < ugHoldUntil then
-                                for _, obj in ipairs(c:GetDescendants()) do
-                                    if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
-                                        or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
-                                        or obj:IsA("Trail") then
-                                        if ugGhostFx[obj] == nil then
-                                            ugGhostFx[obj] = obj.Enabled
-                                        end
-                                        if obj.Enabled then
-                                            obj.Enabled = false
+
+                                local holdActive = tick() < ugHoldUntil
+                                if holdActive and not ugHoldWasActive then
+                                        ugHoldWasActive = true
+                                        ugHoldFxNextScan = 0
+                                elseif not holdActive then
+                                        ugHoldWasActive = false
+                                end
+                                if holdActive and now >= ugHoldFxNextScan then
+                                    ugHoldFxNextScan = now + 0.05
+                                    for _, obj in ipairs(c:GetDescendants()) do
+                                        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
+                                            or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
+                                            or obj:IsA("Trail") then
+                                            if ugGhostFx[obj] == nil then
+                                                ugGhostFx[obj] = obj.Enabled
+                                            end
+                                            if obj.Enabled then
+                                                obj.Enabled = false
+                                            end
                                         end
                                     end
                                 end
@@ -13803,22 +13499,15 @@ local UGBindHideStep = function()
                                 UGRestoreGhostFx()
                             end
                         end
-                        -- ★ Camera fix 2026-10-31: คุมกล้องทั้ง CFrame เองที่นี่
-                        -- (priority 2147483000 = รันหลังกล้องเกม/Roblox ทุกตัว
-                        --  จึงชนะทุกเฟรม ไม่ต้องสู้กับกล้องเกมอีกต่อไป)
-                        -- - ตำแหน่ง: ลอยเหนือผิวดิน "ปัจจุบัน" ตรงตัว (XZ ตาม root
-                        --  + ผิวดินล่าสุด + ระดับตาที่จำไว้ตอนเปิด)
-                        -- - มุม: yaw/pitch จากเมาส์ที่เราเก็บเอง -> หมุนมองรอบได้
-                        --  อิสระ แม้ root จะถูกบังคับเป็น pose นอนราบ
+
                         local cam = workspace.CurrentCamera
                         local h = c and c:FindFirstChildOfClass("Humanoid")
                         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
                         if cam and r and h and h.Health > 0 and ugEyeHeightY and lastGroundY then
-                                -- GetMouseDelta คืนค่าเฉพาะตอนเมาส์ล็อคกลางจอ
-                                -- (โหมดเล่น FPS ปกติ) จึงไม่หมุนกล้องตอนชี้เมนู
+
                                 local delta = UserInputService:GetMouseDelta()
                                 if delta.X ~= 0 then
-                                        ugViewYaw -= delta.X * UG_MOUSE_SENS
+                                        ugViewYaw  = ugViewYaw - (delta.X * UG_MOUSE_SENS)
                                 end
                                 if delta.Y ~= 0 then
                                         ugViewPitch = math.clamp(
@@ -13826,12 +13515,7 @@ local UGBindHideStep = function()
                                                 math.rad(-85), math.rad(85)
                                         )
                                 end
-                                -- ★ UG fix v16: กล้องต้องลอย "เหนือผิวน้ำ" เสมอ — ห้ามลงไป
-                                -- ต่ำกว่าผิวน้ำเหมือน v15 เดิม (ตามหัวลงไปใต้น้ำ = เกมเห็น
-                                -- มุมมองจมน้ำ นับว่ากำลังดำน้ำแล้วหักเลือดจนตาย) ลงน้ำตอน
-                                -- มุดดิน = ยกกล้องขึ้นลอยเหนือผิวน้ำ 1.2 หน่วยตลอด = มุมมอง
-                                -- ไม่จมน้ำ เกมจึงไม่นับว่าดำน้ำ ส่วนบนบกกล้องลอยเหนือผิวดิน
-                                -- เหมือนเดิมทุกอย่าง
+
                                 local eye = Vector3.new(
                                         r.Position.X,
                                         lastGroundY + ugEyeHeightY,
@@ -13851,18 +13535,18 @@ local UGBindHideStep = function()
                                 cam.CFrame = CFrame.new(eye)
                                         * CFrame.Angles(0, ugViewYaw, 0)
                                         * CFrame.Angles(ugViewPitch, 0, 0)
-                                -- ★ v14: จัดการหมุดนิรนาม — ช่วง hold ยิงเลื่อนหมุดตามแนวมอง
-                                -- กล้องปัจจุบันตลอด (กัน ray ตาม crosshair ของเกมคืน nil ตอน
-                                -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
-                                -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
+
                                 if ugHoldUntil and tick() < ugHoldUntil then
-                                        pcall(function()
-                                                _G.MikoUG_RefreshBuriedAnchor()
-                                        end)
+
+                                        local ugAnchorFn = _G.MikoUG_RefreshBuriedAnchor
+                                        if ugAnchorFn then
+                                                ugAnchorFn()
+                                        end
                                 else
-                                        pcall(function()
-                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
-                                        end)
+                                        local ugParkFn = _G.MikoUG_ParkBuriedAnchorIfIdle
+                                        if ugParkFn then
+                                                ugParkFn()
+                                        end
                                 end
                         end
                 end)
@@ -13884,24 +13568,37 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = true
 rayParams.RespectCanCollide = true
 
+local ugExclAt = 0
+local ugExclCam = nil
+local ugExclChar = nil
+local ugExclCount = -1
 local function BuildExclude()
         local cam = workspace.CurrentCamera
-        local list = {}
-        if cam then
-                list[#list + 1] = cam
-        end
+        local char = LocalPlayer.Character
         local ok, players = pcall(function()
                 return Players:GetPlayers()
         end)
-        if ok and players then
-                for i = 1, #players do
-                        local c = players[i].Character
-                        if c then
-                                list[#list + 1] = c
+        local cnt = (ok and players) and #players or 0
+        local nowT = tick()
+        if nowT - ugExclAt >= 0.5 or cam ~= ugExclCam or char ~= ugExclChar or cnt ~= ugExclCount then
+                ugExclAt = nowT
+                ugExclCam = cam
+                ugExclChar = char
+                ugExclCount = cnt
+                local list = {}
+                if cam then
+                        list[#list + 1] = cam
+                end
+                if ok and players then
+                        for i = 1, cnt do
+                                local c = players[i].Character
+                                if c then
+                                        list[#list + 1] = c
+                                end
                         end
                 end
+                rayParams.FilterDescendantsInstances = list
         end
-        rayParams.FilterDescendantsInstances = list
 end
 
 local function ProbeGround(root)
@@ -13920,7 +13617,7 @@ local function ProbeGround(root)
                 end
         end
         if not lastGroundY then
-                -- ray ไม่เจอพื้นเลย ก็ยังมุด (สมมติใต้ตัว 3 สตัดคือผิวดิน)
+
                 lastGroundY = root.Position.Y - 3
         end
         return false
@@ -13928,13 +13625,13 @@ end
 
 stopUnderground = function()
         active = false
-        ugHoldUntil = 0 -- ★ UG fix v11: ปิดโหมด = ล้าง hold ทันที
+        ugHoldUntil = 0
         local char = LocalPlayer.Character
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
-        -- ★ UG fix v13: เก็บความสูงตอนยืนไว้ใช้ตอนปิด (savedRootHeight ถูกเคลียร์ก่อนถึงบล็อกยกตัว)
+
         local stopRootHeight = savedRootHeight
         UGRestoreLocalBody()
-        -- ★ UG fix v12: คืนป้าย/เอฟเฟกต์ช่วง hold + ปลด anchor กันค้าง (ปิดโหมดขณะยืนยิง)
+
         UGRestoreGhostFx()
         if ugStealthAnchored then
                 ugStealthAnchored = false
@@ -13955,8 +13652,7 @@ stopUnderground = function()
                 ugHeartbeatConn = nil
         end
         UGUnbindHideStep()
-        -- ★ Camera fix: หยุดคุมกล้องทันที — เฟรมถัดไปกล้องของเกมกลับมา
-        -- ทำงานเองตามปกติ (ตัวถูกย้ายขึ้นผิวดินด้านล่างแล้ว กล้องจะตามเอง)
+
         ugEyeHeightY = nil
         if ugInputConn then
                 pcall(function()
@@ -13992,10 +13688,7 @@ stopUnderground = function()
                 collideSaved = nil
         end
         if root and char == lastChar then
-                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
-                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
-                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
-                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
+
                 local baseY = lastGroundY or root.Position.Y
                 local upY
                 if stopRootHeight then
@@ -14010,7 +13703,7 @@ stopUnderground = function()
                                 * CFrame.Angles(0, yaw, 0)
                         root.AssemblyLinearVelocity = Vector3.zero
                 end)
-                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
+
                 pcall(function()
                         local hum = char:FindFirstChildOfClass("Humanoid")
                         if hum and hum.Health > 0 then
@@ -14021,12 +13714,18 @@ stopUnderground = function()
         lastGroundY = nil
         lastChar = nil
         printedGround = false
+
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+                ugCollidePartsConn = nil
+        end
+        ugCollideParts = nil
+        ugCollidePartsChar = nil
 end
 _G.MikoUG_ForceStop = stopUnderground
 
--- ★ Underground → Gun bridge: คืนตำแหน่ง "ระดับตา" เหนือผิวดินปัจจุบัน
--- (UG fix v7: hook ใช้ค่านี้เป็น "position จุดยิง" ที่ส่งให้เกม — ต้องเป็น
--- จุดเหนือผิวดินเสมอ ไม่งั้น ray ของเกมติดดินแล้วตกไปยิงตาม crosshair)
 _G.MikoUG_GetEyeInfo = function()
         if not active or not lastGroundY or not ugEyeHeightY then
                 return nil
@@ -14039,9 +13738,6 @@ _G.MikoUG_GetEyeInfo = function()
         return Vector3.new(r.Position.X, lastGroundY + ugEyeHeightY, r.Position.Z)
 end
 
--- ★ UG fix v11: เด้งขึ้น "ยืน" เหนือผิวดินทันที (hook ยิงเรียกก่อนสร้างกระสุนทุกนัด)
--- ยกค้างไว้ช่วงสั้น ๆ (default 0.45 วิ — ปรับสดได้: _G.MikoUG_HoldTime) ให้เกม/เซิร์ฟเวอร์
--- เห็นตัวละครเหนือผิวดินจริง ระบบยืนยันการยิงถึงนับว่าโดน (แก้อาการกระสุนทะลุตัว)
 _G.MikoUG_SurfaceNow = function()
         if not active or Library.Unloaded or (Misc and (Misc.FreeCam or Misc.UndergroundFaceDown)) then
                 return
@@ -14054,14 +13750,10 @@ _G.MikoUG_SurfaceNow = function()
         local c = LocalPlayer.Character
         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
         if r and lastGroundY and savedRootHeight then
-                -- ★ UG fix v12: ล็อกการ replicate ก่อนยกตัว (StealthServer) — anchor ฝั่ง client
-                -- ไม่มีทางส่งตำแหน่ง "ยืน" ขึ้นเซิร์ฟเวอร์/ผู้เล่นอื่น (เซิร์ฟเวอร์เห็นตัวใต้ดินเสมอ
-                -- ตัวจึงไม่โผล่จากมุมมองใครเลย) แต่เกมฝั่ง client ที่คำนวณ/ตรวจการยิงเห็นตัวยืน
-                -- จนกระสุนถึงเป้า = นับ hit ถ้าเกมตรวจ hit ฝั่งเซิร์ฟเวอร์ (ยิงไม่เข้า) ให้ปิด:
-                -- _G.MikoUG_StealthServer = false
+
                 local ugStealth = _G.MikoUG_StealthServer
                 if ugStealth == nil then
-                        -- ★ v27: กลับค่าเริ่มต้นเป็น true — ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12
+
                         ugStealth = true
                         _G.MikoUG_StealthServer = true
                 end
@@ -14121,8 +13813,7 @@ UpdateUnderground = function(deltaTime)
                 savedHumanoid = humanoid
                 savedAutoRotate = humanoid.AutoRotate
                 savedCameraOffset = humanoid.CameraOffset
-                -- Roblox's default humanoid camera follows the root with a rig-dependent
-                -- height offset. Keep that original world-space offset when the root lies down.
+
                 local cameraHeight = 1.5
                 if humanoid.RigType == Enum.HumanoidRigType.R15 then
                         if humanoid.AutomaticScalingEnabled then
@@ -14137,19 +13828,17 @@ UpdateUnderground = function(deltaTime)
                 local startCam = workspace.CurrentCamera
                 if startCam then
                         savedCameraY = startCam.CFrame.Position.Y
-                        -- ★ Camera fix: เริ่มมุมมองจากที่ผู้เล่นกำลังมองอยู่พอดี
-                        -- (กล้อง FPS ไม่มี roll จึงแยก yaw/pitch จาก LookVector ได้)
+
                         local look = startCam.CFrame.LookVector
                         ugViewPitch = math.asin(math.clamp(look.Y, -1, 1))
                         ugViewYaw = math.atan2(-look.X, -look.Z)
                 end
-                ugEyeHeightY = nil -- รอ probe ผิวดินเฟรมแรกแล้วค่อยคำนวณ
+                ugEyeHeightY = nil
                 if ugInputConn then
                         ugInputConn:Disconnect()
                         ugInputConn = nil
                 end
-                -- เผื่อโหมดที่เกมไม่ล็อคเมาส์ (เช่น third person): หมุนด้วย
-                -- คลิกขวาลาก เหมือนกล้อง Roblox ปกติ
+
                 ugInputConn = UserInputService.InputChanged:Connect(function(input)
                         if not active or not input then
                                 return
@@ -14158,14 +13847,14 @@ UpdateUnderground = function(deltaTime)
                                 return
                         end
                         if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-                                return -- ล็อคเมาส์อยู่แล้ว: GetMouseDelta จัดการเอง
+                                return
                         end
                         if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                                 return
                         end
                         local d = input.Delta
                         if d.X ~= 0 then
-                                ugViewYaw -= d.X * UG_MOUSE_SENS
+                                ugViewYaw  = ugViewYaw - (d.X * UG_MOUSE_SENS)
                         end
                         if d.Y ~= 0 then
                                 ugViewPitch = math.clamp(
@@ -14177,9 +13866,7 @@ UpdateUnderground = function(deltaTime)
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
-                -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
-                -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
-                -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
+
                 if ugSteppedConn then
                         pcall(function()
                                 ugSteppedConn:Disconnect()
@@ -14200,8 +13887,10 @@ UpdateUnderground = function(deltaTime)
                         if not Misc.Underground or Misc.FreeCam or Misc.UndergroundFaceDown or Library.Unloaded then
                                 return
                         end
-                        for _, part in ipairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") then
+
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part.Parent then
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -14210,25 +13899,28 @@ UpdateUnderground = function(deltaTime)
                                         end
                                 end
                         end
-                        -- (UGHideLocalBody ย้ายไปทำใน BindToRenderStep ตัวเดียว —
-                        --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
-                        --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
-                        pcall(function()
-                                r.AssemblyLinearVelocity = Vector3.zero
-                                r.AssemblyAngularVelocity = Vector3.zero
-                                if ugLastPose then
-                                    -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
-                                    -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
-                                    if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
-                                        ugLastPose = CFrame.new(Vector3.new(
-                                            r.Position.X,
-                                            lastGroundY + savedRootHeight,
-                                            r.Position.Z
-                                        )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-                                    end
-                                    r.CFrame = ugLastPose
+
+                        if r.Parent then
+                                if r.AssemblyLinearVelocity ~= Vector3.zero then
+                                        r.AssemblyLinearVelocity = Vector3.zero
                                 end
-                        end)
+                                if r.AssemblyAngularVelocity ~= Vector3.zero then
+                                        r.AssemblyAngularVelocity = Vector3.zero
+                                end
+                                if ugLastPose then
+
+                                        if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+                                                ugLastPose = CFrame.new(Vector3.new(
+                                                        r.Position.X,
+                                                        lastGroundY + savedRootHeight,
+                                                        r.Position.Z
+                                                )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                                        end
+                                        if r.CFrame ~= ugLastPose then
+                                                r.CFrame = ugLastPose
+                                        end
+                                end
+                        end
                 end
                 collideSaved = collideSaved or {}
                 ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
@@ -14237,15 +13929,11 @@ UpdateUnderground = function(deltaTime)
                 print("[Miko] Underground ON")
         end
 
-        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
         ProbeGround(root)
         if savedRootHeight == nil then
                 savedRootHeight = initialRootY - lastGroundY
         end
-        -- ★ Camera fix: ระดับตาเหนือผิวดิน = กล้องตอนเปิด − ผิวดินตอนเปิด
-        -- เก็บครั้งเดียวตอนเฟรมแรกที่รู้ผิวดิน แล้วเฟรมถัด ๆ ไปเอาไปบวกกับ
-        -- ผิวดิน "ปัจจุบัน" -> เดินขึ้นเนิน/ลงเนิน กล้องลอยตามผิวดินเสมอ
-        -- ไม่ย้อนกลับไปค้างที่ระดับตอนเปิดอีกต่อไป
+
         if ugEyeHeightY == nil and lastGroundY then
                 if savedCameraY then
                         ugEyeHeightY = savedCameraY - lastGroundY
@@ -14253,7 +13941,7 @@ UpdateUnderground = function(deltaTime)
                         ugEyeHeightY = (initialRootY - lastGroundY) + 1.5
                 end
                 if ugEyeHeightY < 1 then
-                        ugEyeHeightY = 1 -- อย่าให้กล้องจมต่ำกว่าผิวดิน
+                        ugEyeHeightY = 1
                 end
         end
 
@@ -14270,21 +13958,16 @@ UpdateUnderground = function(deltaTime)
         end
         local targetY = (lastGroundY or root.Position.Y) - depth
 
-        -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        local dir = Vector3.zero
-        local ok, md = pcall(function()
-                return humanoid.MoveDirection
-        end)
-        if ok and typeof(md) == "Vector3" then
-                dir = md
+        local dir = humanoid.MoveDirection
+        if typeof(dir) ~= "Vector3" then
+                dir = Vector3.zero
         end
 
         local speed = 16
         if humanoid.WalkSpeed and humanoid.WalkSpeed > 0.1 then
                 speed = humanoid.WalkSpeed
         end
-        -- Underground Speed (0.1 - 2): สไลเดอร์เฉพาะของโหมดมุดดิน คูณจาก WalkSpeed ปกติ
-        -- (แยกออกจาก FastWalk เพื่อให้คุมความเร็วใต้ดินได้ตรงจุดและทำนายผลได้)
+
         local ugSpeedMult = tonumber(Misc.UndergroundSpeed) or 1
         if ugSpeedMult < 0.1 then
                 ugSpeedMult = 0.1
@@ -14292,22 +13975,20 @@ UpdateUnderground = function(deltaTime)
                 ugSpeedMult = 2
         end
         speed = speed * ugSpeedMult
-        -- ★ UG fix v11: ช่วง hold = ตัว "ยืน" เหนือผิวดินจริง (ขยับ XZ ต่อได้ตามปกติ)
-        -- ข้ามการบังคับโพสนอนใต้ดินชั่วคราว หมดเวลา hold แล้วค่อยจมกลับลงเอง
+
         if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
             local holdPos = root.Position + dir * speed * deltaTime
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            pcall(function()
+            if root.Parent then
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
-            end)
+            end
         return
         end
-        -- ★ UG fix v12: หมด hold = ปลด anchor กลับสู่การ replicate ปกติทันที — เซิร์ฟเวอร์
-        -- ไม่เคยเห็นตำแหน่ง "ยืน" เลยตลอดช่วงยิง (ตัวจึงไม่โผล่จากมุมมองใครแม้แต่คนเดียว)
+
         if ugStealthAnchored then
             ugStealthAnchored = false
             pcall(function()
@@ -14318,22 +13999,20 @@ UpdateUnderground = function(deltaTime)
         local pos = root.Position + dir * speed * deltaTime
         pos = Vector3.new(pos.X, targetY, pos.Z)
 
-        -- ★ Camera fix: หัน root ตามมุมมองที่เราคุมอยู่ (yaw จากกล้อง)
-        -- เดิมใช้ทิศเดิน MoveDirection -> ยืนนิ่ง = yaw ค้าง, เดิน = กล้องดีด
-        -- หันตามทิศเดิน (เกมอ่าน orientation ของ root ไปคิดกล้อง/ยิงต่อ)
         if ugViewYaw ~= 0 or ugViewPitch ~= 0 then
                 lastYaw = ugViewYaw
         elseif dir.Magnitude > 0.01 then
-                -- กล้องหายตอนเปิด (เก็บมุมไม่ได้) -> ใช้ทิศเดินแบบเดิมเป็น fallback
+
                 lastYaw = math.atan2(-dir.X, -dir.Z)
         end
 
-        -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
         if not collideSaved then
                 collideSaved = {}
         end
-        for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
+
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part.Parent then
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
@@ -14342,48 +14021,35 @@ UpdateUnderground = function(deltaTime)
                         end
                 end
         end
-        -- (การซ่อนตัวทำใน BindToRenderStep priority 2147483000 จุดเดียวพอ —
-        --  ค่า LTM ที่เขียนตรงนี้จะโดน TransparencyController ล้างทุกเฟรมอยู่แล้ว)
-        -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
-        -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
-        -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
-        -- ผิวดินช่วง physics — ไม่งั้นคนอื่นเห็นตัวเราโผล่/จม/นอนเอียงสลับไปมา
+
         local pose = CFrame.new(pos)
                 * CFrame.Angles(0, lastYaw, 0)
-                -- ★ 2026-11-01: คว่ำหน้าลงดินเหมือน Underground Face Down — หมุน -90° แทน +90° (หงายหน้า)
+
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        pcall(function()
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-                root.CFrame = pose
-        end)
 
-        -- Preserve the original camera subject position relative to the ground, including
-        -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
-        pcall(function()
+        if root.Parent then
+                if root.AssemblyLinearVelocity ~= Vector3.zero then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end
+                if root.AssemblyAngularVelocity ~= Vector3.zero then
+                        root.AssemblyAngularVelocity = Vector3.zero
+                end
+                root.CFrame = pose
+        end
+
+        if humanoid.Parent then
+
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
-                humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
+                local ugCamOff = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
-        end)
+                if humanoid.CameraOffset ~= ugCamOff then
+                        humanoid.CameraOffset = ugCamOff
+                end
+        end
 end
 end)(); (function()
-----------------------------------------------------------------
--- Underground Face Down (มุดดินหน้าลง) — คัดลอกทั้งบล็อกจากฟังก์ชัน Underground เดิม
--- ต่างจากต้นฉบับจุดเดียว: โพสต์รูตหมุน -90° (CFrame.Angles(-math.pi / 2, 0, 0))
--- แทน +90° ทำให้ตัวนอนคว่ำ "หน้าหันลงพื้น" แทนที่จะหงายหน้าขึ้นฟ้า
--- ระบบอื่นครบเหมือนต้นฉบับ: คุมกล้องเอง ซ่อนตัว ยิงแบบล่องหน (bridge _G.MikoUG2_*)
--- ใช้ Depth/Speed slider ตัวเดียวกับ Underground เดิม
--- เปิดพร้อมกับ Underground เดิมไม่ได้ — เปิดอันใหม่ = ระบบบังคับปิดอันเดิมเอง
-----------------------------------------------------------------
--- Underground (มุดดิน) v5 — มุดใต้ผิวดินแล้วเดินด้วย WASD ได้จริง
--- ห้าม anchor ตัวละครเด็ดขาด! (anchor = client หยุดส่งตำแหน่งไป server)
--- v5: ตั้ง pose ครบ 3 จุดของเฟรม (Stepped ก่อน physics / Heartbeat หลัง
--- physics ก่อนส่งตำแหน่ง / RenderStepped ก่อน render) เพราะ controller
--- ตัวละครของเกมดึงตัวกลับขึ้นผิวดินในเฟส physics ถ้าสั่งแค่ RenderStepped
--- คนอื่นจะเห็นตัวเราโผล่-จม-นอนเอียงสลับไปมา
--- ไม่บังคับ Physics หรือ PlatformStand: สถานะเหล่านี้อาจขัดกับการถือและยิงปืน
-----------------------------------------------------------------
+
 if type(_G.MikoUG2_ForceStop) == "function" then
         pcall(_G.MikoUG2_ForceStop)
 end
@@ -14397,55 +14063,80 @@ local savedCameraHeightOffset = nil
 local savedCameraWorldOffset = nil
 local savedRootHeight = nil
 local initialRootY = nil
-local savedCameraY = nil -- ความสูงกล้องจริง ณ ตอนเปิดมุดดิน (ล็อกมุมมองไว้ที่ระดับนี้)
+local savedCameraY = nil
 local lastChar = nil
 local lastGroundY = nil
 local lastYaw = 0
 local printedGround = false
-local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
+local collideSaved = nil
 local ugLastPose = nil
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
--- ★ Camera fix 2026-10-31 (มุมกล้องล็อคตอนมุดดิน):
--- เดิมสคริปต์ (1) ล็อกแกน Y ของกล้องไว้ที่ระดับ "ตอนเปิด" ทุกเฟรม และ
--- (2) บังคับ root ให้หมุนตาม "ทิศเดิน" แบบนอนราบ ซึ่งกล้องของเกม FPS
--- อ่าน orientation จาก root ไปคำนวณมุมมอง -> เมาส์หมุนไม่ได้ กล้องค้าง
--- วิธีแก้: คุมกล้องเองทั้ง position + rotation แบบเดียวกับ FreeCam —
--- เก็บ yaw/pitch จากเมาส์แล้วเขียน cam.CFrame ใน render step ที่
--- priority สูงสุด (รันหลังกล้องของเกม จึงชนะทุกเฟรม)
-local ugViewYaw = 0      -- มุมหมุนซ้าย-ขวา (radians)
-local ugViewPitch = 0    -- มุมก้ม-เงย (radians, clamp ±85°)
-local ugEyeHeightY = nil -- ระดับตาเหนือผิวดิน ณ ตอนเปิด (บวกผิวดินปัจจุบันทุกเฟรม)
-local ugInputConn = nil  -- สาย InputChanged สำหรับโหมดคลิกขวาลาก
-local ugHoldUntil = 0 -- ★ UG fix v11: เวลา (tick) ที่ตัวยังถูกยกขึ้น "ยืน" เหนือผิวดินช่วงยิง
-local ugStealthAnchored = false -- ★ UG fix v12: StealthServer เปิด = ระหว่าง hold root ถูก anchor กัน replicate ตำแหน่งยืน
-local UG_MOUSE_SENS = 0.0035 -- ความไวเมาส์ = ค่าเดียวกับ FreeCam ของสคริปต์นี้
 
--- Hide the local character and any gear welded to its torso, including gear
--- that the game parents outside Character. Never modify replicated Transparency.
--- ★ FPS fix 2026-10-30 (ยิงปืนแล้วเกมค้าง): ไม่ต่อ GetPropertyChangedSignal
---   รายชิ้นอีกต่อไป — ตอนยิง เกม spawn VFX ใต้กล้องเป็นสิบชิ้นต่อนัด ทำให้เกิด
---   connect/disconnect + signal dispatch จำนวนมากต่อเฟรมจน FPS ตกหนัก
---   การซ่อนใช้การ re-assert ใน BindToRenderStep (รันหลังกล้อง) แทน ซึ่งชนะอยู่แล้ว
-local ugHiddenParts = {} -- [Instance] = { Value = LocalTransparencyModifier เดิม }
-local ugGhostFx = {} -- ★ UG fix v12: [Instance] = Enabled เดิม (ป้ายชื่อ/เอฟเฟกต์ที่ปิดชั่วคราวช่วง hold)
+local ugCollideParts = nil
+local ugCollidePartsChar = nil
+local ugCollidePartsAt = 0
+local ugCollidePartsConn = nil
+local function UGRebuildCollideParts(char)
+        local list = {}
+        for _, part in ipairs(char:GetDescendants()) do
+                if part:IsA("BasePart") then
+                        list[#list + 1] = part
+                end
+        end
+        ugCollideParts = list
+        ugCollidePartsChar = char
+        ugCollidePartsAt = tick()
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+        end
+        ugCollidePartsConn = char.DescendantAdded:Connect(function(obj)
+                if obj:IsA("BasePart") and ugCollideParts then
+                        ugCollideParts[#ugCollideParts + 1] = obj
+                end
+        end)
+end
+local function UGSyncCollideParts(char)
+        if ugCollidePartsChar ~= char or (tick() - ugCollidePartsAt) >= 1 then
+                UGRebuildCollideParts(char)
+        end
+        return ugCollideParts
+end
+
+local ugViewYaw = 0
+local ugViewPitch = 0
+local ugEyeHeightY = nil
+local ugInputConn = nil
+local ugHoldUntil = 0
+local ugHoldFxNextScan = 0
+local ugHoldWasActive = false
+local ugStealthAnchored = false
+local UG_MOUSE_SENS = 0.0035
+
+local ugHiddenParts = {}
+local ugGhostFx = {}
 local function UGHidePart(obj)
         if not obj:IsA("BasePart") and not obj:IsA("Decal") then
                 return
         end
-        if not ugHiddenParts[obj] then
-                local ok, oldValue = pcall(function()
-                        return obj.LocalTransparencyModifier
-                end)
-                if not ok then
-                        return
+
+        if ugHiddenParts[obj] then
+                if obj.LocalTransparencyModifier ~= 1 then
+                        obj.LocalTransparencyModifier = 1
                 end
-                ugHiddenParts[obj] = { Value = oldValue }
+                return
         end
-        pcall(function()
-                obj.LocalTransparencyModifier = 1
+        local ok, oldValue = pcall(function()
+                return obj.LocalTransparencyModifier
         end)
+        if not ok then
+                return
+        end
+        ugHiddenParts[obj] = { Value = oldValue }
+        obj.LocalTransparencyModifier = 1
 end
 
 local function UGRestorePart(obj, saved)
@@ -14515,16 +14206,18 @@ local function UGHideAttachedGear(char)
                         end
                 end
         end
-        -- Some games draw a separate body/backpack rig under CurrentCamera.
-        -- Hide EVERYTHING under the camera while underground EXCEPT weapon/arms
-        -- branches (ปืนกับมือในมุมมองบุคคลที่หนึ่งต้องยังเห็นตามปกติ) — ไม่เดาชื่อ model
+
         if camera then
                 for _, obj in ipairs(camera:GetDescendants()) do
                         if obj:IsA("BasePart") or obj:IsA("Decal") then
                                 local node = obj
                                 local weaponPart = false
                                 while node and node ~= camera do
-                                        local name = node.Name:lower():gsub("[%s_%-]", "")
+
+                                        local name = node.Name:lower()
+                                        if name:find("[%s_%-]") then
+                                                name = name:gsub("[%s_%-]", "")
+                                        end
                                         if node:IsA("Tool") or name:find("weapon", 1, true)
                                                 or name:find("rifle", 1, true) or name:find("gun", 1, true)
                                                 or name:find("pistol", 1, true) or name:find("viewmodel", 1, true)
@@ -14534,12 +14227,7 @@ local function UGHideAttachedGear(char)
                                         end
                                         node = node.Parent
                                 end
-                                -- ★ 2026-11-01 (ยิงแล้วไม่เห็นตัวเด้ง): ช่วง hold ยกตัวยิง ถ้าปืน/มือ
-                                -- (viewmodel) ถูกคุมตำแหน่งจากตัวละคร มันจะลอยขึ้นเหนือกล้องพร้อม
-                                -- ตัวที่ยืนขึ้น = ผู้เล่นเห็นเป็น "ตัวเด้งขึ้นยืน" — ชิ้นไหนลอยสูงกว่า
-                                -- กล้องเกิน 1.5 หน่วยช่วง hold ให้ซ่อนชั่วคราว (พ้น hold ลูป restore
-                                -- ด้านล่างคืนให้เอง) — viewmodel ปกติอยู่ระดับเดียวกับกล้อง
-                                -- = ไม่เข้าเงื่อนไข ไม่กระพริบ
+
                                 if not weaponPart then
                                         gear[obj] = true
                                         UGHidePart(obj)
@@ -14551,9 +14239,7 @@ local function UGHideAttachedGear(char)
                         end
                 end
         end
-        -- Restore gear immediately when it is detached or leaves the body model.
-        -- ★ 2026-11-01 (ยิงแล้วไม่เห็นตัวเด้ง): ข้าม viewmodel ที่ยังลอยเหนือกล้องช่วง hold
-        -- (ยังต้องซ่อนต่อ) — ไม่งั้นโดนคืนทุกรอบสแกนแล้วกระพริบระหว่างยิง
+
         local ugHoldActiveNow = camera and tick() < (ugHoldUntil or 0)
         for obj, saved in pairs(ugHiddenParts) do
                 if not obj:IsDescendantOf(char) and not gear[obj] then
@@ -14571,7 +14257,6 @@ local function UGRestoreLocalBody()
         end
 end
 
--- ★ UG fix v12: คืนป้ายชื่อ/เอฟเฟกต์ที่ถูกปิดช่วง hold (ยืนยิงแบบล่องหน)
 local function UGRestoreGhostFx()
         for obj, saved in pairs(ugGhostFx) do
                 if obj.Parent then
@@ -14583,10 +14268,6 @@ local function UGRestoreGhostFx()
         end
 end
 
--- แก้บัคเห็นตัวเองบังจอ: TransparencyController ของ Roblox รันที่ RenderPriority.Camera
--- (200) และล้าง LocalTransparencyModifier ที่เราเซ็ตไว้ก่อนหน้าทุกเฟรม ทำให้ตัว/เป้
--- โผล่มาบังครึ่งจอล่างตอนกล้องถูกชดเชยขึ้นไปเหนือหัวตอนมุดดิน ต้องเซ็ตซ้ำ "หลัง"
--- กล้องอัปเดตเสมอ (priority มากกว่า Camera) มุมกล้องตอนเปิดมุดดินจึงเหมือนตอนปิดจริง ๆ
 local UGHideStepName = "MikoUG2_HideLocalBody"
 local ugHideStepBound = false
 local ugLastRescan = 0
@@ -14594,28 +14275,13 @@ local UGBindHideStep = function()
         if ugHideStepBound then
                 return
         end
-        -- priority 2147483000 = รันหลังกล้องของเกม/Roblox ทุกตัว (กล้องเกม FPS ส่วนใหญ่
-        -- เป็น Scriptable และมองข้าม Humanoid.CameraOffset) ทำให้ (1) การซ่อนตัวชนะแน่นอน
-        -- (2) ล็อกความสูงกล้องไว้ที่ระดับเดิมตอนเปิดมุดดิน = มุมมองอยู่ที่เดิม ไม่จมลงไปกับตัว
-        --
-        -- ★ FPS fix 2026-10-30 (ยิงปืนแล้ว FPS ตกเหลือ ~3): เดิม callback นี้ทำงานหนัก
-        --   ทุกเฟรม = GetDescendants ตัวละคร + camera:GetDescendants + GetConnectedParts
-        --   แถมช่วงยิง เกมเพิ่ม VFX ใต้กล้องทุกนัด งานต่อเฟรมเลยบานสะพรั่งจนขั้ว render
-        --   ถูกกินหมด (วัดจริง: Render เหลือ 2.1 ครั้ง/วินาที ทั้งที่ physics ยัง 62/วิ)
-        --   ตอนนี้แบ่งเป็น 2 ชั้น:
-        --   - ทุกเฟรม: re-assert LTM=1 เฉพาะชิ้นที่ track ไว้แล้ว (ไม่กี่สิบ write เท่านั้น)
-        --     + ล็อกความสูงกล้อง = ตัวยังถูกซ่อน 100% เพราะเรารันหลัง TransparencyController
-        --   - ทุก 0.12 วิ: สแกนหาตัว/เป้/อุปกรณ์ใหม่เท่านั้น (หน่วงได้เพราะชิ้นเดิมยังถูก
-        --     re-assert ทุกเฟรมอยู่แล้ว มุมมองไม่มีทางเห็นตัว)
-        -- ★ UG fix v16: หา "ระดับผิวน้ำ" รอบตัว (raycast ลงหา Terrain Water / part
-        -- ชื่อ water/ocean/sea/lake แบบเดียวกับ WalkOnWater) — ใช้ยกกล้องให้ลอย
-        -- "เหนือผิวน้ำ" เสมอตอนมุดดินลงน้ำ คืนค่า Y ของผิวน้ำ ไม่เจอคืน nil
+
         local ugWaterRay = RaycastParams.new()
         ugWaterRay.FilterType = Enum.RaycastFilterType.Exclude
         ugWaterRay.IgnoreWater = false
         local ugCachedPlatform = nil
         local ugLastWaterPrint = 0
-        local function UGWaterSurfaceY(fromPos, fromY)
+        local function UGWaterSurfaceYRaw(fromPos, fromY)
                 local exclude = {}
                 local c = LocalPlayer.Character
                 if c then
@@ -14633,8 +14299,7 @@ local UGBindHideStep = function()
                         end
                 end
                 ugWaterRay.FilterDescendantsInstances = exclude
-                -- ยิง ray ลงจากจุดสูงขึ้นหลายระดับ (ถ้าเริ่มลึกในน้ำ ระดับ +6 อาจยัง
-                -- อยู่ใต้ผิวน้ำ จึงมี +30/+80 สำรองให้เจอผิวน้ำที่ลึกขึ้น)
+
                 for _, dy in ipairs({ 6, 30, 80 }) do
                         local hit = workspace:Raycast(
                                 Vector3.new(fromPos.X, fromY + dy, fromPos.Z),
@@ -14661,6 +14326,18 @@ local UGBindHideStep = function()
                 return nil
         end
 
+        local ugWaterCacheY = nil
+        local ugWaterCacheAt = 0
+        local function UGWaterSurfaceY(fromPos, fromY)
+                local nowT = tick()
+                if nowT - ugWaterCacheAt < 0.15 then
+                        return ugWaterCacheY
+                end
+                ugWaterCacheAt = nowT
+                ugWaterCacheY = UGWaterSurfaceYRaw(fromPos, fromY)
+                return ugWaterCacheY
+        end
+
         local ok = pcall(function()
                 RunService:BindToRenderStep(UGHideStepName, 2147483000, function()
                         if not active then
@@ -14669,39 +14346,50 @@ local UGBindHideStep = function()
                         local c = LocalPlayer.Character
                         for obj, _ in pairs(ugHiddenParts) do
                                 if obj.Parent then
-                                        obj.LocalTransparencyModifier = 1
+
+                                        if obj.LocalTransparencyModifier ~= 1 then
+                                                obj.LocalTransparencyModifier = 1
+                                        end
                                 end
                         end
                         local now = tick()
-                        if now - ugLastRescan >= 0.12 then
+
+                        if now - ugLastRescan >= 0.2 then
                                 ugLastRescan = now
                                 if c then
                                         UGHideLocalBody(c)
                                         UGHideAttachedGear(c)
                                 end
                         end
-                        -- ★ UG fix v11: กดปุ่มยิงค้าง = "ยืน" เหนือผิวดินตลอดช่วงยิง (เมาส์ล็อคกลางจอเท่านั้น
-                        -- จึงไม่เด้งขึ้นตอนคลิกเมนู) ปล่อยปุ่มแล้วค่อยจมกลับหลังหมดเวลา hold
+
                         if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1)
                             and UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
                             local holdTime = tonumber(_G.MikoUG2_HoldTime) or 0.45
                             ugHoldUntil = tick() + (holdTime < 0.1 and 0.1 or holdTime)
                         end
-                        -- ★ UG fix v12: ช่วง hold ตัวถูกยกขึ้น "ยืน" เหนือผิวดินเบื้องหลัง (ยิงแบบล่องหน)
-                        -- ตัวปกติถูกซ่อนด้วย LTM ทุกเฟรมอยู่แล้ว แต่ป้ายชื่อ/เลือด (BillboardGui/
-                        -- SurfaceGui) กับเอฟเฟกต์ (ParticleEmitter/Beam/Trail) ยังลอย/พ่นให้เห็นช่วง
-                        -- ยืน จึงปิดทิ้งระหว่าง hold แล้วคืนค่าเดิมทันทีที่หมด hold
+
                         if c then
                             if tick() < ugHoldUntil then
-                                for _, obj in ipairs(c:GetDescendants()) do
-                                    if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
-                                        or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
-                                        or obj:IsA("Trail") then
-                                        if ugGhostFx[obj] == nil then
-                                            ugGhostFx[obj] = obj.Enabled
-                                        end
-                                        if obj.Enabled then
-                                            obj.Enabled = false
+
+                                local holdActive = tick() < ugHoldUntil
+                                if holdActive and not ugHoldWasActive then
+                                        ugHoldWasActive = true
+                                        ugHoldFxNextScan = 0
+                                elseif not holdActive then
+                                        ugHoldWasActive = false
+                                end
+                                if holdActive and now >= ugHoldFxNextScan then
+                                    ugHoldFxNextScan = now + 0.05
+                                    for _, obj in ipairs(c:GetDescendants()) do
+                                        if obj:IsA("BillboardGui") or obj:IsA("SurfaceGui")
+                                            or obj:IsA("ParticleEmitter") or obj:IsA("Beam")
+                                            or obj:IsA("Trail") then
+                                            if ugGhostFx[obj] == nil then
+                                                ugGhostFx[obj] = obj.Enabled
+                                            end
+                                            if obj.Enabled then
+                                                obj.Enabled = false
+                                            end
                                         end
                                     end
                                 end
@@ -14709,22 +14397,15 @@ local UGBindHideStep = function()
                                 UGRestoreGhostFx()
                             end
                         end
-                        -- ★ Camera fix 2026-10-31: คุมกล้องทั้ง CFrame เองที่นี่
-                        -- (priority 2147483000 = รันหลังกล้องเกม/Roblox ทุกตัว
-                        --  จึงชนะทุกเฟรม ไม่ต้องสู้กับกล้องเกมอีกต่อไป)
-                        -- - ตำแหน่ง: ลอยเหนือผิวดิน "ปัจจุบัน" ตรงตัว (XZ ตาม root
-                        --  + ผิวดินล่าสุด + ระดับตาที่จำไว้ตอนเปิด)
-                        -- - มุม: yaw/pitch จากเมาส์ที่เราเก็บเอง -> หมุนมองรอบได้
-                        --  อิสระ แม้ root จะถูกบังคับเป็น pose นอนราบ
+
                         local cam = workspace.CurrentCamera
                         local h = c and c:FindFirstChildOfClass("Humanoid")
                         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
                         if cam and r and h and h.Health > 0 and ugEyeHeightY and lastGroundY then
-                                -- GetMouseDelta คืนค่าเฉพาะตอนเมาส์ล็อคกลางจอ
-                                -- (โหมดเล่น FPS ปกติ) จึงไม่หมุนกล้องตอนชี้เมนู
+
                                 local delta = UserInputService:GetMouseDelta()
                                 if delta.X ~= 0 then
-                                        ugViewYaw -= delta.X * UG_MOUSE_SENS
+                                        ugViewYaw  = ugViewYaw - (delta.X * UG_MOUSE_SENS)
                                 end
                                 if delta.Y ~= 0 then
                                         ugViewPitch = math.clamp(
@@ -14732,16 +14413,7 @@ local UGBindHideStep = function()
                                                 math.rad(-85), math.rad(85)
                                         )
                                 end
-                                -- ★ UG fix v16: กล้องต้องลอย "เหนือผิวน้ำ" เสมอ — ห้ามลงไป
-                                -- ต่ำกว่าผิวน้ำเหมือน v15 เดิม (ตามหัวลงไปใต้น้ำ = เกมเห็น
-                                -- มุมมองจมน้ำ นับว่ากำลังดำน้ำแล้วหักเลือดจนตาย) ลงน้ำตอน
-                                -- มุดดิน = ยกกล้องขึ้นลอยเหนือผิวน้ำ 1.2 หน่วยตลอด = มุมมอง
-                                -- ไม่จมน้ำ เกมจึงไม่นับว่าดำน้ำ ส่วนบนบกกล้องลอยเหนือผิวดิน
-                                -- เหมือนเดิมทุกอย่าง
-                                -- ★ Face Down camera 2026-11-01: บนบก = กล้อง "จมดิน" —
-                                -- มุมมองอยู่ใต้ผิวดินลึกเท่ากับ Depth slider (lastGroundY - Depth)
-                                -- ตามตัวที่คว่ำหน้าลงพื้น ไม่ลอยเหนือผิวดินแบบ Underground เดิม
-                                -- และไม่ขยับขึ้นตอน hold ยกตัวยิง (มุมมองจมดินตลอดช่วงเปิด)
+
                                 local ugFdDepth = tonumber(Misc.UndergroundDepth) or 1
                                 if ugFdDepth < 0.1 then
                                         ugFdDepth = 0.1
@@ -14767,18 +14439,18 @@ local UGBindHideStep = function()
                                 cam.CFrame = CFrame.new(eye)
                                         * CFrame.Angles(0, ugViewYaw, 0)
                                         * CFrame.Angles(ugViewPitch, 0, 0)
-                                -- ★ v14: จัดการหมุดนิรนาม — ช่วง hold ยิงเลื่อนหมุดตามแนวมอง
-                                -- กล้องปัจจุบันตลอด (กัน ray ตาม crosshair ของเกมคืน nil ตอน
-                                -- กล้องจมดิน) พอหมด hold เก็บหมุดไปพักไกล ๆ กันตัวผู้เล่น
-                                -- เดินชนกล่องล่องหนโดยไม่รู้ตัว
+
                                 if ugHoldUntil and tick() < ugHoldUntil then
-                                        pcall(function()
-                                                _G.MikoUG_RefreshBuriedAnchor()
-                                        end)
+
+                                        local ugAnchorFn = _G.MikoUG_RefreshBuriedAnchor
+                                        if ugAnchorFn then
+                                                ugAnchorFn()
+                                        end
                                 else
-                                        pcall(function()
-                                                _G.MikoUG_ParkBuriedAnchorIfIdle()
-                                        end)
+                                        local ugParkFn = _G.MikoUG_ParkBuriedAnchorIfIdle
+                                        if ugParkFn then
+                                                ugParkFn()
+                                        end
                                 end
                         end
                 end)
@@ -14800,24 +14472,37 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = true
 rayParams.RespectCanCollide = true
 
+local ugExclAt = 0
+local ugExclCam = nil
+local ugExclChar = nil
+local ugExclCount = -1
 local function BuildExclude()
         local cam = workspace.CurrentCamera
-        local list = {}
-        if cam then
-                list[#list + 1] = cam
-        end
+        local char = LocalPlayer.Character
         local ok, players = pcall(function()
                 return Players:GetPlayers()
         end)
-        if ok and players then
-                for i = 1, #players do
-                        local c = players[i].Character
-                        if c then
-                                list[#list + 1] = c
+        local cnt = (ok and players) and #players or 0
+        local nowT = tick()
+        if nowT - ugExclAt >= 0.5 or cam ~= ugExclCam or char ~= ugExclChar or cnt ~= ugExclCount then
+                ugExclAt = nowT
+                ugExclCam = cam
+                ugExclChar = char
+                ugExclCount = cnt
+                local list = {}
+                if cam then
+                        list[#list + 1] = cam
+                end
+                if ok and players then
+                        for i = 1, cnt do
+                                local c = players[i].Character
+                                if c then
+                                        list[#list + 1] = c
+                                end
                         end
                 end
+                rayParams.FilterDescendantsInstances = list
         end
-        rayParams.FilterDescendantsInstances = list
 end
 
 local function ProbeGround(root)
@@ -14836,7 +14521,7 @@ local function ProbeGround(root)
                 end
         end
         if not lastGroundY then
-                -- ray ไม่เจอพื้นเลย ก็ยังมุด (สมมติใต้ตัว 3 สตัดคือผิวดิน)
+
                 lastGroundY = root.Position.Y - 3
         end
         return false
@@ -14844,13 +14529,13 @@ end
 
 stopUnderground = function()
         active = false
-        ugHoldUntil = 0 -- ★ UG fix v11: ปิดโหมด = ล้าง hold ทันที
+        ugHoldUntil = 0
         local char = LocalPlayer.Character
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
-        -- ★ UG fix v13: เก็บความสูงตอนยืนไว้ใช้ตอนปิด (savedRootHeight ถูกเคลียร์ก่อนถึงบล็อกยกตัว)
+
         local stopRootHeight = savedRootHeight
         UGRestoreLocalBody()
-        -- ★ UG fix v12: คืนป้าย/เอฟเฟกต์ช่วง hold + ปลด anchor กันค้าง (ปิดโหมดขณะยืนยิง)
+
         UGRestoreGhostFx()
         if ugStealthAnchored then
                 ugStealthAnchored = false
@@ -14871,8 +14556,7 @@ stopUnderground = function()
                 ugHeartbeatConn = nil
         end
         UGUnbindHideStep()
-        -- ★ Camera fix: หยุดคุมกล้องทันที — เฟรมถัดไปกล้องของเกมกลับมา
-        -- ทำงานเองตามปกติ (ตัวถูกย้ายขึ้นผิวดินด้านล่างแล้ว กล้องจะตามเอง)
+
         ugEyeHeightY = nil
         if ugInputConn then
                 pcall(function()
@@ -14908,10 +14592,7 @@ stopUnderground = function()
                 collideSaved = nil
         end
         if root and char == lastChar then
-                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
-                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
-                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
-                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
+
                 local baseY = lastGroundY or root.Position.Y
                 local upY
                 if stopRootHeight then
@@ -14926,7 +14607,7 @@ stopUnderground = function()
                                 * CFrame.Angles(0, yaw, 0)
                         root.AssemblyLinearVelocity = Vector3.zero
                 end)
-                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
+
                 pcall(function()
                         local hum = char:FindFirstChildOfClass("Humanoid")
                         if hum and hum.Health > 0 then
@@ -14937,12 +14618,18 @@ stopUnderground = function()
         lastGroundY = nil
         lastChar = nil
         printedGround = false
+
+        if ugCollidePartsConn then
+                pcall(function()
+                        ugCollidePartsConn:Disconnect()
+                end)
+                ugCollidePartsConn = nil
+        end
+        ugCollideParts = nil
+        ugCollidePartsChar = nil
 end
 _G.MikoUG2_ForceStop = stopUnderground
 
--- ★ Underground → Gun bridge: คืนตำแหน่ง "ระดับตา" เหนือผิวดินปัจจุบัน
--- (UG fix v7: hook ใช้ค่านี้เป็น "position จุดยิง" ที่ส่งให้เกม — ต้องเป็น
--- จุดเหนือผิวดินเสมอ ไม่งั้น ray ของเกมติดดินแล้วตกไปยิงตาม crosshair)
 _G.MikoUG2_GetEyeInfo = function()
         if not active or not lastGroundY or not ugEyeHeightY then
                 return nil
@@ -14955,9 +14642,6 @@ _G.MikoUG2_GetEyeInfo = function()
         return Vector3.new(r.Position.X, lastGroundY + ugEyeHeightY, r.Position.Z)
 end
 
--- ★ UG fix v11: เด้งขึ้น "ยืน" เหนือผิวดินทันที (hook ยิงเรียกก่อนสร้างกระสุนทุกนัด)
--- ยกค้างไว้ช่วงสั้น ๆ (default 0.45 วิ — ปรับสดได้: _G.MikoUG2_HoldTime) ให้เกม/เซิร์ฟเวอร์
--- เห็นตัวละครเหนือผิวดินจริง ระบบยืนยันการยิงถึงนับว่าโดน (แก้อาการกระสุนทะลุตัว)
 _G.MikoUG2_SurfaceNow = function()
         if not active or Library.Unloaded or (Misc and (Misc.FreeCam or Misc.Underground)) then
                 return
@@ -14970,14 +14654,10 @@ _G.MikoUG2_SurfaceNow = function()
         local c = LocalPlayer.Character
         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
         if r and lastGroundY and savedRootHeight then
-                -- ★ UG fix v12: ล็อกการ replicate ก่อนยกตัว (StealthServer) — anchor ฝั่ง client
-                -- ไม่มีทางส่งตำแหน่ง "ยืน" ขึ้นเซิร์ฟเวอร์/ผู้เล่นอื่น (เซิร์ฟเวอร์เห็นตัวใต้ดินเสมอ
-                -- ตัวจึงไม่โผล่จากมุมมองใครเลย) แต่เกมฝั่ง client ที่คำนวณ/ตรวจการยิงเห็นตัวยืน
-                -- จนกระสุนถึงเป้า = นับ hit ถ้าเกมตรวจ hit ฝั่งเซิร์ฟเวอร์ (ยิงไม่เข้า) ให้ปิด:
-                -- _G.MikoUG2_StealthServer = false
+
                 local ugStealth = _G.MikoUG2_StealthServer
                 if ugStealth == nil then
-                        -- ★ v27: กลับค่าเริ่มต้นเป็น true — ซ่อนตำแหน่งจากเซิร์ฟเวอร์เหมือน v12
+
                         ugStealth = true
                         _G.MikoUG2_StealthServer = true
                 end
@@ -15037,8 +14717,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 savedHumanoid = humanoid
                 savedAutoRotate = humanoid.AutoRotate
                 savedCameraOffset = humanoid.CameraOffset
-                -- Roblox's default humanoid camera follows the root with a rig-dependent
-                -- height offset. Keep that original world-space offset when the root lies down.
+
                 local cameraHeight = 1.5
                 if humanoid.RigType == Enum.HumanoidRigType.R15 then
                         if humanoid.AutomaticScalingEnabled then
@@ -15053,19 +14732,17 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 local startCam = workspace.CurrentCamera
                 if startCam then
                         savedCameraY = startCam.CFrame.Position.Y
-                        -- ★ Camera fix: เริ่มมุมมองจากที่ผู้เล่นกำลังมองอยู่พอดี
-                        -- (กล้อง FPS ไม่มี roll จึงแยก yaw/pitch จาก LookVector ได้)
+
                         local look = startCam.CFrame.LookVector
                         ugViewPitch = math.asin(math.clamp(look.Y, -1, 1))
                         ugViewYaw = math.atan2(-look.X, -look.Z)
                 end
-                ugEyeHeightY = nil -- รอ probe ผิวดินเฟรมแรกแล้วค่อยคำนวณ
+                ugEyeHeightY = nil
                 if ugInputConn then
                         ugInputConn:Disconnect()
                         ugInputConn = nil
                 end
-                -- เผื่อโหมดที่เกมไม่ล็อคเมาส์ (เช่น third person): หมุนด้วย
-                -- คลิกขวาลาก เหมือนกล้อง Roblox ปกติ
+
                 ugInputConn = UserInputService.InputChanged:Connect(function(input)
                         if not active or not input then
                                 return
@@ -15074,14 +14751,14 @@ UpdateUndergroundFaceDown = function(deltaTime)
                                 return
                         end
                         if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-                                return -- ล็อคเมาส์อยู่แล้ว: GetMouseDelta จัดการเอง
+                                return
                         end
                         if not UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
                                 return
                         end
                         local d = input.Delta
                         if d.X ~= 0 then
-                                ugViewYaw -= d.X * UG_MOUSE_SENS
+                                ugViewYaw  = ugViewYaw - (d.X * UG_MOUSE_SENS)
                         end
                         if d.Y ~= 0 then
                                 ugViewPitch = math.clamp(
@@ -15093,9 +14770,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
-                -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
-                -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
-                -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
+
                 if ugSteppedConn then
                         pcall(function()
                                 ugSteppedConn:Disconnect()
@@ -15116,8 +14791,10 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         if not Misc.UndergroundFaceDown or Misc.FreeCam or Misc.Underground or Library.Unloaded then
                                 return
                         end
-                        for _, part in ipairs(c:GetDescendants()) do
-                                if part:IsA("BasePart") then
+
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part.Parent then
                                         if collideSaved[part] == nil then
                                                 collideSaved[part] = part.CanCollide
                                         end
@@ -15126,25 +14803,28 @@ UpdateUndergroundFaceDown = function(deltaTime)
                                         end
                                 end
                         end
-                        -- (UGHideLocalBody ย้ายไปทำใน BindToRenderStep ตัวเดียว —
-                        --  เขียน LTM ตอน Stepped/Heartbeat ไม่มีผลกับการ render อยู่แล้ว
-                        --  และเป็นการ GetDescendants ซ้ำเปล่า 3 รอบ/เฟรม = กินเวลา Lua)
-                        pcall(function()
-                                r.AssemblyLinearVelocity = Vector3.zero
-                                r.AssemblyAngularVelocity = Vector3.zero
-                                if ugLastPose then
-                                    -- ★ UG fix v11: ช่วง hold ให้ re-assert เป็นโพส "ยืน" เหนือผิวดิน
-                                    -- (ไม่ใช้โพสนอนใต้ดินค้างจากเฟรมก่อน กันสวนกับ SurfaceNow)
-                                    if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
-                                        ugLastPose = CFrame.new(Vector3.new(
-                                            r.Position.X,
-                                            lastGroundY + savedRootHeight,
-                                            r.Position.Z
-                                        )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-                                    end
-                                    r.CFrame = ugLastPose
+
+                        if r.Parent then
+                                if r.AssemblyLinearVelocity ~= Vector3.zero then
+                                        r.AssemblyLinearVelocity = Vector3.zero
                                 end
-                        end)
+                                if r.AssemblyAngularVelocity ~= Vector3.zero then
+                                        r.AssemblyAngularVelocity = Vector3.zero
+                                end
+                                if ugLastPose then
+
+                                        if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
+                                                ugLastPose = CFrame.new(Vector3.new(
+                                                        r.Position.X,
+                                                        lastGroundY + savedRootHeight,
+                                                        r.Position.Z
+                                                )) * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
+                                        end
+                                        if r.CFrame ~= ugLastPose then
+                                                r.CFrame = ugLastPose
+                                        end
+                                end
+                        end
                 end
                 collideSaved = collideSaved or {}
                 ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
@@ -15153,15 +14833,11 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 print("[Miko] Underground FD ON")
         end
 
-        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
         ProbeGround(root)
         if savedRootHeight == nil then
                 savedRootHeight = initialRootY - lastGroundY
         end
-        -- ★ Camera fix: ระดับตาเหนือผิวดิน = กล้องตอนเปิด − ผิวดินตอนเปิด
-        -- เก็บครั้งเดียวตอนเฟรมแรกที่รู้ผิวดิน แล้วเฟรมถัด ๆ ไปเอาไปบวกกับ
-        -- ผิวดิน "ปัจจุบัน" -> เดินขึ้นเนิน/ลงเนิน กล้องลอยตามผิวดินเสมอ
-        -- ไม่ย้อนกลับไปค้างที่ระดับตอนเปิดอีกต่อไป
+
         if ugEyeHeightY == nil and lastGroundY then
                 if savedCameraY then
                         ugEyeHeightY = savedCameraY - lastGroundY
@@ -15169,7 +14845,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         ugEyeHeightY = (initialRootY - lastGroundY) + 1.5
                 end
                 if ugEyeHeightY < 1 then
-                        ugEyeHeightY = 1 -- อย่าให้กล้องจมต่ำกว่าผิวดิน
+                        ugEyeHeightY = 1
                 end
         end
 
@@ -15186,21 +14862,16 @@ UpdateUndergroundFaceDown = function(deltaTime)
         end
         local targetY = (lastGroundY or root.Position.Y) - depth
 
-        -- เดินด้วย MoveDirection (สัมพัทธ์กล้องอยู่แล้ว) + ย้ายตัวด้วย CFrame ทุกเฟรม
-        local dir = Vector3.zero
-        local ok, md = pcall(function()
-                return humanoid.MoveDirection
-        end)
-        if ok and typeof(md) == "Vector3" then
-                dir = md
+        local dir = humanoid.MoveDirection
+        if typeof(dir) ~= "Vector3" then
+                dir = Vector3.zero
         end
 
         local speed = 16
         if humanoid.WalkSpeed and humanoid.WalkSpeed > 0.1 then
                 speed = humanoid.WalkSpeed
         end
-        -- Underground Speed (0.1 - 2): สไลเดอร์เฉพาะของโหมดมุดดิน คูณจาก WalkSpeed ปกติ
-        -- (แยกออกจาก FastWalk เพื่อให้คุมความเร็วใต้ดินได้ตรงจุดและทำนายผลได้)
+
         local ugSpeedMult = tonumber(Misc.UndergroundSpeed) or 1
         if ugSpeedMult < 0.1 then
                 ugSpeedMult = 0.1
@@ -15208,22 +14879,20 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 ugSpeedMult = 2
         end
         speed = speed * ugSpeedMult
-        -- ★ UG fix v11: ช่วง hold = ตัว "ยืน" เหนือผิวดินจริง (ขยับ XZ ต่อได้ตามปกติ)
-        -- ข้ามการบังคับโพสนอนใต้ดินชั่วคราว หมดเวลา hold แล้วค่อยจมกลับลงเอง
+
         if tick() < ugHoldUntil and lastGroundY and savedRootHeight then
             local holdPos = root.Position + dir * speed * deltaTime
             holdPos = Vector3.new(holdPos.X, lastGroundY + savedRootHeight, holdPos.Z)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
-            pcall(function()
+            if root.Parent then
                 root.AssemblyLinearVelocity = Vector3.zero
                 root.AssemblyAngularVelocity = Vector3.zero
                 root.CFrame = ugLastPose
-            end)
+            end
         return
         end
-        -- ★ UG fix v12: หมด hold = ปลด anchor กลับสู่การ replicate ปกติทันที — เซิร์ฟเวอร์
-        -- ไม่เคยเห็นตำแหน่ง "ยืน" เลยตลอดช่วงยิง (ตัวจึงไม่โผล่จากมุมมองใครแม้แต่คนเดียว)
+
         if ugStealthAnchored then
             ugStealthAnchored = false
             pcall(function()
@@ -15234,22 +14903,20 @@ UpdateUndergroundFaceDown = function(deltaTime)
         local pos = root.Position + dir * speed * deltaTime
         pos = Vector3.new(pos.X, targetY, pos.Z)
 
-        -- ★ Camera fix: หัน root ตามมุมมองที่เราคุมอยู่ (yaw จากกล้อง)
-        -- เดิมใช้ทิศเดิน MoveDirection -> ยืนนิ่ง = yaw ค้าง, เดิน = กล้องดีด
-        -- หันตามทิศเดิน (เกมอ่าน orientation ของ root ไปคิดกล้อง/ยิงต่อ)
         if ugViewYaw ~= 0 or ugViewPitch ~= 0 then
                 lastYaw = ugViewYaw
         elseif dir.Magnitude > 0.01 then
-                -- กล้องหายตอนเปิด (เก็บมุมไม่ได้) -> ใช้ทิศเดินแบบเดิมเป็น fallback
+
                 lastYaw = math.atan2(-dir.X, -dir.Z)
         end
 
-        -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
         if not collideSaved then
                 collideSaved = {}
         end
-        for _, part in ipairs(char:GetDescendants()) do
-                if part:IsA("BasePart") then
+
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part.Parent then
                         if collideSaved[part] == nil then
                                 collideSaved[part] = part.CanCollide
                         end
@@ -15258,31 +14925,31 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         end
                 end
         end
-        -- (การซ่อนตัวทำใน BindToRenderStep priority 2147483000 จุดเดียวพอ —
-        --  ค่า LTM ที่เขียนตรงนี้จะโดน TransparencyController ล้างทุกเฟรมอยู่แล้ว)
-        -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
-        -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
-        -- (ugApplyPose) re-assert ทั้งเฟรม สู้ controller ของเกมที่ดึงตัวกลับ
-        -- ผิวดินช่วง physics — ไม่งั้นคนอื่นเห็นตัวเราโผล่/จม/นอนเอียงสลับไปมา
-        -- ★ Face Down: ต่างจากต้นฉบับจุดเดียว — หมุนโพสต์ -90° (ต้นฉบับ +90° = หงายหน้าขึ้น)
-        -- คว่ำตัวลงให้หน้าหันลงพื้น ส่วนระบบอื่นทั้งหมดเหมือนต้นฉบับทุกอย่าง
+
         local pose = CFrame.new(pos)
                 * CFrame.Angles(0, lastYaw, 0)
                 * CFrame.Angles(-math.pi / 2, 0, 0)
         ugLastPose = pose
-        pcall(function()
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.AssemblyAngularVelocity = Vector3.zero
-                root.CFrame = pose
-        end)
 
-        -- Preserve the original camera subject position relative to the ground, including
-        -- the rig's head offset and any pre-existing CameraOffset as the root rotates.
-        pcall(function()
+        if root.Parent then
+                if root.AssemblyLinearVelocity ~= Vector3.zero then
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end
+                if root.AssemblyAngularVelocity ~= Vector3.zero then
+                        root.AssemblyAngularVelocity = Vector3.zero
+                end
+                root.CFrame = pose
+        end
+
+        if humanoid.Parent then
+
                 local verticalOffset = Vector3.new(0, lastGroundY + savedRootHeight - root.Position.Y, 0)
-                humanoid.CameraOffset = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
+                local ugCamOff = root.CFrame:VectorToObjectSpace(savedCameraWorldOffset + verticalOffset)
                         - savedCameraHeightOffset
-        end)
+                if humanoid.CameraOffset ~= ugCamOff then
+                        humanoid.CameraOffset = ugCamOff
+                end
+        end
 end
 end)(); (function()
 local MiscBox = Tabs.Misc:AddLeftGroupbox("Misc")
@@ -15345,7 +15012,7 @@ MiscBox:AddToggle("WallPenetration", {
                                         if not ammoFolder then
                                                 return
                                         end
-                                        for _, ammo in ammoFolder:GetChildren() do
+                                                                                for _, ammo in pairs(ammoFolder:GetChildren()) do
                                                 for _, name in {
                                                         "Penetration",
                                                         "PenetrationPower",
@@ -15407,10 +15074,10 @@ MiscBox:AddToggle("FastWalk", {
 
 MiscBox:AddSlider("FastWalkSpeed", {
         Text = "Fast Walk Speed",
-        Tooltip = "Speed multiplier (0.1 - 10)",
-        Default = 2.6,
+        Tooltip = "Speed multiplier (0.1 - 2)",
+        Default = 1,
         Min = 0.1,
-        Max = 10,
+        Max = 1.2,
         Rounding = 1,
         Callback = function(value)
                 if typeof(value) == "number" and value > 0 then
@@ -15443,7 +15110,7 @@ MiscBox:AddToggle("FreeCam", {
 })
 
 MiscBox:AddToggle("Underground", {
-        Text = "Underground (มุดดิน)",
+        Text = "Underground ",
         Default = false,
         Callback = function(value)
                 Misc.Underground = value
@@ -15452,12 +15119,12 @@ MiscBox:AddToggle("Underground", {
 }):AddKeyPicker("UndergroundKeybind", {
         Default = "KeypadZero",
         Mode = "Toggle",
-        Text = "Underground (มุดดิน)",
+        Text = "Underground ",
         SyncToggleState = true,
 })
 
 MiscBox:AddToggle("UndergroundFaceDown", {
-        Text = "Underground Face Down (มุดดินหน้าลง)",
+        Text = "Underground Face Down",
         Default = false,
         Callback = function(value)
                 Misc.UndergroundFaceDown = value
@@ -15466,16 +15133,16 @@ MiscBox:AddToggle("UndergroundFaceDown", {
 }):AddKeyPicker("UndergroundFaceDownKeybind", {
         Default = "KeypadDecimal",
         Mode = "Toggle",
-        Text = "Underground Face Down (มุดดินหน้าลง)",
+        Text = "Underground Face Down",
         SyncToggleState = true,
 })
 
 MiscBox:AddSlider("UndergroundDepth", {
         Text = "Underground Depth",
-        Tooltip = "ความลึกตอนมุดดิน (0.1 - 1)",
-        Default = 1,
+        Tooltip = "ความลึกตอนมุดดิน (0.1 - 0.9)",
+        Default = 0.9,
         Min = 0.1,
-        Max = 1,
+        Max = 0.9,
         Rounding = 2,
         Callback = function(value)
                 if typeof(value) == "number" then
@@ -15487,7 +15154,7 @@ MiscBox:AddSlider("UndergroundDepth", {
 MiscBox:AddSlider("UndergroundSpeed", {
         Text = "Underground Speed",
         Tooltip = "ความเร็วตอนมุดดิน (0.1 - 2)",
-        Default = 1,
+        Default = 1.75,
         Min = 0.1,
         Max = 2,
         Rounding = 2,
@@ -15498,31 +15165,16 @@ MiscBox:AddSlider("UndergroundSpeed", {
         end,
 })
 
-----------------------------------------------------------------
--- ★ Anti-Drown v14 (ไม่จมน้ำตาย) — เพิ่มตามคำขอ: "ทำให้เวลามุดลงน้ำไม่มีวันจมน้ำตาย"
--- โมดูลอิสระในบล็อก do..end ของตัวเอง ทำงานตลอดเวลา ไม่มี toggle
--- และไม่แตะระบบอื่นแม้แต่บรรทัดเดียว:
---  (1) สแกนหาสถานะออกซิเจนของเกม (attribute / NumberValue / IntValue
---      ชื่อคล้าย oxygen/o2/air/breath/drown/lungs บน Player, Character
---      และโฟลเดอร์ stats) แล้วล็อคไว้ที่ค่าเต็มตลอด — เกมที่นับออกซิเจน
---      ฝั่ง client จะไม่มีวันลดเลย
---  (2) ถ้าหัวจมอยู่ใต้ผิวน้ำจริง ๆ แล้วเลือดถูกหัก (เกมบางเกมหักเลือด
---      แทนการมีออกซิเจน) จะฟื้นเลือดส่วนที่หายทันทีทุกครั้ง
---  การตรวจ "ใต้น้ำ" ใช้วิธีเดียวกับ WalkOnWater: raycast หาผิวน้ำ
---  Terrain (Material = Water) + fallback หา part ชื่อ water/ocean
---  * ถ้ายังจมน้ำตายได้ = เกมตรวจจมน้ำฝั่งเซิร์ฟเวอร์ล้วน ๆ — console
---    พิมพ์สิ่งที่ล็อคได้เสมอ เอาผลไป dump หาตัวจัดการออกซิเจนต่อได้
-----------------------------------------------------------------
 do
         local ADOxPatterns = { "oxygen", "o2", "air", "breath", "drown", "lungs" }
-        local ADOxLocked = {} -- [key] = { kind, obj, name, full, printed }
-        local ADWaterParts = {} -- cache part น้ำ (ชื่อ water/ocean) สแกนใหม่ทุก 3 วิ
+        local ADOxLocked = {}
+        local ADWaterParts = {}
         local ADLastScan = 0
         local ADLastPartScan = 0
         local ADLastChar = nil
         local ADLastHealth = nil
         local ADLastGuardPrint = 0
-        local ADSubmergedNow = false -- ★ v15: อยู่ใต้น้ำอยู่ไหมตอนนี้ (ให้ guard ต่อเฟรมใช้)
+        local ADSubmergedNow = false
 
         local ADWaterRay = RaycastParams.new()
         ADWaterRay.FilterType = Enum.RaycastFilterType.Exclude
@@ -15534,7 +15186,7 @@ do
                 end
                 local lower = name:lower()
                 if lower:find("hair", 1, true) then
-                        return false -- กันชื่อ Hair เข้า pattern "air"
+                        return false
                 end
                 for _, pat in ipairs(ADOxPatterns) do
                         if lower:find(pat, 1, true) then
@@ -15552,7 +15204,7 @@ do
                         ADOxLocked[key] = rec
                 end
                 if typeof(current) == "number" and current > rec.full then
-                        rec.full = current -- ค่าเต็ม = ค่าสูงสุดที่เคยเห็น (กันจับตอนโดนลดไปแล้ว)
+                        rec.full = current
                 end
         end
 
@@ -15571,7 +15223,7 @@ do
                 end
                 if char then
                         containers[#containers + 1] = char
-                        -- ★ v15: บางเกมเก็บ Oxygen เป็น attribute บน Humanoid
+
                         local adHum = char:FindFirstChildOfClass("Humanoid")
                         if adHum then
                                 containers[#containers + 1] = adHum
@@ -15601,7 +15253,7 @@ do
                 for key, rec in pairs(ADOxLocked) do
                         local obj = rec.obj
                         if not obj.Parent then
-                                ADOxLocked[key] = nil -- รีสแกนจะเจอใหม่เอง (เช่นตอนรีสปอว์น)
+                                ADOxLocked[key] = nil
                         else
                                 local current
                                 if rec.kind == "attr" then
@@ -15687,7 +15339,6 @@ do
                         ADLastHealth = hum and hum.Health or nil
                 end
 
-                -- จมจริง = หัวอยู่ต่ำกว่าผิวน้ำ
                 local submerged = false
                 if head and root then
                         local waterY = ADFindWaterSurface(root.Position, head.Position.Y)
@@ -15695,8 +15346,7 @@ do
                                 submerged = true
                         end
                 end
-                -- ★ v15: สถานะ Swimming ของเอนจิน = กำลังว่าย/จมอยู่ในน้ำ (บางเกมเริ่ม
-                -- หักเลือดตั้งแต่ลอยผิวน้ำ หัวยังไม่จม) นับรวมด้วยเพื่อไม่พลาด
+
                 if not submerged and hum then
                         local okSwim, adState = pcall(function()
                                 return hum:GetState()
@@ -15707,7 +15357,6 @@ do
                 end
                 ADSubmergedNow = submerged
 
-                -- เกราะใต้น้ำ: ห้ามเลือดลดขณะหัวจมอยู่ใต้ผิวน้ำ
                 if submerged and hum and hum.Health > 0 and ADLastHealth and hum.Health < ADLastHealth then
                         local was = hum.Health
                         local target = math.min(ADLastHealth, hum.MaxHealth or ADLastHealth)
@@ -15719,9 +15368,7 @@ do
                                 end
                         end
                 end
-                -- ★ v15: ขณะอยู่ใต้น้ำ จำเกณฑ์เลือดไว้ที่ "สูงสุดล่าสุด" เท่านั้น (ไม่ให้
-                -- เกณฑ์ลดลงตามเลือดที่โดนหาระหว่าง tick ไม่งั้นเลือดไหลลงเรื่อย ๆ
-                -- จนตายทั้งที่ guard ทำงานอยู่)
+
                 if hum and submerged then
                         if ADLastHealth == nil or hum.Health > ADLastHealth then
                                 ADLastHealth = hum.Health
@@ -15731,10 +15378,6 @@ do
                 end
         end
 
-        -- ★ v15: เกราะเลือดต่อเฟรม (Heartbeat) — ADTick รันทุก 0.1 วิ อาจช้ากว่า
-        -- ดาเมจจมน้ำของเกม ขณะหัวจมใต้น้ำ (ADSubmergedNow) จะคืนเลือดทันทีทุกเฟรม
-        -- ★ Unload fix: ต้องประกาศ ADHeartConn ก่อน แล้วค่อย Connect แยกบรรทัด — เดิมประกาศและอ้างตัวเองในบรรทัดเดียว
-        --   ทำให้ใน callback ตัวแปรยังเป็น nil (ชี้ global) -> กด Unload แล้ว error "attempt to index nil with 'Disconnect'" ซ้ำทุกเฟรม
         local ADHeartConn
         ADHeartConn = RunService.Heartbeat:Connect(function()
                 if Library.Unloaded then
@@ -15763,7 +15406,6 @@ do
         end)
 end
 
-
 MiscBox:AddLabel("Spectator: ")
 
 MiscBox:AddToggle("FreeCamFollow", {
@@ -15772,7 +15414,7 @@ MiscBox:AddToggle("FreeCamFollow", {
         Callback = function(value)
                 Misc.FreeCamFollow = value
                 if not value then
-                        -- show the body again right away; it stays where it was dropped
+
                         FreeCamSaved.FollowLastPos = nil
                         local restoreChar = Players.LocalPlayer and Players.LocalPlayer.Character
                         if restoreChar then
@@ -15831,13 +15473,13 @@ MiscBox:AddInput("FreeCamTPName", {
         Placeholder = "Player name here...",
         Default = "",
         ClearTextOnFocus = false,
-        Finished = false, -- value updates on every keystroke, not only on Enter
+        Finished = false,
         Callback = function(value)
         end,
 })
 
 local function TeleportFreeCamToPlayer()
-        -- All feedback goes to the label above the input (Notify is muted in this script)
+
         local function SetTPStatus(text)
                 if SpectatorTPStatus and typeof(SpectatorTPStatus.SetText) == "function" then
                         SpectatorTPStatus:SetText(text)
@@ -15846,7 +15488,7 @@ local function TeleportFreeCamToPlayer()
 
         if not FreeCamSaved.Active then
                 SetTPStatus("Free Cam is OFF - turn on Free Cam first!")
-                return -- Spectator only: does nothing while Free Cam is off
+                return
         end
 
         local typedInput = Options.FreeCamTPName
@@ -15854,8 +15496,7 @@ local function TeleportFreeCamToPlayer()
         if typeof(typed) ~= "string" or typed == "" then
                 typed = nil
         end
-        -- Fallback: read the text shown in the box itself (covers library variants
-        -- that only commit the value on Enter - always trust what is on screen)
+
         if typed == nil and typedInput and typedInput.Holder then
                 local ok, box = pcall(function()
                         return typedInput.Holder:FindFirstChildWhichIsA("TextBox")
@@ -15865,7 +15506,7 @@ local function TeleportFreeCamToPlayer()
                 end
         end
         if typeof(typed) == "string" then
-                typed = string.match(typed, "^%s*(.-)%s*$") -- trim spaces
+                typed = string.match(typed, "^%s*(.-)%s*$")
                 if typed == "" then
                         typed = nil
                 end
@@ -15882,7 +15523,6 @@ local function TeleportFreeCamToPlayer()
                 return
         end
 
-        -- Typed name wins; otherwise use the dropdown selection
         local name = typed or picked
         local nameLower = string.lower(name)
 
@@ -15903,7 +15543,7 @@ local function TeleportFreeCamToPlayer()
                 end
         end
         if not target then
-                -- No player matched - fall back to NPC / Scav names (the other names ESP shows)
+
                 local okNpc, npcs = pcall(ScanNPCs)
                 if okNpc and typeof(npcs) == "table" then
                         local npcModel = nil
@@ -15952,7 +15592,6 @@ local function TeleportFreeCamToPlayer()
                 return
         end
 
-        -- Move the free camera to the target, keep the current view angle
         FreeCamSaved.Position = root.Position + Vector3.new(0, 2, 0)
         SetTPStatus("Teleported to " .. target.Name)
 end
@@ -15962,8 +15601,7 @@ local FreeCamTPDropdown = MiscBox:AddDropdown("FreeCamTPPlayer", {
         Values = {},
         Multi = false,
         Callback = function(value)
-                -- Picking from the list clears the typed name (latest choice wins)
-                -- Guard: SetValues() refresh (player left) fires this with nil - never clear typed text then
+
                 if typeof(value) ~= "string" or value == "" then
                         return
                 end
@@ -15987,7 +15625,7 @@ local function RefreshFreeCamTPList()
                         table.insert(names, pl.Name)
                 end
         end
-        -- Add the NPC / Scav names that the NPC ESP shows (same source: ScanNPCs)
+
         local okNpc, npcs = pcall(ScanNPCs)
         if okNpc and typeof(npcs) == "table" then
                 for model, data in pairs(npcs) do
@@ -15999,7 +15637,7 @@ local function RefreshFreeCamTPList()
                 end
         end
         table.sort(names)
-        -- Rebuild the dropdown only when the list actually changed (keeps it open while browsing)
+
         local current = FreeCamTPDropdown and FreeCamTPDropdown.Values
         if typeof(current) == "table" and #current == #names then
                 local same = true
@@ -16027,7 +15665,6 @@ Players.PlayerRemoving:Connect(function()
         task.defer(RefreshFreeCamTPList)
 end)
 
--- Keep the target list fresh: NPCs spawn/die constantly during raids
 task.spawn(function()
         while Library.Unloaded ~= true do
                 task.wait(5)
@@ -16036,7 +15673,6 @@ task.spawn(function()
                 end
         end
 end)
-
 
 MiscBox:AddToggle("FullBright", {
         Text = "Full Bright",
@@ -16086,10 +15722,6 @@ MiscBox:AddSlider("CameraFOV", {
         end,
 })
 
-
-----------------------------------------------------------------
--- ★ 2026-11-03 v32: ปุ่มโหลดสคริปต์ Project Delta (ของจริงจาก repo projectdeltahub)
-----------------------------------------------------------------
 local ProjectDeltaScriptUrl = "https://raw.githubusercontent.com/projectdeltahub/project-delta/refs/heads/main/script.lua"
 local ProjectDeltaLoader = {
         Loaded = false,
@@ -16098,7 +15730,6 @@ local ProjectDeltaLoader = {
         ToggleHooked = false,
 }
 
--- toast ล่างจอ: แจ้งสถานะการโหลด (Obsidian Notify ถูกปิดเสียงไว้ทั้งตัวจึงต้องทำเอง)
 local function ShowProjectDeltaToast(message, seconds)
         pcall(function()
                 local toastGui = Instance.new("ScreenGui")
@@ -16137,13 +15768,8 @@ local function ShowProjectDeltaToast(message, seconds)
         end)
 end
 
-
--- ★ 2026-11-03 v34: สลับ 2 UI แบบเรียลไทม์สมูด — hook ตรงปุ่ม RightShift (0ms)
--- + จูน fade หน้าต่าง Project Delta จาก 0.4s เหลือ 0.15s ให้จบไวเท่เมนู Miko
--- + ลูปสำรอง 0.05s ไว้ปลด project-delta ตอน Unload และรีทายถ้ากดปุ่มรัว
 local ProjectDeltaSyncStarted = false
 
--- จูนความเร็ว animation ของ UI Project Delta (เดิม 0.4s Exponential = ช้ากว่าเมนู Miko)
 local function ProjectDeltaApplySpeed()
         pcall(function()
                 local pdLib = (getgenv and getgenv() or _G).Library
@@ -16154,7 +15780,6 @@ local function ProjectDeltaApplySpeed()
         end)
 end
 
--- ซิงก์ทันที: เรียกทุกครั้งที่เมนู Miko ถูกเปิด/ปิด (ผ่าน hook ปุ่ม = เรียลไทม์)
 local function ProjectDeltaSyncNow()
         pcall(function()
                 local pdWindow = (getgenv and getgenv() or _G).MikoPDWindow
@@ -16165,7 +15790,7 @@ local function ProjectDeltaSyncNow()
                                         pdWindow.Open()
                                 end)
                         end
-                        -- ถ้าตอนนั้นยัง tween อยู่ Open จะถูกข้าม = จดไว้ให้ลูปสำรองรีทาย
+
                         if pdWindow.Visible ~= mikoShown and pdWindow.Tweening then
                                 ProjectDeltaLoader.PendingSync = mikoShown
                         else
@@ -16175,7 +15800,6 @@ local function ProjectDeltaSyncNow()
         end)
 end
 
--- hook ตรงที่ Library.Toggle ของเมนู Miko = ทุกครั้งที่กด RightShift ซิงก์เลย ไม่ต้องรอลูป
 local function ProjectDeltaInstallToggleHook()
         if ProjectDeltaLoader.ToggleHooked then
                 return
@@ -16204,7 +15828,6 @@ local function StartProjectDeltaSync()
                         pcall(function()
                                 local pdEnv = (getgenv and getgenv() or _G)
 
-                                -- เมนู Miko โดน Unload = ปลด Project Delta ตามแล้วหยุดลูป
                                 if not Library.ScreenGui or not Library.ScreenGui.Parent then
                                         local pdLib = pdEnv.MikoPDLibrary
                                         if pdLib and type(pdLib.Unload) == "function" then
@@ -16223,7 +15846,7 @@ local function StartProjectDeltaSync()
 
                                 local pdWindow = pdEnv.MikoPDWindow
                                 if pdWindow and type(pdWindow.Open) == "function" then
-                                        -- รีทายที่ค้างจากตอนกดรัว (Open โดนข้ามเพราะยัง tween อยู่)
+
                                         if ProjectDeltaLoader.PendingSync ~= nil and not pdWindow.Tweening then
                                                 local pdDesired = ProjectDeltaLoader.PendingSync
                                                 ProjectDeltaLoader.PendingSync = nil
@@ -16234,7 +15857,6 @@ local function StartProjectDeltaSync()
                                                 end
                                         end
 
-                                        -- กันเหนียว: สถานะเมนูเปลี่ยนโดยไม่ผ่าน hook = ซิงก์ตาม
                                         local mikoShown = (Library.Toggled == true)
                                         if lastMikoShown ~= nil and mikoShown ~= lastMikoShown then
                                                 ProjectDeltaSyncNow()
@@ -16249,8 +15871,6 @@ local function StartProjectDeltaSync()
                 ProjectDeltaSyncStarted = false
         end)
 end
-
-
 
 MiscBox:AddDivider()
 MiscBox:AddToggle("LoadProjectDelta", {
@@ -16273,9 +15893,6 @@ MiscBox:AddToggle("LoadProjectDelta", {
                         local ok, err = pcall(function()
                                 local body = Fetch(ProjectDeltaScriptUrl)
 
-                                -- ★ v33 แพตช์ [1]: บรรทัดเคลียร์ตัวเก่าของ project-delta
-                                -- (ของเดิมเรียก getgenv().Library.Unload() ซึ่งตอนนั้นชี้ที่เมนู Miko
-                                --  เปลี่ยนเป็นเคลียร์เฉพาะ project-delta ตัวเก่าที่แท็ก MikoPDLibrary ไว้)
                                 local pdUnloadLine = "(getgenv and getgenv() or _G).Library.Unload()"
                                 if body:find(pdUnloadLine, 1, true) then
                                         local pdPattern = pdUnloadLine:gsub("(%W)", "%%%1")
@@ -16284,8 +15901,6 @@ MiscBox:AddToggle("LoadProjectDelta", {
                                         error("patch target missing: Library.Unload line")
                                 end
 
-                                -- ★ v33 แพตช์ [2]: แทรกต่อท้ายบรรทัดสร้างหน้าต่าง ui.window
-                                -- = ส่งหน้าต่าง + ไลบรารีของ project-delta ออกมาให้ Miko คุมได้
                                 local pdUiLine = "local ui = {window = Library:Window("
                                 local pdLineStart = body:find(pdUiLine, 1, true)
                                 if pdLineStart then
@@ -16295,7 +15910,6 @@ MiscBox:AddToggle("LoadProjectDelta", {
                                         body = body:sub(1, pdLineStart - 1) .. pdInject .. body:sub(pdLineEnd)
                                 end
 
-                                -- v33: กันเหนียวถ้าบรรทัด ui ถูก repo เปลี่ยน — ติดแท็กท้ายไฟล์แทน
                                 body = body .. "\n;(function() pcall(function() local pdEnv = (getgenv and getgenv() or _G); if ui and ui.window and not pdEnv.MikoPDWindow then pdEnv.MikoPDWindow = ui.window end; if pdEnv.Library and not pdEnv.MikoPDLibrary then pdEnv.MikoPDLibrary = pdEnv.Library end end) end)()"
 
                                 CompileSource(body, "Project Delta script")
@@ -16323,9 +15937,6 @@ LocalPlayer.CharacterAdded:Connect(function()
         ThirdPersonSaved.Active = false
 end)
 
-----------------------------------------------------------------
--- Settings (default Obsidian menu stuff)
-----------------------------------------------------------------
 local MenuGroup = Tabs.Settings:AddLeftGroupbox("Menu")
 
 MenuGroup:AddToggle("KeybindMenuOpen", {
@@ -16375,8 +15986,7 @@ MenuGroup:AddLabel("Menu bind"):AddKeyPicker("MenuKeybind", {
 })
 
 MenuGroup:AddButton("Unload", function()
-        -- ★ FPS fix v37: ตั้งธงก่อนเก็บของ = ลูปทุกตัวที่เหลือเช็คธงนี้แล้วปิดตัวเอง
-        --   (เดิมลูปหลัก/ลูปย่อยบางส่วนยังวิ่งต่อหลัง Unload ฉีดซ้ำที = ลูปซ้อนทบ FPS ยิ่งตก)
+
         Library.Unloaded = true
         for player in pairs(ESPCache) do
                 ClearPlayerESP(player)
@@ -16470,10 +16080,6 @@ SaveManager:SetFolder("Wallhack.gg/ProjectDelta")
 SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings);
 
-----------------------------------------------------------------
--- Category Off Keys — one key press turns off every toggle in a category
--- (each category tab now has its own off bind, styled like the Menu bind row)
-----------------------------------------------------------------
 (function()
 local CategoryOffLists = {
         {
@@ -16531,10 +16137,8 @@ local CategoryOffLists = {
 }
 
 local LastStates = {}
-local SavedStates = {} -- [key] = { [toggleName] = true } remembered while turned off
+local SavedStates = {}
 
--- 1st press: remember which toggles are on, then turn every toggle off.
--- Next press: turn back on exactly the toggles that were on before.
 local function PanicCategory(cat)
         local saved = SavedStates[cat.Key]
         if saved then
@@ -16610,15 +16214,14 @@ end)
 local LastFreeCamKeyState = false
 local KeyPollConn = nil
 KeyPollConn = RunService.RenderStepped:Connect(function()
-        -- ★ FPS fix v37: Unload แล้วปิดตัวเอง
+
         if Library.Unloaded then
                 if KeyPollConn then
                         KeyPollConn:Disconnect()
                 end
                 return
         end
-        -- Free Cam key: single press toggles Spectator (rising-edge
-        -- detect, same proven mechanism as the category off binds)
+
         local kbOpt = Options.FreeCamKeybind
         local keyDown = false
         if kbOpt and typeof(kbOpt.GetState) == "function" then
@@ -16649,9 +16252,6 @@ KeyPollConn = RunService.RenderStepped:Connect(function()
 end)
 end)();
 
-----------------------------------------------------------------
--- Credits
-----------------------------------------------------------------
 local function CopyDiscordInvite()
         local link = "https://discord.gg/XnQ6XmQgFb"
         local copied = false
@@ -16685,9 +16285,6 @@ CreditsJoin:AddButton("Copy our Discord invite link", function()
 end)
 CreditsJoin:AddLabel("https://discord.gg/XnQ6XmQgFb")
 
-----------------------------------------------------------------
--- ESP Map (radar overlay)
-----------------------------------------------------------------
 local RadarGui = nil
 local RadarNorth = nil
 local RadarDots = {}
@@ -16760,7 +16357,6 @@ local function RadarEnsureGui()
         crossV.BorderSizePixel = 0
         crossV.Parent = root
 
-        -- self marker: small diamond + heading tick (camera forward is always up)
         local selfDot = Instance.new("Frame")
         selfDot.AnchorPoint = Vector2.new(0.5, 0.5)
         selfDot.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -16821,7 +16417,6 @@ local function RadarEnsureGui()
                 RadarNames[i] = lbl
         end
 
-        -- drag the radar anywhere on screen
         root.InputBegan:Connect(function(input)
                 if input.UserInputType == Enum.UserInputType.MouseButton1
                         or input.UserInputType == Enum.UserInputType.Touch then
@@ -16887,8 +16482,6 @@ local function UpdateEspMap()
                 return
         end
 
-        -- Radar is centered on the camera, so it also follows the Free Cam while
-        -- spectating. "Up" on the radar = where the camera looks.
         local center = cam.CFrame.Position
         local look = cam.CFrame.LookVector
         local flatLook = Vector3.new(look.X, 0, look.Z)
@@ -16906,7 +16499,6 @@ local function UpdateEspMap()
         local radius = RADAR_SIZE / 2 - 14
         local scale = radius / range
 
-        -- north marker rides the ring edge
         local northDir = Vector3.new(0, 0, -1)
         local nX = northDir:Dot(flatRight) * (radius + 6)
         local nY = -northDir:Dot(flatLook) * (radius + 6)
@@ -16935,10 +16527,10 @@ local function UpdateEspMap()
                 local clamped = dist * scale > radius
                 if clamped and dist > 1e-3 then
                         local k = radius / (dist * scale)
-                        rx *= k
-                        ry *= k
+                        rx  = rx * (k)
+                        ry  = ry * (k)
                 end
-                usedDots += 1
+                usedDots  = usedDots + (1)
                 local dot = RadarDots[usedDots]
                 dot.Visible = true
                 dot.BackgroundColor3 = color
@@ -16948,7 +16540,7 @@ local function UpdateEspMap()
                 dot.Position = UDim2.new(0.5, rx * scale, 0.5, ry * scale)
 
                 if isPlayer and label and usedNames < RADAR_NAMES then
-                        usedNames += 1
+                        usedNames  = usedNames + (1)
                         local lbl = RadarNames[usedNames]
                         lbl.Visible = true
                         lbl.Text = label
@@ -16957,7 +16549,7 @@ local function UpdateEspMap()
         end
 
         if Misc.EspMapPlayers ~= false then
-                for _, pl in Players:GetPlayers() do
+                                for _, pl in pairs(Players:GetPlayers()) do
                         if pl ~= Players.LocalPlayer then
                                 local ch = pl.Character
                                 local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
@@ -16970,7 +16562,7 @@ local function UpdateEspMap()
         end
 
         if Misc.EspMapNpcs ~= false then
-                -- same NPC source the ESP and the TP target list use (ScanNPCs)
+
                 local now = tick()
                 if now - RadarLastNpcScan >= 3 then
                         RadarLastNpcScan = now
@@ -16992,16 +16584,10 @@ local function UpdateEspMap()
         end
 end
 
-----------------------------------------------------------------
--- ESP Map (Full Map): opens the game's own map screen (the same
--- screen the M key shows) with a live name-tagged marker for
--- every player. Same approach as the Ardour script: native
--- MainGui map GUI + MarkerDotTemplate + LastVerifiedPos.
-----------------------------------------------------------------
 local ESPMAP_FULL_PLAYER_COLOR = Color3.fromRGB(227, 36, 36)
 local ESPMAP_FULL_NPC_COLOR = Color3.fromRGB(255, 170, 0)
 local ESPMAP_FULL_NPC_MAX = 40
--- marker math constants used by the game's EstonianBorderMap
+
 local ESPMAP_FULL_OFF_X = 208
 local ESPMAP_FULL_OFF_Z = 203
 
@@ -17031,7 +16617,6 @@ local function EspMapFullSetStatus(text)
         end
 end
 
--- ── Hover → Item X-Ray: ชี้เมาส์ที่มาร์กเกอร์คนบนแมพ = โชว์ของคนนั้นในแผง Item X-Ray ──
 local EspMapFullHoverPlayer = nil
 
 EspMapFullGetHoverPlayer = function()
@@ -17070,7 +16655,7 @@ local function EspMapFullResetToggle()
 end
 
 local function EspMapFullCache()
-        -- เช็คทุก reference ในแคช (ถ้าเกมสร้าง MainGui ใหม่หลังรีสปอว์น แคชเก่าจะพัง)
+
         local c = EspMapFullCacheData
         if c and c.MainGui and c.MainGui.Parent
                 and c.Inner and c.Inner.Parent
@@ -17171,8 +16756,6 @@ local function EspMapFullClear()
         EspMapFullScales = {}
 end
 
--- A sibling of the game's marker layer stays visible when the game hides its
--- own markers underground. Match its geometry so map zoom and pan still apply.
 local function EspMapFullSyncOverlay(cache)
         local overlay = EspMapFullOverlay
         local source = cache and cache.Markers
@@ -17218,7 +16801,6 @@ local function EspMapFullCreateOverlay(cache)
         return EspMapFullSyncOverlay(cache)
 end
 
--- kind: "self" | "player" | "npc"
 local function EspMapFullMakeMarker(name, kind)
         local cache = EspMapFullCache()
         if not cache or not EspMapFullOverlay or not EspMapFullOverlay.Parent then
@@ -17255,7 +16837,7 @@ local function EspMapFullMakeMarker(name, kind)
 end
 
 local function EspMapFullGetWorldPos(player)
-        -- server-verified position the game stores for its own map markers
+
         local ok, attr = pcall(function()
                 local rs = game:GetService("ReplicatedStorage")
                 local pf = rs:FindFirstChild("Players")
@@ -17270,7 +16852,7 @@ local function EspMapFullGetWorldPos(player)
         if ok and typeof(attr) == "Vector3" then
                 return attr
         end
-        -- fallback: streamed character root
+
         local char = player and player.Character
         local root = char and (char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart)
         if root and root:IsA("BasePart") then
@@ -17313,9 +16895,8 @@ local function EspMapFullDoOpen(cache)
         EspMapFullSetStatus("ESP Map: เปิดแล้ว - แดง=ผู้เล่น, ME=คุณ | ชี้เมาส์ที่ชื่อคนบนแมพ = โชว์ของใน Item X-Ray")
 end
 
--- เปิดแมพ: ถ้า GUI ยังไม่พร้อม (เพิ่งลงเซิฟ) จะรอเบื้องหลังสูงสุด 8 วิ แล้วเปิดให้เอง
 EspMapFullOpen = function()
-        EspMapFullRequestId += 1
+        EspMapFullRequestId  = EspMapFullRequestId + (1)
         local requestId = EspMapFullRequestId
         local cache = EspMapFullCache()
         if cache then
@@ -17328,7 +16909,7 @@ EspMapFullOpen = function()
                 local found = nil
                 while waited < 8 do
                         task.wait(0.25)
-                        waited += 0.25
+                        waited  = waited + (0.25)
                         if not Misc.EspMapFull or requestId ~= EspMapFullRequestId then
                                 return
                         end
@@ -17350,7 +16931,7 @@ EspMapFullOpen = function()
 end
 
 EspMapFullClose = function()
-        EspMapFullRequestId += 1
+        EspMapFullRequestId  = EspMapFullRequestId + (1)
         EspMapFullIsOpen = false
         pcall(function()
                 local cache = EspMapFullCache()
@@ -17386,7 +16967,7 @@ local function UpdateEspMapFull()
                 return
         end
         if not cache.MapFrame.Visible then
-                -- the map was closed some other way (game key, respawn reset)
+
                 EspMapFullIsOpen = false
                 EspMapFullClear()
                 EspMapFullResetToggle()
@@ -17421,7 +17002,6 @@ local function UpdateEspMapFull()
                 return
         end
 
-        -- drop markers of players who left, add markers for joiners
         for name, data in pairs(EspMapFullMarkers) do
                 if data.playerRef == nil or data.playerRef.Parent == nil then
                         if data.markerRef then
@@ -17525,14 +17105,11 @@ local function UpdateEspMapFull()
         end
 end
 
-----------------------------------------------------------------
--- Loop
-----------------------------------------------------------------
 local LastFrameTime = tick()
 local MainRenderConn = nil
 
 MainRenderConn = RunService.RenderStepped:Connect(function()
-        -- ★ FPS fix v37: Unload แล้วปิดตัวเอง (เดิม 11 ระบบยังวิ่งทุกเฟรมตลอดไป)
+
         if Library.Unloaded then
                 if MainRenderConn then
                         MainRenderConn:Disconnect()
@@ -17649,7 +17226,7 @@ InitWallPenetration = function()
                                 LocalTransparencyModifier = part.LocalTransparencyModifier,
                         }
                 end
-                -- Visual only — do NOT touch CanQuery (that caused hitmarkers with 0 damage)
+
                 part.LocalTransparencyModifier = math.clamp(amount, 0, 0.95)
         end
 
@@ -17692,7 +17269,7 @@ InitWallPenetration = function()
                                 setPartTransparent(result.Instance, 0.85)
                         end
                         local step = (result.Position - currentOrigin).Magnitude + 0.05
-                        traveled += step
+                        traveled  = traveled + (step)
                         currentOrigin = result.Position + directionUnit * 0.05
                 end
                 detectingWalls = false
@@ -17711,7 +17288,6 @@ pcall(function()
         end)
 end)
 
--- Fix bad saved slider values that crash Obsidian TweenInfo.new
 pcall(function()
         for name, option in pairs(Options) do
                 if option and option.Type == "Slider" and typeof(option.Value) ~= "number" then
@@ -17738,7 +17314,7 @@ end
 
 SafeSync()
 task.defer(function()
-        pcall(InitGunSignalNet) -- client-side kick hook
+        pcall(InitGunSignalNet)
         pcall(InitSilentAim)
         pcall(function()
                 if Library and Library.Toggle then
