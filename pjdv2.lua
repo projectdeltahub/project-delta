@@ -136,18 +136,6 @@
 --     ที่เกิดใหม่ยังโดนเด้งเงียบทันทีเหมือนเดิม) + ล้างเสียงที่ถูกทำลายออกจากตาราง
 -- [7] Gun Cham: เดิมเขียน Material/Color/LTM/ไฟทุกชิ้นทุกเฟรมแม้ค่าเท่าเดิม + เดินหา
 --     ปืนใหม่ทุกเฟรม -> เขียนเมื่อค่าเปลี่ยน + re-assert เต็มทุก 0.2 วิ + แคชผลหาปืน 0.1 วิ
--- ★ 2026-11-07 v42 (Anti-fling + FPS รอบสุดท้าย — ยืมหัวใจจาก Underground resolver ของ swimhub):
--- [แก้ "โดนเตะทะลุแมพ"]:
--- [1] ปิดสถานะ humanoid ที่สร้างแรงเตะ (FallingDown/Ragdoll/GettingUp) ตอนเปิดโหมด
---     คืนตอนปิด — ไม่แตะ Running/Freefall/Seated = เดิน/ถือปืน/ยิงเหมือนเดิม
--- [2] stopUnderground: ย้ายตัวขึ้น "ก่อน" คืน CanCollide + วางลอยเหนือผิวดิน 1.2 สตัด
---     (เดิมคืนการชนก่อนย้าย = ชิ้นที่ทับดินโดน solver เหวี่ยงทันที = fling ทะลุแมพ)
---     + ล้าง AssemblyAngularVelocity ด้วย + หน้าต่างกันเตะ 0.7 วิ ล้างความเร็วทุกเฟรม
--- [FPS ตกตอนเปิด Underground]:
--- [3] probe ผิวดิน (raycast) ทุกเฟรม -> ทุก 0.1 วิ (ลด 60-150 ray/วิ เหลือ 10)
--- [4] ลูปบังคับ CanCollide เหลือสายเดียว (Stepped) เดิมวน 3 รอบ/เฟรม
--- [5] ปิดสถานะ humanoid ช่วยลด state churn ของ engine ทุกเฟรมด้วย
--- (ไม่แตะพฤติกรรมฟีเจอร์ใด ๆ — โพส/กล้อง/การซ่อน/การยิงเหมือนเดิมทุกอย่าง)
 -- ★ 2026-11-04 v41 (FPS ตกตอนเปิด Underground — เก็บงานต่อเฟรมที่ยังหลงเหลือรอบสุดท้าย):
 -- [1] สายซ่อนตัว (UG+FD): เดิมเขียน LocalTransparencyModifier ทับ "ทุกชิ้นทุกเฟรม" ทั้งที่
 --     TransparencyController ล้างค่าใหม่เฉพาะชิ้นตัวละคร ส่วน gear ใต้กล้องค่าค้างอยู่แล้ว
@@ -13844,10 +13832,6 @@ local lastYaw = 0
 local printedGround = false
 local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
 local ugLastPose = nil
--- ★ v42 (Anti-fling — ยืมหัวใจจาก swimhub): ธงสถานะ humanoid ที่ปิดไว้
---   + เวลา probe ผิวดินครั้งถัดไป (ทุก 0.1 วิ)
-local ugSavedStates = nil
-local ugProbeNextAt = 0
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
@@ -14395,15 +14379,6 @@ stopUnderground = function()
         end
         ugApplyPose = nil
         ugLastPose = nil
-        -- ★ v42: คืนสถานะ humanoid ที่ปิดไว้ตอนเปิดโหมด (FallingDown/Ragdoll/GettingUp)
-        if ugSavedStates and savedHumanoid and savedHumanoid.Parent then
-                pcall(function()
-                        for ugSt in pairs(ugSavedStates) do
-                                savedHumanoid:SetStateEnabled(ugSt, true)
-                        end
-                end)
-        end
-        ugSavedStates = nil
         if savedHumanoid and savedHumanoid.Parent then
                 pcall(function()
                         savedHumanoid.AutoRotate = savedAutoRotate
@@ -14419,39 +14394,6 @@ stopUnderground = function()
         savedRootHeight = nil
         initialRootY = nil
         savedCameraY = nil
-        -- ★ v42 (แก้ "โดนเตะทะลุแมพ" ตอนปิดโหมด — ยืมหลักจาก swimhub):
-        -- เดิมคืน CanCollide "ก่อน" ย้ายตัว = ถ้าแขนขายังทับพื้น/เนินตอนนั้น
-        -- physics solver เหวี่ยงตัวออกทันที (ฟลิงจนทะลุแมพ) ลำดับใหม่:
-        -- (1) วางตัวลอยเหนือผิวดิน 1.2 สตัดขณะยังไม่คืนการชน (2) ล้างความเร็ว
-        -- เชิงเส้น+เชิงมุม (3) ค่อยคืน CanCollide (4) หน้าต่างกันเตะ 0.7 วิ
-        if root and char == lastChar then
-                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
-                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
-                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
-                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
-                local baseY = lastGroundY or root.Position.Y
-                local upY
-                if stopRootHeight then
-                        upY = baseY + stopRootHeight + 1.2 -- ★ v42: ลอยเหนือผิวดินนิดเดียว กันชิ้นทับเนินตอนคืน CanCollide
-                else
-                        upY = baseY + 3.5
-                end
-                local yaw = ugViewYaw or lastYaw or 0
-                pcall(function()
-                        root.Anchored = false
-                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
-                                * CFrame.Angles(0, yaw, 0)
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
-                pcall(function()
-                        local hum = char:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 then
-                                hum:ChangeState(Enum.HumanoidStateType.Running)
-                        end
-                end)
-        end
         if collideSaved then
                 for part, value in pairs(collideSaved) do
                         pcall(function()
@@ -14462,28 +14404,33 @@ stopUnderground = function()
                 end
                 collideSaved = nil
         end
-        -- ★ v42: หน้าต่างกันเตะ 0.7 วิหลังปิดโหมด (หัวใจ swimhub: ล้างความเร็ว
-        -- ทุกเฟรม = แรงดีดสะสมจาก solver ไม่มีวันโต) แตะเกณฑ์เฉพาะความเร็วผิดปกติ
-        -- = เดิน/วิ่งปกติหลังปิดโหมดไม่โดนตัด
-        task.spawn(function()
-                local ugSettleEnd = tick() + 0.7
-                while tick() < ugSettleEnd and Library.Unloaded ~= true do
-                        RunService.Heartbeat:Wait()
-                        local ugC = LocalPlayer.Character
-                        local ugR = ugC and ugC:FindFirstChild("HumanoidRootPart")
-                        if not ugR then
-                                break
-                        end
-                        pcall(function()
-                                if ugR.AssemblyLinearVelocity.Magnitude > 45 then
-                                        ugR.AssemblyLinearVelocity = Vector3.zero
-                                end
-                                if ugR.AssemblyAngularVelocity.Magnitude > 20 then
-                                        ugR.AssemblyAngularVelocity = Vector3.zero
-                                end
-                        end)
+        if root and char == lastChar then
+                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
+                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
+                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
+                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
+                local baseY = lastGroundY or root.Position.Y
+                local upY
+                if stopRootHeight then
+                        upY = baseY + stopRootHeight
+                else
+                        upY = baseY + 3.5
                 end
-        end)
+                local yaw = ugViewYaw or lastYaw or 0
+                pcall(function()
+                        root.Anchored = false
+                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
+                                * CFrame.Angles(0, yaw, 0)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end)
+                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
+                pcall(function()
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then
+                                hum:ChangeState(Enum.HumanoidStateType.Running)
+                        end
+                end)
+        end
         lastGroundY = nil
         lastChar = nil
         printedGround = false
@@ -14653,17 +14600,6 @@ UpdateUnderground = function(deltaTime)
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
-                -- ★ v42 (Anti-fling — หัวใจจาก swimhub): ปิดสถานะ humanoid
-                -- ที่เป็นตัวก่อ "โดนเตะ" — FallingDown/Ragdoll/GettingUp เท่านั้นที่ยิง
-                -- impulse แรงใส่อสเมบลี๋ ตอนพลิกฟื้น (ไม่แตะ Running/Freefall/Seated =
-                -- การเดิน/ถือปืน/ยิงเหมือนเดิม) + ลด state churn ทุกเฟรม = FPS ดีขึ้น
-                ugSavedStates = {}
-                pcall(function()
-                        for _, ugSt in ipairs({ Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.GettingUp }) do
-                                ugSavedStates[ugSt] = true
-                                humanoid:SetStateEnabled(ugSt, false)
-                        end
-                end)
                 -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
                 -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
                 -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
@@ -14677,7 +14613,7 @@ UpdateUnderground = function(deltaTime)
                                 ugHeartbeatConn:Disconnect()
                         end)
                 end
-                ugApplyPose = function(ugDoCollide)
+                ugApplyPose = function()
                         local c = LocalPlayer.Character
                         local h = c and c:FindFirstChildOfClass("Humanoid")
                         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
@@ -14687,19 +14623,15 @@ UpdateUnderground = function(deltaTime)
                         if not Misc.Underground or Misc.FreeCam or Misc.UndergroundFaceDown or Library.Unloaded then
                                 return
                         end
-                        -- ★ FPS fix v42: บังคับ CanCollide เฉพาะสาย Stepped (ก่อน physics
-                        -- = จุดเดียวที่มีผลจริง) สาย Heartbeat ข้าม = งานวนชิ้นลดครึ่งเฟรม
-                        -- (★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม)
-                        if ugDoCollide then
-                                local ugCollideList = UGSyncCollideParts(c)
-                                for _, part in ipairs(ugCollideList) do
-                                        if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
-                                                if collideSaved[part] == nil then
-                                                        collideSaved[part] = part.CanCollide
-                                                end
-                                                if part.CanCollide then
-                                                        part.CanCollide = false
-                                                end
+                        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
+                                        if collideSaved[part] == nil then
+                                                collideSaved[part] = part.CanCollide
+                                        end
+                                        if part.CanCollide then
+                                                part.CanCollide = false
                                         end
                                 end
                         end
@@ -14731,26 +14663,14 @@ UpdateUnderground = function(deltaTime)
                         end
                 end
                 collideSaved = collideSaved or {}
-                -- ★ FPS fix v42: Stepped = CanCollide + pose ก่อน physics,
-                --               Heartbeat = pose/ความเร็วอย่างเดียว (ข้ามลูป CanCollide)
-                ugSteppedConn = RunService.Stepped:Connect(function()
-                        ugApplyPose(true)
-                end)
-                ugHeartbeatConn = RunService.Heartbeat:Connect(function()
-                        ugApplyPose(false)
-                end)
+                ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
+                ugHeartbeatConn = RunService.Heartbeat:Connect(ugApplyPose)
                 UGBindHideStep()
                 print("[Miko] Underground ON")
         end
 
-        -- ★ FPS fix v42: probe ผิวดินทุก 0.1 วิ (เดิม raycast ทุกเฟรม 60-150 เส้น/วิ
-        -- ทั้งที่ผิวดินไม่เปลี่ยนบ่อย) กล้อง/โพสตามผิวช้าสุด 0.1 วิ = ตาไม่ทันสังเกต
-        -- (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
-        local ugNowTick = tick()
-        if ugNowTick >= ugProbeNextAt then
-                ugProbeNextAt = ugNowTick + 0.1
-                ProbeGround(root)
-        end
+        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
+        ProbeGround(root)
         if savedRootHeight == nil then
                 savedRootHeight = initialRootY - lastGroundY
         end
@@ -14810,16 +14730,9 @@ UpdateUnderground = function(deltaTime)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
             if root.Parent then
-                -- ★ FPS fix v42: ข้ามเขียนเมื่อค่าเท่าเดิม (ยืนนิ่งยิงรัวไม่มี write เก้ม)
-                if root.AssemblyLinearVelocity ~= Vector3.zero then
-                        root.AssemblyLinearVelocity = Vector3.zero
-                end
-                if root.AssemblyAngularVelocity ~= Vector3.zero then
-                        root.AssemblyAngularVelocity = Vector3.zero
-                end
-                if root.CFrame ~= ugLastPose then
-                        root.CFrame = ugLastPose
-                end
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                root.CFrame = ugLastPose
             end
         return
         end
@@ -14846,10 +14759,20 @@ UpdateUnderground = function(deltaTime)
         end
 
         -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
-        -- ★ FPS fix v42: ลูปบังคับ CanCollide ย้ายไปสายเดียว (Stepped ใน ugApplyPose)
-        -- เดิมวนซ้ำ 3 รอบ/เฟรม (RenderStepped+Stepped+Heartbeat) = ทับซ้อนเปล่า ๆ
         if not collideSaved then
                 collideSaved = {}
+        end
+        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
+                        if collideSaved[part] == nil then
+                                collideSaved[part] = part.CanCollide
+                        end
+                        if part.CanCollide then
+                                part.CanCollide = false
+                        end
+                end
         end
         -- ห้าม anchor ตัวละคร! ต้อง unanchored เพื่อให้ client ยังเป็นเจ้าของ physics
         -- ตั้ง pose ที่นี่ (RenderStepped) แล้วเก็บ ugLastPose ให้ Stepped/Heartbeat
@@ -14922,10 +14845,6 @@ local lastYaw = 0
 local printedGround = false
 local collideSaved = nil -- [BasePart] = CanCollide เดิม (คืนตอนปิด)
 local ugLastPose = nil
--- ★ v42 (Anti-fling — ยืมหัวใจจาก swimhub): ธงสถานะ humanoid ที่ปิดไว้
---   + เวลา probe ผิวดินครั้งถัดไป (ทุก 0.1 วิ)
-local ugSavedStates = nil
-local ugProbeNextAt = 0
 local ugApplyPose = nil
 local ugSteppedConn = nil
 local ugHeartbeatConn = nil
@@ -15507,15 +15426,6 @@ stopUnderground = function()
         end
         ugApplyPose = nil
         ugLastPose = nil
-        -- ★ v42: คืนสถานะ humanoid ที่ปิดไว้ตอนเปิดโหมด (FallingDown/Ragdoll/GettingUp)
-        if ugSavedStates and savedHumanoid and savedHumanoid.Parent then
-                pcall(function()
-                        for ugSt in pairs(ugSavedStates) do
-                                savedHumanoid:SetStateEnabled(ugSt, true)
-                        end
-                end)
-        end
-        ugSavedStates = nil
         if savedHumanoid and savedHumanoid.Parent then
                 pcall(function()
                         savedHumanoid.AutoRotate = savedAutoRotate
@@ -15531,39 +15441,6 @@ stopUnderground = function()
         savedRootHeight = nil
         initialRootY = nil
         savedCameraY = nil
-        -- ★ v42 (แก้ "โดนเตะทะลุแมพ" ตอนปิดโหมด — ยืมหลักจาก swimhub):
-        -- เดิมคืน CanCollide "ก่อน" ย้ายตัว = ถ้าแขนขายังทับพื้น/เนินตอนนั้น
-        -- physics solver เหวี่ยงตัวออกทันที (ฟลิงจนทะลุแมพ) ลำดับใหม่:
-        -- (1) วางตัวลอยเหนือผิวดิน 1.2 สตัดขณะยังไม่คืนการชน (2) ล้างความเร็ว
-        -- เชิงเส้น+เชิงมุม (3) ค่อยคืน CanCollide (4) หน้าต่างกันเตะ 0.7 วิ
-        if root and char == lastChar then
-                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
-                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
-                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
-                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
-                local baseY = lastGroundY or root.Position.Y
-                local upY
-                if stopRootHeight then
-                        upY = baseY + stopRootHeight + 1.2 -- ★ v42: ลอยเหนือผิวดินนิดเดียว กันชิ้นทับเนินตอนคืน CanCollide
-                else
-                        upY = baseY + 3.5
-                end
-                local yaw = ugViewYaw or lastYaw or 0
-                pcall(function()
-                        root.Anchored = false
-                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
-                                * CFrame.Angles(0, yaw, 0)
-                        root.AssemblyLinearVelocity = Vector3.zero
-                        root.AssemblyAngularVelocity = Vector3.zero
-                end)
-                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
-                pcall(function()
-                        local hum = char:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 then
-                                hum:ChangeState(Enum.HumanoidStateType.Running)
-                        end
-                end)
-        end
         if collideSaved then
                 for part, value in pairs(collideSaved) do
                         pcall(function()
@@ -15574,28 +15451,33 @@ stopUnderground = function()
                 end
                 collideSaved = nil
         end
-        -- ★ v42: หน้าต่างกันเตะ 0.7 วิหลังปิดโหมด (หัวใจ swimhub: ล้างความเร็ว
-        -- ทุกเฟรม = แรงดีดสะสมจาก solver ไม่มีวันโต) แตะเกณฑ์เฉพาะความเร็วผิดปกติ
-        -- = เดิน/วิ่งปกติหลังปิดโหมดไม่โดนตัด
-        task.spawn(function()
-                local ugSettleEnd = tick() + 0.7
-                while tick() < ugSettleEnd and Library.Unloaded ~= true do
-                        RunService.Heartbeat:Wait()
-                        local ugC = LocalPlayer.Character
-                        local ugR = ugC and ugC:FindFirstChild("HumanoidRootPart")
-                        if not ugR then
-                                break
-                        end
-                        pcall(function()
-                                if ugR.AssemblyLinearVelocity.Magnitude > 45 then
-                                        ugR.AssemblyLinearVelocity = Vector3.zero
-                                end
-                                if ugR.AssemblyAngularVelocity.Magnitude > 20 then
-                                        ugR.AssemblyAngularVelocity = Vector3.zero
-                                end
-                        end)
+        if root and char == lastChar then
+                -- ★ UG fix v13: ขึ้นยืน "ทันที" ตอนปิดมุดดิน — วางตัวที่ระดับยืนจริง
+                -- (ผิวดินล่าสุด + ความสูง root ตอนยืน) แล้วหันตามมุมมองเดิม
+                -- เดิมวางตัวสูง +3.5 แล้วปล่อยร่วง = humanoid ตกอยู่ในสถานะ Freefall
+                -- ต้องรอ Landed -> Running กลับมาจึงเดินได้ = อาการยืนแข็ง 1-2 วิ
+                local baseY = lastGroundY or root.Position.Y
+                local upY
+                if stopRootHeight then
+                        upY = baseY + stopRootHeight
+                else
+                        upY = baseY + 3.5
                 end
-        end)
+                local yaw = ugViewYaw or lastYaw or 0
+                pcall(function()
+                        root.Anchored = false
+                        root.CFrame = CFrame.new(root.Position.X, upY, root.Position.Z)
+                                * CFrame.Angles(0, yaw, 0)
+                        root.AssemblyLinearVelocity = Vector3.zero
+                end)
+                -- บังคับสถานะ humanoid กลับเป็น Running ทันที ไม่ให้ค้าง Freefall/Physics
+                pcall(function()
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 then
+                                hum:ChangeState(Enum.HumanoidStateType.Running)
+                        end
+                end)
+        end
         lastGroundY = nil
         lastChar = nil
         printedGround = false
@@ -15765,17 +15647,6 @@ UpdateUndergroundFaceDown = function(deltaTime)
                 pcall(function()
                         humanoid.AutoRotate = false
                 end)
-                -- ★ v42 (Anti-fling — หัวใจจาก swimhub): ปิดสถานะ humanoid
-                -- ที่เป็นตัวก่อ "โดนเตะ" — FallingDown/Ragdoll/GettingUp เท่านั้นที่ยิง
-                -- impulse แรงใส่อสเมบลี๋ ตอนพลิกฟื้น (ไม่แตะ Running/Freefall/Seated =
-                -- การเดิน/ถือปืน/ยิงเหมือนเดิม) + ลด state churn ทุกเฟรม = FPS ดีขึ้น
-                ugSavedStates = {}
-                pcall(function()
-                        for _, ugSt in ipairs({ Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.GettingUp }) do
-                                ugSavedStates[ugSt] = true
-                                humanoid:SetStateEnabled(ugSt, false)
-                        end
-                end)
                 -- re-assert pose ให้ครบ 3 จุดของเฟรม: Stepped (ก่อน physics)
                 -- + Heartbeat (หลัง physics ก่อน server เก็บตำแหน่งไป) —
                 -- controller ของเกม register ก่อนเรา = รันก่อน เราชนะท้ายเสมอ
@@ -15789,7 +15660,7 @@ UpdateUndergroundFaceDown = function(deltaTime)
                                 ugHeartbeatConn:Disconnect()
                         end)
                 end
-                ugApplyPose = function(ugDoCollide)
+                ugApplyPose = function()
                         local c = LocalPlayer.Character
                         local h = c and c:FindFirstChildOfClass("Humanoid")
                         local r = c and (c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart)
@@ -15799,19 +15670,15 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         if not Misc.UndergroundFaceDown or Misc.FreeCam or Misc.Underground or Library.Unloaded then
                                 return
                         end
-                        -- ★ FPS fix v42: บังคับ CanCollide เฉพาะสาย Stepped (ก่อน physics
-                        -- = จุดเดียวที่มีผลจริง) สาย Heartbeat ข้าม = งานวนชิ้นลดครึ่งเฟรม
-                        -- (★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม)
-                        if ugDoCollide then
-                                local ugCollideList = UGSyncCollideParts(c)
-                                for _, part in ipairs(ugCollideList) do
-                                        if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
-                                                if collideSaved[part] == nil then
-                                                        collideSaved[part] = part.CanCollide
-                                                end
-                                                if part.CanCollide then
-                                                        part.CanCollide = false
-                                                end
+                        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+                        local ugCollideList = UGSyncCollideParts(c)
+                        for _, part in ipairs(ugCollideList) do
+                                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
+                                        if collideSaved[part] == nil then
+                                                collideSaved[part] = part.CanCollide
+                                        end
+                                        if part.CanCollide then
+                                                part.CanCollide = false
                                         end
                                 end
                         end
@@ -15846,26 +15713,14 @@ UpdateUndergroundFaceDown = function(deltaTime)
                         end
                 end
                 collideSaved = collideSaved or {}
-                -- ★ FPS fix v42: Stepped = CanCollide + pose ก่อน physics,
-                --               Heartbeat = pose/ความเร็วอย่างเดียว (ข้ามลูป CanCollide)
-                ugSteppedConn = RunService.Stepped:Connect(function()
-                        ugApplyPose(true)
-                end)
-                ugHeartbeatConn = RunService.Heartbeat:Connect(function()
-                        ugApplyPose(false)
-                end)
+                ugSteppedConn = RunService.Stepped:Connect(ugApplyPose)
+                ugHeartbeatConn = RunService.Heartbeat:Connect(ugApplyPose)
                 UGBindHideStep()
                 print("[Miko] Underground FD ON")
         end
 
-        -- ★ FPS fix v42: probe ผิวดินทุก 0.1 วิ (เดิม raycast ทุกเฟรม 60-150 เส้น/วิ
-        -- ทั้งที่ผิวดินไม่เปลี่ยนบ่อย) กล้อง/โพสตามผิวช้าสุด 0.1 วิ = ตาไม่ทันสังเกต
-        -- (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
-        local ugNowTick = tick()
-        if ugNowTick >= ugProbeNextAt then
-                ugProbeNextAt = ugNowTick + 0.1
-                ProbeGround(root)
-        end
+        -- หาผิวดินทุกเฟรม (probe เริ่มเหนือผิวเดิมเล็กน้อย กัน ray โดนหลังคา)
+        ProbeGround(root)
         if savedRootHeight == nil then
                 savedRootHeight = initialRootY - lastGroundY
         end
@@ -15925,16 +15780,9 @@ UpdateUndergroundFaceDown = function(deltaTime)
             ugLastPose = CFrame.new(holdPos)
                 * CFrame.Angles(0, ugViewYaw or lastYaw or 0, 0)
             if root.Parent then
-                -- ★ FPS fix v42: ข้ามเขียนเมื่อค่าเท่าเดิม (ยืนนิ่งยิงรัวไม่มี write เก้ม)
-                if root.AssemblyLinearVelocity ~= Vector3.zero then
-                        root.AssemblyLinearVelocity = Vector3.zero
-                end
-                if root.AssemblyAngularVelocity ~= Vector3.zero then
-                        root.AssemblyAngularVelocity = Vector3.zero
-                end
-                if root.CFrame ~= ugLastPose then
-                        root.CFrame = ugLastPose
-                end
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.AssemblyAngularVelocity = Vector3.zero
+                root.CFrame = ugLastPose
             end
         return
         end
@@ -15961,10 +15809,20 @@ UpdateUndergroundFaceDown = function(deltaTime)
         end
 
         -- ปิด CanCollide ทุกชิ้นของตัวละคร (กันดินดัน/เด้งตัวออก) จำค่าเดิมไว้คืนตอนปิด
-        -- ★ FPS fix v42: ลูปบังคับ CanCollide ย้ายไปสายเดียว (Stepped ใน ugApplyPose)
-        -- เดิมวนซ้ำ 3 รอบ/เฟรม (RenderStepped+Stepped+Heartbeat) = ทับซ้อนเปล่า ๆ
         if not collideSaved then
                 collideSaved = {}
+        end
+        -- ★ FPS fix v38: วนจากแคช BasePart แทน GetDescendants ทุกเฟรม
+        local ugCollideList = UGSyncCollideParts(char)
+        for _, part in ipairs(ugCollideList) do
+                if part.Parent then -- ★ v39: แคชเก็บแต่ BasePart แล้ว ข้าม IsA ซ้ำ
+                        if collideSaved[part] == nil then
+                                collideSaved[part] = part.CanCollide
+                        end
+                        if part.CanCollide then
+                                part.CanCollide = false
+                        end
+                end
         end
         -- (การซ่อนตัวทำใน BindToRenderStep priority 2147483000 จุดเดียวพอ —
         --  ค่า LTM ที่เขียนตรงนี้จะโดน TransparencyController ล้างทุกเฟรมอยู่แล้ว)
