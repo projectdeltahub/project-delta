@@ -5286,376 +5286,411 @@ end
 -- =========================================================
 
 local ui = {
-	window = Library:Window({
-		namestart = "miko",
-		nameend = "hub"
-	})
+        window = Library:Window({
+                namestart = "miko",
+                nameend = "hub"
+        })
 }
 
 ui.tabs = {
-	movement = ui.window:Tab({name = "Movement", image = Images.Get("combat") or "rbxassetid://12941020168"}),
-	misc = ui.window:Tab({name = "Misc", image = Images.Get("misc") or "rbxassetid://12941020168"}),
-	settings = ui.window:Tab({name = "Settings", image = Images.Get("config") or "rbxassetid://12941020168"})
+        movement = ui.window:Tab({name = "Movement", image = Images.Get("combat") or "rbxassetid://12941020168"}),
+        misc = ui.window:Tab({name = "Misc", image = Images.Get("misc") or "rbxassetid://12941020168"}),
+        skins = ui.window:Tab({name = "Skins", image = "rbxassetid://17415964540", size = 76}),
+        settings = ui.window:Tab({name = "Settings", image = Images.Get("config") or "rbxassetid://12941020168"})
 }
 
 ui.subtabs = {
-	movement_main = ui.tabs.movement:SubTab({Name = "Main"}),
-	misc_main = ui.tabs.misc:SubTab({Name = "Main"}),
-	settings_theme = ui.tabs.settings:SubTab({Name = "Themeing"})
+        movement_main = ui.tabs.movement:SubTab({Name = "Main"}),
+        misc_main = ui.tabs.misc:SubTab({Name = "Main"}),
+        skins_changer = ui.tabs.skins:SubTab({Name = "Skin Changer"}),
+        skins_weapon = ui.tabs.skins:SubTab({Name = "Weapon Editor"}),
+        settings_theme = ui.tabs.settings:SubTab({Name = "Themeing"})
 }
 
 ui.sections = {
-	movement = ui.subtabs.movement_main:Section({Name = "Movement", Side = "Left"}),
-	misc = ui.subtabs.movement_main:Section({Name = "Misc", Side = "Right"}),
+        movement = ui.subtabs.movement_main:Section({Name = "Movement", Side = "Left"}),
+        misc = ui.subtabs.movement_main:Section({Name = "Misc", Side = "Right"}),
 
-	menu = ui.subtabs.misc_main:Section({Name = "Menu", Side = "Left"}),
-	animations = ui.subtabs.misc_main:Section({Name = "Animations", Side = "Right"}),
+        menu = ui.subtabs.misc_main:Section({Name = "Menu", Side = "Left"}),
+        animations = ui.subtabs.misc_main:Section({Name = "Animations", Side = "Right"}),
 
-	theme_config = ui.subtabs.settings_theme:Section({Name = "Theme", Side = "Left"}),
-	theme_colors = ui.subtabs.settings_theme:Section({Name = "Colors", Side = "Right"})
+        skins_browser = ui.subtabs.skins_changer:Section({Name = "Weapons", Side = "Left"}),
+        skins_actions = ui.subtabs.skins_changer:Section({Name = "Skins", Side = "Right"}),
+        weapon_mods = ui.subtabs.skins_weapon:Section({Name = "Attachments", Side = "Left"}),
+        weapon_list = ui.subtabs.skins_weapon:Section({Name = "Weapons", Side = "Right"}),
+
+        theme_config = ui.subtabs.settings_theme:Section({Name = "Theme", Side = "Left"}),
+        theme_colors = ui.subtabs.settings_theme:Section({Name = "Colors", Side = "Right"})
 }
 
 do
-	ui.tabs.movement.Set(true)
+        ui.tabs.movement.Set(true)
 
-	ui.subtabs.movement_main.Set(true)
-	ui.subtabs.misc_main.Set(true)
-	ui.subtabs.settings_theme.Set(true)
+        ui.subtabs.movement_main.Set(true)
+        ui.subtabs.misc_main.Set(true)
+        ui.subtabs.skins_changer.Set(true)
+        ui.subtabs.settings_theme.Set(true)
+end
+
+-- // skins tab icon highlight
+do
+        local skins_tab = ui.tabs.skins
+        local skins_icon = skins_tab.Objects.icon
+        local skins_idle = Color3.fromHex("565656")
+        local skins_active = Color3.fromHex("ffffff")
+        Library.ThemeObjects[skins_icon] = nil
+        local skins_apply = function(status)
+                skins_icon.ImageColor3 = status and skins_active or skins_idle
+        end
+        local skins_set = skins_tab.Set
+        skins_tab.Set = function(status, nested)
+                skins_set(status, nested)
+                skins_apply(status)
+        end
+        local update_theme = Library.UpdateTheme
+        Library.UpdateTheme = function(theme, color)
+                update_theme(theme, color)
+                skins_apply(skins_tab.Selected)
+        end
+        skins_apply(skins_tab.Selected)
 end
 
 -- // menu / personalization
 do
-	local Menu = ui.sections.menu
+        local Menu = ui.sections.menu
 
-	Menu:Keybind({Name = "Window key", Ignore = true, Key = Enum.KeyCode.Delete, Flag = "menu_key", Callback = function()
-		ui.window.Open()
-	end})
+        -- // window toggle key (hidden — keybind removed from menu)
+        Utility.Signal(UserInputService.InputBegan:Connect(function(input, processed)
+                if input.KeyCode == Enum.KeyCode.Delete then
+                        ui.window.Open()
+                end
+        end))
 
-	Menu:Toggle({Name = "Keybind list", Flag = "menu_keybind_list", Value = true, Callback = function(v)
-		Library.KeybindsList.Status(v)
-	end})
+        Menu:Toggle({Name = "Keybind list", Flag = "menu_keybind_list", Value = true, Callback = function(v)
+                Library.KeybindsList.Status(v)
+        end})
 
-	Menu:Dropdown({Name = "Keybind style", Values = {"Pressed", "All"}, Value = "All", Flag = "menu_keybind_style", Multi = false, Callback = function(v)
-		Library.KeybindsList.View = v
-		Library.KeybindsList.Refresh()
-	end})
+        Menu:Dropdown({Name = "Keybind style", Values = {"Pressed", "All"}, Value = "All", Flag = "menu_keybind_style", Multi = false, Callback = function(v)
+                Library.KeybindsList.View = v
+                Library.KeybindsList.Refresh()
+        end})
 
-	local Watermark = Library:Watermark({
-		titlestart = "miko",
-		titleend = "hub"
-	})
+        local Watermark = Library:Watermark({
+                titlestart = "miko",
+                titleend = "hub"
+        })
 
-	local WatermarkText;
-	Menu:Toggle({Name = "Watermark", Flag = "menu_watermark", Value = true, Callback = function(v)
-		Watermark.SetVisible(v)
-		if WatermarkText then
-			WatermarkText.State(v)
-		end
-	end})
+        local WatermarkText;
+        Menu:Toggle({Name = "Watermark", Flag = "menu_watermark", Value = true, Callback = function(v)
+                Watermark.SetVisible(v)
+                if WatermarkText then
+                        WatermarkText.State(v)
+                end
+        end})
 
-	WatermarkText = Menu:Textbox({
-		Name = "Watermark text",
-		Value = "ping: {ping}ms | fps: {fps} | user: {user} | {date}",
-		Flag = "menu_watermark_text",
-		Callback = function(v)
-			Watermark.SetText(v)
-		end
-	})
+        WatermarkText = Menu:Textbox({
+                Name = "Watermark text",
+                Value = "ping: {ping}ms | fps: {fps} | user: {user} | {date}",
+                Flag = "menu_watermark_text",
+                Callback = function(v)
+                        Watermark.SetText(v)
+                end
+        })
 
-	Menu:Button({Name = "Unload", Confirm = true, Callback = function()
-		Library.Unload()
-	end})
+        Menu:Button({Name = "Unload", Confirm = true, Callback = function()
+                Library.Unload()
+        end})
 end
 
 do
-	local Animations = ui.sections.animations
+        local Animations = ui.sections.animations
 
-	Animations:Slider({Name = "Animation speed", Min = 0, Max = 100, Value = 40, Flag = "menu_animation_speed", Callback = function(v)
-		Library.TweenSpeed = v / 100
-	end})
+        Animations:Slider({Name = "Animation speed", Min = 0, Max = 100, Value = 40, Flag = "menu_animation_speed", Callback = function(v)
+                Library.TweenSpeed = v / 100
+        end})
 
-	local TweenTypes = {}
-	for _, v in Enum.EasingStyle:GetEnumItems() do
-		table.insert(TweenTypes, v.Name)
-	end
+        local TweenTypes = {}
+        for _, v in Enum.EasingStyle:GetEnumItems() do
+                table.insert(TweenTypes, v.Name)
+        end
 
-	Animations:Dropdown({Name = "Animation style", Values = TweenTypes, Value = "Exponential", Flag = "menu_animation_type", Callback = function(v)
-		Library.TweenStyle = Enum.EasingStyle[v]
-	end})
+        Animations:Dropdown({Name = "Animation style", Values = TweenTypes, Value = "Exponential", Flag = "menu_animation_type", Callback = function(v)
+                Library.TweenStyle = Enum.EasingStyle[v]
+        end})
 end
 
 -- // skin changer / themeing
 do
-	local ThemeColorpickers = { }
-	local Config = ui.sections.theme_config
-	local SkinsReady = false
+        local ThemeColorpickers = { }
+        local Config = ui.sections.theme_config
+        local SkinsReady = false
 
-	local SkinOrder = {"Purple Neon", "Crimson", "Ocean", "Emerald", "Sunset", "Midnight"}
+        local SkinOrder = {"Purple Neon", "Crimson", "Ocean", "Emerald", "Sunset", "Midnight"}
 
-	local SkinPresets = {
-		["Purple Neon"] = {
-			outline = "08060C",
-			inline = "221C2E",
-			["inline hovering"] = "2C253A",
-			background = "16121F",
-			["dock background"] = "0F0C15",
-			accent = "A855F7",
-			text = "EBE7F5",
-			["dark text"] = "5E5477"
-		},
-		["Crimson"] = {
-			outline = "0C0708",
-			inline = "2E1C1E",
-			["inline hovering"] = "3A2527",
-			background = "1F1214",
-			["dock background"] = "150C0E",
-			accent = "F43F5E",
-			text = "F5EBEC",
-			["dark text"] = "77575C"
-		},
-		["Ocean"] = {
-			outline = "06090C",
-			inline = "1C2733",
-			["inline hovering"] = "253343",
-			background = "121820",
-			["dock background"] = "0C1015",
-			accent = "38BDF8",
-			text = "E7EDF5",
-			["dark text"] = "54677A"
-		},
-		["Emerald"] = {
-			outline = "060B08",
-			inline = "1C2E24",
-			["inline hovering"] = "253B2E",
-			background = "121F18",
-			["dock background"] = "0C150F",
-			accent = "34D399",
-			text = "E8F5EE",
-			["dark text"] = "557A66"
-		},
-		["Sunset"] = {
-			outline = "0C0806",
-			inline = "2E241C",
-			["inline hovering"] = "3A2E25",
-			background = "1F1812",
-			["dock background"] = "150F0C",
-			accent = "FB923C",
-			text = "F5EFE8",
-			["dark text"] = "7A6553"
-		},
-		["Midnight"] = {
-			outline = "070708",
-			inline = "232326",
-			["inline hovering"] = "2D2D31",
-			background = "171719",
-			["dock background"] = "101012",
-			accent = "9CA3AF",
-			text = "ECECED",
-			["dark text"] = "5F5F66"
-		}
-	}
+        local SkinPresets = {
+                ["Purple Neon"] = {
+                        outline = "08060C",
+                        inline = "221C2E",
+                        ["inline hovering"] = "2C253A",
+                        background = "16121F",
+                        ["dock background"] = "0F0C15",
+                        accent = "A855F7",
+                        text = "EBE7F5",
+                        ["dark text"] = "5E5477"
+                },
+                ["Crimson"] = {
+                        outline = "0C0708",
+                        inline = "2E1C1E",
+                        ["inline hovering"] = "3A2527",
+                        background = "1F1214",
+                        ["dock background"] = "150C0E",
+                        accent = "F43F5E",
+                        text = "F5EBEC",
+                        ["dark text"] = "77575C"
+                },
+                ["Ocean"] = {
+                        outline = "06090C",
+                        inline = "1C2733",
+                        ["inline hovering"] = "253343",
+                        background = "121820",
+                        ["dock background"] = "0C1015",
+                        accent = "38BDF8",
+                        text = "E7EDF5",
+                        ["dark text"] = "54677A"
+                },
+                ["Emerald"] = {
+                        outline = "060B08",
+                        inline = "1C2E24",
+                        ["inline hovering"] = "253B2E",
+                        background = "121F18",
+                        ["dock background"] = "0C150F",
+                        accent = "34D399",
+                        text = "E8F5EE",
+                        ["dark text"] = "557A66"
+                },
+                ["Sunset"] = {
+                        outline = "0C0806",
+                        inline = "2E241C",
+                        ["inline hovering"] = "3A2E25",
+                        background = "1F1812",
+                        ["dock background"] = "150F0C",
+                        accent = "FB923C",
+                        text = "F5EFE8",
+                        ["dark text"] = "7A6553"
+                },
+                ["Midnight"] = {
+                        outline = "070708",
+                        inline = "232326",
+                        ["inline hovering"] = "2D2D31",
+                        background = "171719",
+                        ["dock background"] = "101012",
+                        accent = "9CA3AF",
+                        text = "ECECED",
+                        ["dark text"] = "5F5F66"
+                }
+        }
 
-	local apply_skin = function(preset)
-		for theme, hex in preset do
-			local picker = ThemeColorpickers[theme]
-			if picker then
-				picker.Set({c = Color3.fromHex(hex), a = 0})
-			else
-				Library.UpdateTheme(theme, Color3.fromHex(hex))
-			end
-		end
-	end
+        local apply_skin = function(preset)
+                for theme, hex in preset do
+                        local picker = ThemeColorpickers[theme]
+                        if picker then
+                                picker.Set({c = Color3.fromHex(hex), a = 0})
+                        else
+                                Library.UpdateTheme(theme, Color3.fromHex(hex))
+                        end
+                end
+        end
 
-	Config:Dropdown({
-		Name = "Skin",
-		Values = SkinOrder,
-		Value = "Purple Neon",
-		Flag = "settings_skin",
-		Multi = false,
-		Callback = function(str)
-			local preset = SkinPresets[str]
+        Config:Dropdown({
+                Name = "Skin",
+                Values = SkinOrder,
+                Value = "Purple Neon",
+                Flag = "settings_skin",
+                Multi = false,
+                Callback = function(str)
+                        local preset = SkinPresets[str]
 
-			if preset then
-				apply_skin(preset)
+                        if preset then
+                                apply_skin(preset)
 
-				if SkinsReady then
-					Library.Notification(
-						string.format("Skin changed to %s", Utility.RichText(str, Library.Theme.accent)), 3
-					)
-				end
-			end
-		end
-	})
+                                if SkinsReady then
+                                        Library.Notification(
+                                                string.format("Skin changed to %s", Utility.RichText(str, Library.Theme.accent)), 3
+                                        )
+                                end
+                        end
+                end
+        })
 
-	local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
-	local LastFiles = Files
-	local ThemeName;
+        local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
+        local LastFiles = Files
+        local ThemeName;
 
-	local ThemeList = Config:List({
-		Values = Files,
-		Value = Files[1] or "",
-		Size = 135,
-		Name = "",
-		Flag = "settings_theme_list",
-		Search = true,
-		Callback = function(v)
-			if ThemeName and v then
-				ThemeName.Set(v)
-			end
-		end
-	})
+        local ThemeList = Config:List({
+                Values = Files,
+                Value = Files[1] or "",
+                Size = 135,
+                Name = "",
+                Flag = "settings_theme_list",
+                Search = true,
+                Callback = function(v)
+                        if ThemeName and v then
+                                ThemeName.Set(v)
+                        end
+                end
+        })
 
-	ThemeName = Config:Textbox({
-		Name = "Name",
-		Value = "",
-		Flag = "settings_theme_name"
-	})
+        ThemeName = Config:Textbox({
+                Name = "Name",
+                Value = "",
+                Flag = "settings_theme_name"
+        })
 
-	Config:Button({
-		Name = "Save",
-		Confirm = true,
-		Callback = function()
-			local ConfigName = Library.Flags["settings_theme_name"]
+        Config:Button({
+                Name = "Save",
+                Confirm = true,
+                Callback = function()
+                        local ConfigName = Library.Flags["settings_theme_name"]
 
-			if ConfigName and ConfigName ~= "" then
-				local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
+                        if ConfigName and ConfigName ~= "" then
+                                local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
 
-				writefile(ConfigFilePath, Library.GetTheme())
+                                writefile(ConfigFilePath, Library.GetTheme())
 
-				Library.Notification(
-					string.format("Successfully saved skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
-				)
+                                Library.Notification(
+                                        string.format("Successfully saved skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
+                                )
 
-				local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
+                                local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
 
-				ThemeList.Refresh(Files)
-				ThemeList.Set(ConfigName)
-			else
-				Library.Notification(
-					string.format("Invalid skin name (%s).", Utility.RichText(ConfigName or "", Library.Theme.accent)), 5
-				)
-			end
-		end,
-	})
+                                ThemeList.Refresh(Files)
+                                ThemeList.Set(ConfigName)
+                        else
+                                Library.Notification(
+                                        string.format("Invalid skin name (%s).", Utility.RichText(ConfigName or "", Library.Theme.accent)), 5
+                                )
+                        end
+                end,
+        })
 
-	Config:Button({
-		Name = "Load",
-		Confirm = true,
-		Callback = function()
-			local ConfigName = Library.Flags["settings_theme_list"]
+        Config:Button({
+                Name = "Load",
+                Confirm = true,
+                Callback = function()
+                        local ConfigName = Library.Flags["settings_theme_list"]
 
-			if ConfigName and ConfigName ~= "" then
-				local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
+                        if ConfigName and ConfigName ~= "" then
+                                local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
 
-				if isfile(ConfigFilePath) then
-					local Data = Library.GetThemeData(readfile(ConfigFilePath))
+                                if isfile(ConfigFilePath) then
+                                        local Data = Library.GetThemeData(readfile(ConfigFilePath))
 
-					for theme, v in Data do
-						local picker = ThemeColorpickers[theme]
-						if picker then
-							picker.Set({c = v, a = 0})
-						else
-							Library.UpdateTheme(theme, v)
-						end
-					end
+                                        for theme, v in Data do
+                                                local picker = ThemeColorpickers[theme]
+                                                if picker then
+                                                        picker.Set({c = v, a = 0})
+                                                else
+                                                        Library.UpdateTheme(theme, v)
+                                                end
+                                        end
 
-					Library.Notification(
-						string.format("Successfully loaded skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
-					)
-				else
-					Library.Notification(
-						string.format("Couldn't find skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
-					)
-				end
-			end
-		end,
-	})
+                                        Library.Notification(
+                                                string.format("Successfully loaded skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
+                                        )
+                                else
+                                        Library.Notification(
+                                                string.format("Couldn't find skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
+                                        )
+                                end
+                        end
+                end,
+        })
 
-	Config:Button({
-		Name = "Delete",
-		Confirm = true,
-		Callback = function()
-			local ConfigName = Library.Flags["settings_theme_list"]
+        Config:Button({
+                Name = "Delete",
+                Confirm = true,
+                Callback = function()
+                        local ConfigName = Library.Flags["settings_theme_list"]
 
-			if ConfigName and ConfigName ~= "" then
-				local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
+                        if ConfigName and ConfigName ~= "" then
+                                local ConfigFilePath = string.format("%s%s.cfg", ThemeFolder, ConfigName)
 
-				if isfile(ConfigFilePath) then
-					delfile(ConfigFilePath)
+                                if isfile(ConfigFilePath) then
+                                        delfile(ConfigFilePath)
 
-					Library.Notification(
-						string.format("Successfully deleted skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
-					)
+                                        Library.Notification(
+                                                string.format("Successfully deleted skin (%s).", Utility.RichText(ConfigName, Library.Theme.accent)), 5
+                                        )
 
-					local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
+                                        local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
 
-					ThemeList.Refresh(Files)
-					ThemeList.Set(Files[1] or "")
-				end
-			end
-		end,
-	})
+                                        ThemeList.Refresh(Files)
+                                        ThemeList.Set(Files[1] or "")
+                                end
+                        end
+                end,
+        })
 
-	task.spawn(function()
-		while task.wait(5) do
-			if ui.window.Visible then
-				local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
+        task.spawn(function()
+                while task.wait(5) do
+                        if ui.window.Visible then
+                                local _, Files = Utility.GetFiles(ThemeFolder, { ".cfg" })
 
-				if #Files ~= #LastFiles then
-					LastFiles = Files
+                                if #Files ~= #LastFiles then
+                                        LastFiles = Files
 
-					ThemeList.Refresh(Files)
-					ThemeList.Set(Files[1] or "")
-				end
-			end
-		end
-	end)
+                                        ThemeList.Refresh(Files)
+                                        ThemeList.Set(Files[1] or "")
+                                end
+                        end
+                end
+        end)
 
-	local Colors = ui.sections.theme_colors do
-		for theme, color in (Library.Theme) do
-			ThemeColorpickers[theme] = Colors:Colorpicker({Name = Utility.ToTitleCase(theme), Flag = "settings_" .. theme, Usealpha = true, Ignore = true, Value = color, Callback = function(v)
-				Library.UpdateTheme(theme, v.c)
-			end})
-		end
+        local Colors = ui.sections.theme_colors do
+                for theme, color in (Library.Theme) do
+                        ThemeColorpickers[theme] = Colors:Colorpicker({Name = Utility.ToTitleCase(theme), Flag = "settings_" .. theme, Usealpha = true, Ignore = true, Value = color, Callback = function(v)
+                                Library.UpdateTheme(theme, v.c)
+                        end})
+                end
 
-		SkinsReady = true
-	end
+                SkinsReady = true
+        end
 end
 
 -- // auto reload
 do
-	local miscsec = ui.sections.misc
-	local auto_reload = false
+        local miscsec = ui.sections.misc
+        local auto_reload = false
 
-	local newlclosure = newlclosure or LPH_NO_VIRTUALIZE(function(f)
-		return function(...)
-			return f(...)
-		end
-	end)
+        local newlclosure = newlclosure or LPH_NO_VIRTUALIZE(function(f)
+                return function(...)
+                        return f(...)
+                end
+        end)
 
-	local success, old_remove
-	success, old_remove = pcall(hookfunction, project_delta.remove_bullet, newlclosure(function(fps_object, ...)
-		local hmm = {old_remove(fps_object, ...)}
+        local success, old_remove
+        success, old_remove = pcall(hookfunction, project_delta.remove_bullet, newlclosure(function(fps_object, ...)
+                local hmm = {old_remove(fps_object, ...)}
 
-		if not auto_reload then
-			return unpack(hmm)
-		end
-		if fps_object.Bullets > 0 then
-			return unpack(hmm)
-		end
+                if not auto_reload then
+                        return unpack(hmm)
+                end
+                if fps_object.Bullets > 0 then
+                        return unpack(hmm)
+                end
 
-		task.spawn(fps_object.reload, fps_object)
+                task.spawn(fps_object.reload, fps_object)
 
-		return unpack(hmm)
-	end))
+                return unpack(hmm)
+        end))
 
-	if not success then
-		print("failed to hook remove_bullet", old_remove, getgenv().newlclosure)
-	else
-		miscsec:Toggle({Name = "Auto reload", Value = false, Flag = "gunmods_auto_reload", Callback = function(bool)
-			auto_reload = bool
-		end})
-	end
+        if not success then
+                print("failed to hook remove_bullet", old_remove, getgenv().newlclosure)
+        else
+                miscsec:Toggle({Name = "Auto reload", Value = false, Flag = "gunmods_auto_reload", Callback = function(bool)
+                        auto_reload = bool
+                end})
+        end
 end
 
 -- // movement
@@ -5663,180 +5698,904 @@ cheat.nc_state = {on = false, key = false, speed = 1, kinds = {"Floors", "Walls"
 cheat.clipActive = false
 
 do
-	local movebox = ui.sections.movement
+        local movebox = ui.sections.movement
 
-	local speedhack, speedhack_speed = false, 18.1
-	local speedhack_autospeed, speedhack_autospeed_offset = false, 3.5
-	local flyhack, flyhack_key, flyhack_speed, flyhack_speed_y = false, false, 25, 2.5
-	local spiderman, spiderman_key = false, false
+        local speedhack, speedhack_speed = false, 18.1
+        local speedhack_autospeed, speedhack_autospeed_offset = false, 3.5
+        local flyhack, flyhack_key, flyhack_speed, flyhack_speed_y = false, false, 25, 2.5
+        local spiderman, spiderman_key = false, false
 
-	do -- // no fall damage
-		local nofall = false
+        do -- // no fall damage
+                local nofall = false
 
-		movebox:Toggle({Name = "No fall damage", Value = false, Flag = "no_fall_damage", Callback = function(bool)
-			nofall = bool
-		end})
+                movebox:Toggle({Name = "No fall damage", Value = false, Flag = "no_fall_damage", Callback = function(bool)
+                        nofall = bool
+                end})
 
-		local falling_states = {
-			Enum.HumanoidStateType.FallingDown,
-			Enum.HumanoidStateType.Freefall,
-			Enum.HumanoidStateType.PlatformStanding
-		}
+                local falling_states = {
+                        Enum.HumanoidStateType.FallingDown,
+                        Enum.HumanoidStateType.Freefall,
+                        Enum.HumanoidStateType.PlatformStanding
+                }
 
-		local character = LocalPlayer.Character
-		local hum = character and _FindFirstChildOfClass(character, "Humanoid")
-		local should_no_fall = false
+                local character = LocalPlayer.Character
+                local hum = character and _FindFirstChildOfClass(character, "Humanoid")
+                local should_no_fall = false
 
-		task.spawn(function()
-			while RunService.Heartbeat:Wait() do
-				local character = LocalPlayer.Character
-				if not character then
-					continue
-				end
+                task.spawn(function()
+                        while RunService.Heartbeat:Wait() do
+                                local character = LocalPlayer.Character
+                                if not character then
+                                        continue
+                                end
 
-				local hrp = _FindFirstChild(character, "HumanoidRootPart")
-				local humanoid = _FindFirstChildOfClass(character, "Humanoid")
-				if not (hrp and humanoid) then
-					continue
-				end
+                                local hrp = _FindFirstChild(character, "HumanoidRootPart")
+                                local humanoid = _FindFirstChildOfClass(character, "Humanoid")
+                                if not (hrp and humanoid) then
+                                        continue
+                                end
 
-				if not nofall or not table.find(falling_states, humanoid:GetState()) then
-					should_no_fall = false
-					continue
-				end
+                                if not nofall or not table.find(falling_states, humanoid:GetState()) then
+                                        should_no_fall = false
+                                        continue
+                                end
 
-				humanoid:ChangeState(Enum.HumanoidStateType.Running)
-				should_no_fall = true
-			end
-		end)
+                                humanoid:ChangeState(Enum.HumanoidStateType.Running)
+                                should_no_fall = true
+                        end
+                end)
 
-		local state_changed = LPH_NO_VIRTUALIZE(function(old, new)
-			if should_no_fall and table.find(falling_states, new) then
-				hum:ChangeState(Enum.HumanoidStateType.Running)
-			end
-		end)
+                local state_changed = LPH_NO_VIRTUALIZE(function(old, new)
+                        if should_no_fall and table.find(falling_states, new) then
+                                hum:ChangeState(Enum.HumanoidStateType.Running)
+                        end
+                end)
 
-		local state_connection
-		if hum then
-			state_connection = hum.StateChanged:Connect(state_changed)
-		end
+                local state_connection
+                if hum then
+                        state_connection = hum.StateChanged:Connect(state_changed)
+                end
 
-		LocalPlayer.CharacterAdded:Connect(function(character)
-			local humanoid = character:WaitForChild("Humanoid")
-			hum = humanoid
-			if state_connection then state_connection:Disconnect() end
-			state_connection = humanoid.StateChanged:Connect(state_changed)
-		end)
-	end
+                LocalPlayer.CharacterAdded:Connect(function(character)
+                        local humanoid = character:WaitForChild("Humanoid")
+                        hum = humanoid
+                        if state_connection then state_connection:Disconnect() end
+                        state_connection = humanoid.StateChanged:Connect(state_changed)
+                end)
+        end
 
-	do -- // speedhack / flyhack / noclip / spiderman
-		movebox:Toggle({Name = "Speedhack", Value = false, Flag = "speedhack", Callback = function(bool)
-			speedhack = bool
-		end})
-		movebox:Toggle({Name = "Speedhack auto speed", Value = false, Flag = "speedhack_autospeed", Callback = function(bool)
-			speedhack_autospeed = bool
-		end})
-		movebox:Slider({Name = "Speedhack speed", Min = 1, Max = 24, Float = 0.1, Value = 18.1, Flag = "speedhack_speed", Callback = function(int)
-			speedhack_speed = int
-		end})
-		movebox:Slider({Name = "Auto speed offset", Min = -5, Max = 5, Float = 0.1, Value = 3.5, Flag = "speedhack_autospeed_offset", Callback = function(int)
-			speedhack_autospeed_offset = int
-		end})
+        do -- // speedhack / flyhack / noclip / spiderman
+                movebox:Toggle({Name = "Speedhack", Value = false, Flag = "speedhack", Callback = function(bool)
+                        speedhack = bool
+                end})
+                movebox:Toggle({Name = "Speedhack auto speed", Value = false, Flag = "speedhack_autospeed", Callback = function(bool)
+                        speedhack_autospeed = bool
+                end})
+                movebox:Slider({Name = "Speedhack speed", Min = 1, Max = 24, Float = 0.1, Value = 18.1, Flag = "speedhack_speed", Callback = function(int)
+                        speedhack_speed = int
+                end})
+                movebox:Slider({Name = "Auto speed offset", Min = -5, Max = 5, Float = 0.1, Value = 3.5, Flag = "speedhack_autospeed_offset", Callback = function(int)
+                        speedhack_autospeed_offset = int
+                end})
 
-		local fh_keybind; fh_keybind = movebox:Toggle({Name = "Flyhack", Value = false, Flag = "flyhack", Callback = function(bool)
-			flyhack = bool
-		end}):Keybind({Name = "Flyhack", Mode = "Toggle", Key = Enum.KeyCode.X, Value = false, Flag = "flyhack_key", Link = "flyhack", Callback = function(bool)
-			flyhack_key = flyhack and bool
-			fh_keybind.Set(flyhack_key, true)
-		end})
-		movebox:Slider({Name = "Flyhack speed", Min = 0, Max = 50, Float = 1, Value = 25, Flag = "flyhack_speed", Callback = function(int)
-			flyhack_speed = int
-		end})
-		movebox:Slider({Name = "Flyhack speed Y", Min = 0, Max = 50, Float = 1, Value = 2.5, Flag = "flyhack_speed_y", Callback = function(int)
-			flyhack_speed_y = int
-		end})
+                local fh_keybind; fh_keybind = movebox:Toggle({Name = "Flyhack", Value = false, Flag = "flyhack", Callback = function(bool)
+                        flyhack = bool
+                end}):Keybind({Name = "Flyhack", Mode = "Toggle", Key = Enum.KeyCode.X, Value = false, Flag = "flyhack_key", Link = "flyhack", Callback = function(bool)
+                        flyhack_key = flyhack and bool
+                        fh_keybind.Set(flyhack_key, true)
+                end})
+                movebox:Slider({Name = "Flyhack speed", Min = 0, Max = 50, Float = 1, Value = 25, Flag = "flyhack_speed", Callback = function(int)
+                        flyhack_speed = int
+                end})
+                movebox:Slider({Name = "Flyhack speed Y", Min = 0, Max = 50, Float = 1, Value = 2.5, Flag = "flyhack_speed_y", Callback = function(int)
+                        flyhack_speed_y = int
+                end})
 
-		local nc_keybind; nc_keybind = movebox:Toggle({Name = "Noclip", Value = false, Flag = "noclip", Callback = function(bool)
-			cheat.nc_state.on = bool
-		end}):Keybind({Name = "Noclip", Mode = "Toggle", Modes = {"Hold", "Toggle"}, Key = Enum.KeyCode.C, Value = false, Flag = "noclip_key", Link = "noclip", Callback = function(bool)
-			cheat.nc_state.key = cheat.nc_state.on and bool
-			nc_keybind.Set(cheat.nc_state.key, true)
-		end})
+                local nc_keybind; nc_keybind = movebox:Toggle({Name = "Noclip", Value = false, Flag = "noclip", Callback = function(bool)
+                        cheat.nc_state.on = bool
+                end}):Keybind({Name = "Noclip", Mode = "Toggle", Modes = {"Hold", "Toggle"}, Key = Enum.KeyCode.C, Value = false, Flag = "noclip_key", Link = "noclip", Callback = function(bool)
+                        cheat.nc_state.key = cheat.nc_state.on and bool
+                        nc_keybind.Set(cheat.nc_state.key, true)
+                end})
 
-		local sp_keybind; sp_keybind = movebox:Toggle({Name = "Spiderman", Value = false, Flag = "spiderman", Callback = function(bool)
-			spiderman = bool
-		end}):Keybind({Name = "Spiderman", Mode = "Hold", Key = Enum.KeyCode.F, Value = false, Flag = "spiderman_key", Link = "spiderman", Callback = function(bool)
-			spiderman_key = spiderman and bool
-			sp_keybind.Set(spiderman_key, true)
-		end})
-	end
+                local sp_keybind; sp_keybind = movebox:Toggle({Name = "Spiderman", Value = false, Flag = "spiderman", Callback = function(bool)
+                        spiderman = bool
+                end}):Keybind({Name = "Spiderman", Mode = "Hold", Key = Enum.KeyCode.F, Value = false, Flag = "spiderman_key", Link = "spiderman", Callback = function(bool)
+                        spiderman_key = spiderman and bool
+                        sp_keybind.Set(spiderman_key, true)
+                end})
+        end
 
-	cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
-		local char = LocalPlayer.Character
-		local hrp = char and _FindFirstChild(char, "HumanoidRootPart")
-		local hum = char and _FindFirstChildOfClass(char, "Humanoid")
+        cheat.utility.new_renderstepped(LPH_NO_VIRTUALIZE(function(delta)
+                local char = LocalPlayer.Character
+                local hrp = char and _FindFirstChild(char, "HumanoidRootPart")
+                local hum = char and _FindFirstChildOfClass(char, "Humanoid")
 
-		if not (hrp and hum) then return end
+                if not (hrp and hum) then return end
 
-		local calcspeed = speedhack_autospeed and project_delta.calculate_speed(hrp) + speedhack_autospeed_offset or speedhack_speed
-		if speedhack then
-			hum.WalkSpeed = calcspeed
-		end
+                local calcspeed = speedhack_autospeed and project_delta.calculate_speed(hrp) + speedhack_autospeed_offset or speedhack_speed
+                if speedhack then
+                        hum.WalkSpeed = calcspeed
+                end
 
-		local cameralook = (_Vector3new(1, 0, 1) * Camera.CFrame.LookVector).Unit
-		local direction = _Vector3new(0, 0, 0)
-		direction = _IsKeyDown(UserInputService, Enum.KeyCode.W) and direction + cameralook or direction;
-		direction = _IsKeyDown(UserInputService, Enum.KeyCode.S) and direction - cameralook or direction;
-		direction = _IsKeyDown(UserInputService, Enum.KeyCode.D) and direction + _Vector3new(-cameralook.Z, 0, cameralook.X) or direction;
-		direction = _IsKeyDown(UserInputService, Enum.KeyCode.A) and direction + _Vector3new(cameralook.Z, 0, -cameralook.X) or direction;
-		if direction ~= Vector3.zero then
-			direction = direction.Unit
-		end
-		if flyhack and flyhack_key then
-			local ydir = Vector3.zero
-			ydir = _IsKeyDown(UserInputService, Enum.KeyCode.Space)       and ydir + Vector3.yAxis or ydir;
-			ydir = _IsKeyDown(UserInputService, Enum.KeyCode.LeftControl) and ydir - Vector3.yAxis or ydir;
-			hrp.AssemblyLinearVelocity = _Vector3new(0, 0, 0)
-			hrp.CFrame = hrp.CFrame + (_Vector3new(1, 0, 1) * direction * flyhack_speed * delta + flyhack_speed_y * ydir * delta)
-		elseif speedhack then
-			local hmm = direction * calcspeed
-			hrp.AssemblyLinearVelocity = _Vector3new(hmm.X, hrp.AssemblyLinearVelocity.Y, hmm.Z)
-		end
-		if spiderman and spiderman_key then
-			local params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			local nocol = workspace:FindFirstChild("NoCollision")
-			params.FilterDescendantsInstances = nocol and {char, nocol} or {char}
-			params.IgnoreWater = true
-			local hit = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 2, params)
-			if hit and hit.Instance then
-				local flat = _Vector3new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
-				if flat.Magnitude > 0.01 then
-					hrp.AssemblyLinearVelocity = _Vector3new(flat.Unit.X * hrp.AssemblyLinearVelocity.X, 30, flat.Unit.Z * hrp.AssemblyLinearVelocity.Z)
-				else
-					hrp.AssemblyLinearVelocity = _Vector3new(0, 30, 0)
-				end
-				if hum:GetState() ~= Enum.HumanoidStateType.Climbing then
-					hum:ChangeState(Enum.HumanoidStateType.Climbing)
-				end
-			end
-		end
-	end))
+                local cameralook = (_Vector3new(1, 0, 1) * Camera.CFrame.LookVector).Unit
+                local direction = _Vector3new(0, 0, 0)
+                direction = _IsKeyDown(UserInputService, Enum.KeyCode.W) and direction + cameralook or direction;
+                direction = _IsKeyDown(UserInputService, Enum.KeyCode.S) and direction - cameralook or direction;
+                direction = _IsKeyDown(UserInputService, Enum.KeyCode.D) and direction + _Vector3new(-cameralook.Z, 0, cameralook.X) or direction;
+                direction = _IsKeyDown(UserInputService, Enum.KeyCode.A) and direction + _Vector3new(cameralook.Z, 0, -cameralook.X) or direction;
+                if direction ~= Vector3.zero then
+                        direction = direction.Unit
+                end
+                if flyhack and flyhack_key then
+                        local ydir = Vector3.zero
+                        ydir = _IsKeyDown(UserInputService, Enum.KeyCode.Space)       and ydir + Vector3.yAxis or ydir;
+                        ydir = _IsKeyDown(UserInputService, Enum.KeyCode.LeftControl) and ydir - Vector3.yAxis or ydir;
+                        hrp.AssemblyLinearVelocity = _Vector3new(0, 0, 0)
+                        hrp.CFrame = hrp.CFrame + (_Vector3new(1, 0, 1) * direction * flyhack_speed * delta + flyhack_speed_y * ydir * delta)
+                elseif speedhack then
+                        local hmm = direction * calcspeed
+                        hrp.AssemblyLinearVelocity = _Vector3new(hmm.X, hrp.AssemblyLinearVelocity.Y, hmm.Z)
+                end
+                if spiderman and spiderman_key then
+                        local params = RaycastParams.new()
+                        params.FilterType = Enum.RaycastFilterType.Exclude
+                        local nocol = workspace:FindFirstChild("NoCollision")
+                        params.FilterDescendantsInstances = nocol and {char, nocol} or {char}
+                        params.IgnoreWater = true
+                        local hit = workspace:Raycast(hrp.Position, hrp.CFrame.LookVector * 2, params)
+                        if hit and hit.Instance then
+                                local flat = _Vector3new(hrp.CFrame.LookVector.X, 0, hrp.CFrame.LookVector.Z)
+                                if flat.Magnitude > 0.01 then
+                                        hrp.AssemblyLinearVelocity = _Vector3new(flat.Unit.X * hrp.AssemblyLinearVelocity.X, 30, flat.Unit.Z * hrp.AssemblyLinearVelocity.Z)
+                                else
+                                        hrp.AssemblyLinearVelocity = _Vector3new(0, 30, 0)
+                                end
+                                if hum:GetState() ~= Enum.HumanoidStateType.Climbing then
+                                        hum:ChangeState(Enum.HumanoidStateType.Climbing)
+                                end
+                        end
+                end
+        end))
 end
 
 -- // boss tracker
 do
-	local miscsec = ui.sections.misc
+        local miscsec = ui.sections.misc
 
-	miscsec:Toggle({Name = "Boss tracker", Value = false, Flag = "boss_tracker", Callback = function(bool)
-		cheat.boss_tracker = bool
+        miscsec:Toggle({Name = "Boss tracker", Value = false, Flag = "boss_tracker", Callback = function(bool)
+                cheat.boss_tracker = bool
+        end})
+
+        cheat.boss_notify = false
+
+        miscsec:Toggle({Name = "Boss spawn notify", Value = false, Flag = "boss_notify", Callback = function(bool)
+                cheat.boss_notify = bool
+        end})
+end
+
+-- =========================================================
+-- // weapon skin changer + weapon editor (restored)
+-- =========================================================
+cheat.dressSkin = function(model, item_name, selected_skin)
+	local folder = game:GetService("ReplicatedStorage"):FindFirstChild("Skins")
+	if not model or not folder then return end
+	local item = folder:FindFirstChild(item_name)
+	local skin = item and item:FindFirstChild(selected_skin)
+	if not skin then return end
+	local textures = skin:FindFirstChild("Textures")
+	local materials = skin:FindFirstChild("Materials")
+	if not textures and not materials then return end
+	local parts = {}
+	for _, child in model:GetChildren() do
+		table.insert(parts, child)
+		for _, nested in child:GetChildren() do
+			table.insert(parts, nested)
+		end
+	end
+	for _, part in parts do
+		local key = part:GetAttribute("Skinnable")
+		local texture = key and textures and textures:FindFirstChild(key)
+		if texture then
+			pcall(function()
+				for _, old in part:GetChildren() do
+					if old:IsA(texture.ClassName) then old:Destroy() end
+				end
+				local copy = texture:Clone()
+				copy.Name = "SurfaceAppearance"
+				copy.Parent = part
+				local transparency = copy:GetAttribute("Transparency")
+				if transparency and part:IsA("BasePart") and part.Transparency ~= 1 then part.Transparency = transparency end
+			end)
+		end
+		local material = key and materials and materials:FindFirstChild(key)
+		if material and part:IsA("BasePart") then
+			pcall(function()
+				for _, old in part:GetChildren() do
+					if old:IsA("SurfaceAppearance") then old:Destroy() end
+				end
+				local color = material:GetAttribute("Color")
+				local transparency = material:GetAttribute("Transparency")
+				local material_name = material:GetAttribute("Name")
+				if color then part.Color = color end
+				if transparency then part.Transparency = transparency end
+				if material_name and Enum.Material[material_name] then part.Material = Enum.Material[material_name] end
+			end)
+		end
+	end
+end
+
+do
+	local skin_weapons_sec = ui.sections.skins_browser
+	local skin_list_sec = ui.sections.skins_actions
+	local mods_sec = ui.sections.weapon_mods
+	local guns_sec = ui.sections.weapon_list
+
+	local function skins_folder()
+		return game:GetService("ReplicatedStorage"):FindFirstChild("Skins")
+	end
+	local function items_list()
+		return game:GetService("ReplicatedStorage"):FindFirstChild("ItemsList")
+	end
+	local function items_models()
+		return game:GetService("ReplicatedStorage"):FindFirstChild("ItemsListModels")
+	end
+	local function skin_item_names()
+		local f = skins_folder()
+		local out = {}
+		if f then
+			for _, i in f:GetChildren() do out[#out + 1] = i.Name end
+		end
+		table.sort(out)
+		return out
+	end
+	local function item_icon(name)
+		local list = items_list()
+		if not list then return "" end
+		local function icon_of(entry)
+			if not entry then return nil end
+			local props = entry:FindFirstChild("ItemProperties")
+			if props then
+				local attr = props:GetAttribute("ItemIcon") or props:GetAttribute("Icon")
+				if type(attr) == "string" and attr:find("://", 1, true) then return attr end
+				local icon = props:FindFirstChild("ItemIcon")
+				if icon and icon.Image ~= "" then return icon.Image end
+			end
+			local deep = entry:FindFirstChild("ItemIcon", true)
+			if deep and deep:IsA("ImageLabel") and deep.Image ~= "" then return deep.Image end
+			return nil
+		end
+		local direct = list:FindFirstChild(name)
+		local img = icon_of(direct)
+		if img then return img end
+		local f = skins_folder()
+		local folder = f and f:FindFirstChild(name)
+		if folder then
+			for _, skn in folder:GetChildren() do
+				local attr = skn:GetAttribute("ItemIcon")
+				if type(attr) == "string" and attr:find("://", 1, true) then return attr end
+				local sic = skn:FindFirstChild("ItemIcon", true)
+				if sic and sic:IsA("ImageLabel") and sic.Image ~= "" then return sic.Image end
+			end
+		end
+		local base = tostring(name):gsub("_unlocked$", ""):gsub("_T%d+$", "")
+		if base ~= name then
+			img = icon_of(list:FindFirstChild(base))
+			if img then return img end
+		end
+		for _, entry in list:GetChildren() do
+			if entry.Name == base or string.find(entry.Name, base, 1, true) or string.find(base, entry.Name, 1, true) then
+				img = icon_of(entry)
+				if img then return img end
+			end
+		end
+		return ""
+	end
+	local function skin_icon(item, skin)
+		local f = skins_folder()
+		local folder = f and f:FindFirstChild(item)
+		local skn = folder and folder:FindFirstChild(skin)
+		if skn then
+			local attr = skn:GetAttribute("ItemIcon")
+			if type(attr) == "string" and attr:find("://", 1, true) then return attr end
+			local icon = skn:FindFirstChild("ItemIcon", true)
+			if icon and icon:IsA("ImageLabel") and icon.Image ~= "" then return icon.Image end
+		end
+		return item_icon(item)
+	end
+	local function skin_names_of(item, filter)
+		local f = skins_folder()
+		local folder = f and f:FindFirstChild(item)
+		local out = {}
+		if folder then
+			for _, s in folder:GetChildren() do
+				if not filter or filter == "" or string.find(string.lower(s.Name), string.lower(filter), 1, true) then
+					out[#out + 1] = s.Name
+				end
+			end
+		end
+		table.sort(out)
+		if #out == 0 then out = {"Default"} end
+		return out
+	end
+	local skin_choices = {}
+	local skin_item, skin_name, skin_filter = nil, "Default", ""
+	local skin_auto = true
+	local skin_last_model = nil
+	local function skin_key_of(obj)
+		if typeof(obj) ~= "Instance" or not obj:IsA("ObjectValue") then return nil end
+		local ref = obj.Value
+		if not ref then return nil end
+		local props = ref:FindFirstChild("ItemProperties")
+		local special = props and props:GetAttribute("SpecialSkinItem")
+		if type(special) == "string" and special ~= "" then return special end
+		return ref.Name
+	end
+	local function skin_owned(item)
+		local out = {}
+		local seen = {}
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+		local data = folder and folder:FindFirstChild(LocalPlayer.Name)
+		if not data then return out end
+		local valid = {[item] = true}
+		local f = skins_folder()
+		local skins = f and f:FindFirstChild(item)
+		if skins then
+			for _, s in skins:GetChildren() do
+				local ms = s:GetAttribute("ModelSkin")
+				if type(ms) == "string" and ms ~= "" then valid[ms] = true end
+			end
+		end
+		local function scan(root)
+			if not root then return end
+			for _, v in root:GetChildren() do
+				if not seen[v] and v:IsA("ObjectValue") then
+					if valid[v.Name] or valid[skin_key_of(v) or ""] then
+						seen[v] = true
+						out[#out + 1] = v
+					end
+				end
+				local inner = v:FindFirstChild("Inventory")
+				if inner then scan(inner) end
+			end
+		end
+		scan(data:FindFirstChild("Inventory"))
+		scan(data:FindFirstChild("Hotbar"))
+		return out
+	end
+	local function skin_stamp(obj, item, skin)
+		local list = items_list()
+		local f = skins_folder()
+		local sk = f and f:FindFirstChild(item)
+		local skn = sk and sk:FindFirstChild(skin)
+		local model_skin = skn and skn:GetAttribute("ModelSkin")
+		local target = (type(model_skin) == "string" and model_skin ~= "" and model_skin) or nil
+		if not target and list and list:FindFirstChild(item) then target = item end
+		if obj:GetAttribute("Skin") == skin and (not target or obj.Name == target) then return false end
+		if target and obj.Name ~= target then
+			obj.Name = target
+			local ref = list and list:FindFirstChild(target)
+			if ref then obj.Value = ref end
+		end
+		obj:SetAttribute("Skin", skin)
+		return true
+	end
+	local function skin_apply(item, skin)
+		local n = 0
+		for _, obj in skin_owned(item) do
+			if skin_stamp(obj, item, skin) then n += 1 end
+		end
+		local vm = Camera and _FindFirstChildOfClass(Camera, "Model")
+		if vm then cheat.dressSkin(vm, item, skin) end
+		local char = LocalPlayer.Character
+		local tool = char and _FindFirstChildOfClass(char, "Tool")
+		if tool then cheat.dressSkin(tool, item, skin) end
+		return n
+	end
+	local function skin_serialize()
+		local out = {}
+		for item, skin in skin_choices do
+			out[#out + 1] = item .. "/" .. skin
+		end
+		table.sort(out)
+		return table.concat(out, ";")
+	end
+	Library.Flags["skins_saves"] = Library.Flags["skins_saves"] or ""
+	Library.ConfigFlags["skins_saves"] = function(v)
+		if type(v) ~= "string" or v == "" then return end
+		local n = 0
+		for chunk in v:gmatch("[^;]+") do
+			local item, skin = chunk:match("^%s*([^/]+)/([^/]+)%s*$")
+			if item and skin then
+				skin_choices[item] = skin
+				n += skin_apply(item, skin)
+			end
+		end
+		Library.Flags["skins_saves"] = v
+		Library.Notification("Skins loaded (" .. n .. " applied)", 3)
+	end
+	local function make_grid(parent)
+		local f = Instance.new("Frame")
+		f.Name = "IconGrid"
+		f.BackgroundTransparency = 1
+		f.BorderSizePixel = 0
+		f.Size = UDim2.new(1, 0, 0, 0)
+		f.AutomaticSize = Enum.AutomaticSize.Y
+		f.Parent = parent
+		local layout = Instance.new("UIGridLayout")
+		layout.CellSize = UDim2.fromOffset(52, 52)
+		layout.CellPadding = UDim2.fromOffset(4, 4)
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		layout.Parent = f
+		local pad = Instance.new("UIPadding")
+		pad.PaddingLeft = UDim.new(0, 10)
+		pad.Parent = f
+		return f
+	end
+	local function grid_cell(grid, image, caption, order)
+		local b = Instance.new("ImageButton")
+		b.Name = caption
+		b.LayoutOrder = order or 0
+		b.BackgroundColor3 = Color3.fromRGB(28, 28, 30)
+		b.BorderSizePixel = 0
+		b.Image = image or ""
+		b.ScaleType = Enum.ScaleType.Fit
+		b.Parent = grid
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1
+		stroke.Color = Color3.fromRGB(70, 70, 70)
+		stroke.Parent = b
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.BorderSizePixel = 0
+		label.AnchorPoint = Vector2.new(0, 1)
+		label.Position = UDim2.new(0, 0, 1, 0)
+		label.Size = UDim2.new(1, 0, 0, 14)
+		label.Font = Enum.Font.Gotham
+		label.TextSize = 9
+		label.TextColor3 = Color3.fromRGB(220, 220, 220)
+		label.TextStrokeTransparency = 0.5
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.Text = caption
+		label.Parent = b
+		return b, stroke
+	end
+	local skin_weapon_grid = make_grid(skin_weapons_sec.holder)
+	local skin_grid = make_grid(skin_list_sec.holder)
+	local skin_weapon_buttons, skin_buttons = {}, {}
+	local function skin_select_weapon(item)
+		skin_item = item
+		for name, pair in skin_weapon_buttons do
+			pair[2].Color = (name == item) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+		end
+		for _, c in skin_grid:GetChildren() do
+			if c:IsA("ImageButton") then c:Destroy() end
+		end
+		table.clear(skin_buttons)
+		local names = skin_names_of(item, "")
+		skin_name = names[1]
+		for idx, name in names do
+			local b, stroke = grid_cell(skin_grid, skin_icon(item, name), name, idx)
+			skin_buttons[name] = {b, stroke}
+			b.MouseButton1Click:Connect(function()
+				skin_name = name
+				for n2, pair in skin_buttons do
+					pair[2].Color = (n2 == name) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+				end
+			end)
+		end
+		local first = skin_buttons[skin_name]
+		if first then first[2].Color = Library.Theme.accent end
+	end
+	local function skin_rebuild_weapons()
+		for _, c in skin_weapon_grid:GetChildren() do
+			if c:IsA("ImageButton") then c:Destroy() end
+		end
+		table.clear(skin_weapon_buttons)
+		local items = skin_item_names()
+		local idx = 0
+		for _, item in items do
+			if skin_filter == "" or string.find(string.lower(item), string.lower(skin_filter), 1, true) then
+				idx += 1
+				local b, stroke = grid_cell(skin_weapon_grid, item_icon(item), item, idx)
+				skin_weapon_buttons[item] = {b, stroke}
+				b.MouseButton1Click:Connect(function()
+					skin_select_weapon(item)
+				end)
+			end
+		end
+		if skin_item and not skin_weapon_buttons[skin_item] then skin_item = nil end
+	end
+	skin_list_sec:Textbox({Name = "Search", Value = "", Flag = "skins_search", Callback = function()
+		skin_filter = Library.Flags["skins_search"] or ""
+		skin_rebuild_weapons()
+		if skin_item and skin_weapon_buttons[skin_item] then skin_select_weapon(skin_item) end
 	end})
-
-	cheat.boss_notify = false
-
-	miscsec:Toggle({Name = "Boss spawn notify", Value = false, Flag = "boss_notify", Callback = function(bool)
-		cheat.boss_notify = bool
+	skin_list_sec:Button({Name = "Apply skin", Callback = function()
+		if not skin_item or not skin_name then
+			Library.Notification("Pick a weapon and a skin", 2.5)
+			return
+		end
+		skin_choices[skin_item] = skin_name
+		local n = skin_apply(skin_item, skin_name)
+		Library.Flags["skins_saves"] = skin_serialize()
+		Library.Notification("Skin set on " .. n .. " item(s): " .. skin_item, 3)
 	end})
+	skin_list_sec:Button({Name = "Remove skin", Callback = function()
+		if not skin_item then
+			Library.Notification("Pick a weapon first", 2.5)
+			return
+		end
+		skin_choices[skin_item] = nil
+		local n = skin_apply(skin_item, "Default")
+		Library.Flags["skins_saves"] = skin_serialize()
+		Library.Notification("Skin cleared on " .. n .. " item(s)", 3)
+	end})
+	skin_rebuild_weapons()
+	cheat.utility.new_heartbeat(function()
+		if not skin_auto then return end
+		local vm = Camera and _FindFirstChildOfClass(Camera, "Model")
+		if vm and vm ~= skin_last_model then
+			skin_last_model = vm
+			local it = _FindFirstChild(vm, "Item")
+			local name = (it and skin_choices[it.Name] and it.Name) or (skin_choices[vm.Name] and vm.Name)
+			if name then cheat.dressSkin(vm, name, skin_choices[name]) end
+		end
+	end)
+	local skin_attr_tick = 0
+	cheat.utility.new_heartbeat(function()
+		if not skin_auto or os.clock() - skin_attr_tick < 2 then return end
+		skin_attr_tick = os.clock()
+		for item, skin in skin_choices do
+			local owned = skin_owned(item)
+			if #owned > 0 then
+				local need = false
+				for _, obj in owned do
+					if obj:GetAttribute("Skin") ~= skin then need = true break end
+				end
+				if need then skin_apply(item, skin) end
+			end
+		end
+	end)
+	local attach_defaults = {
+		AKMN = {Stock = "StockAKMN", Front = "FrontAKMN", Handle = "HandleAKMN", Magazine = "762x39MAG"},
+		AKM = {Stock = "ImprStockAKM", Handle = "ImprHandleAKM", Magazine = "762x39ImprMAG"},
+		SKS = {Stock = "StockSKS", Front = "FrontSKS"},
+		M4 = {Stock = "StockM4", Front = "FrontM4", Handle = "HandleM4", Magazine = "Mag556"},
+		ADAR15 = {Stock = "StockADAR", Front = "FrontADAR", Magazine = "Mag556"},
+		FAL = {Stock = "StockFAL", Front = "FrontFAL", Handle = "HandleFAL"},
+		AsVal = {Stock = "StockAsVal", Front = "FrontAsVal", Handle = "HandleAsVal", Magazine = "9x39Mag"},
+		SOCOM556 = {Magazine = "Mag556"},
+		SVD = {Stock = "StockSVD", Front = "FrontSVD", Magazine = "762x54Rnd10Mag"},
+		Mosin = {Stock = "DefaultStockMosin", Front = "DefaultFrontMosin"},
+		R700 = {Front = "FrontTimberwolf", Magazine = "MagR700"},
+		TFZ98S = {Magazine = "MagTFZ98"},
+		PPSH41 = {Stock = "StockPPSH41", Magazine = "762x25Rnd71Mag"},
+		VZ61 = {Magazine = "9x18vzMag"},
+		Saiga12 = {Front = "FrontSaiga", Magazine = "SaigaMag5rnd"},
+		IZh81 = {Stock = "StockIZh81", Front = "FrontIZh81"},
+		IZh12 = {Stock = "StockIZh12", Front = "FrontIZh12"},
+		TOZ106 = {Magazine = "MagTOZ106"},
+		Makarov = {Magazine = "9x18MakarovMAG"},
+		GoldenMakarov = {Magazine = "9x18MakarovMAG"},
+		MP443 = {Magazine = "9x19MP443MAG"},
+		TT33 = {Magazine = "762x25TTMAG"},
+		MK23 = {Magazine = "MK23ExtMag"}
+	}
+	local wep_edits = ""
+	local wep_auto, wep_unlock = true, false
+	local wep_weapon, wep_slot, wep_att = nil, nil, nil
+	local wep_slot_dd, wep_att_dd
+	local function wep_display(name)
+		local list = items_list()
+		local it = list and list:FindFirstChild(name)
+		local props = it and it:FindFirstChild("ItemProperties")
+		local disp = props and props:GetAttribute("Name")
+		if type(disp) == "string" and disp ~= "" then return disp end
+		return tostring(name)
+	end
+	local function wep_is_gun(name)
+		local list = items_list()
+		local it = list and list:FindFirstChild(name)
+		local props = it and it:FindFirstChild("ItemProperties")
+		if not props then return true end
+		local t = props:GetAttribute("ItemType")
+		if type(t) ~= "string" or t == "" then return true end
+		return t == "RangedWeapon"
+	end
+	local function wep_gun_names()
+		local models = items_models()
+		local out = {}
+		if models then
+			for _, m in models:GetChildren() do
+				if m:FindFirstChild("AttachmentPoints") and wep_is_gun(m.Name) then
+					out[#out + 1] = m.Name
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+	local function wep_slots(weapon)
+		local models = items_models()
+		local out = {}
+		local seen = {}
+		local m = models and models:FindFirstChild(weapon)
+		local ap = m and m:FindFirstChild("AttachmentPoints")
+		if ap then
+			for _, s in ap:GetChildren() do
+				if s.Name ~= "Magazine" and not seen[s.Name] then
+					seen[s.Name] = true
+					out[#out + 1] = s.Name
+				end
+			end
+		end
+		if wep_unlock then
+			for _, s in {"Front", "Handle", "Stock", "Grip"} do
+				if not seen[s] then
+					seen[s] = true
+					out[#out + 1] = s
+				end
+			end
+		end
+		table.sort(out)
+		return out
+	end
+	local function wep_compat()
+		local list = items_list()
+		local map = {}
+		if list then
+			for _, it in list:GetChildren() do
+				local props = it:FindFirstChild("ItemProperties")
+				local cp = props and props:FindFirstChild("CompatibleParts")
+				if cp then
+					local ok, attrs = pcall(function() return cp:GetAttributes() end)
+					if ok and type(attrs) == "table" then
+						for att, slot in attrs do
+							if type(slot) == "string" and slot ~= "" and list:FindFirstChild(att) then
+								map[slot] = map[slot] or {}
+								map[slot][att] = true
+							end
+						end
+					end
+				end
+			end
+		end
+		return map
+	end
+	local wep_compat_cache = nil
+	local function wep_options(weapon, slot)
+		if not wep_compat_cache then wep_compat_cache = wep_compat() end
+		local set = {}
+		if wep_compat_cache[slot] then
+			for att in wep_compat_cache[slot] do set[att] = true end
+		end
+		local def = attach_defaults[weapon] and attach_defaults[weapon][slot]
+		if def then set[def] = true end
+		local guess = items_list() and items_list():FindFirstChild(slot .. weapon)
+		if guess then set[slot .. weapon] = true end
+		local out = {}
+		for att in set do out[#out + 1] = att end
+		table.sort(out)
+		return out
+	end
+	local function wep_owned(name)
+		local out = {}
+		local seen = {}
+		local folder = game:GetService("ReplicatedStorage"):FindFirstChild("Players")
+		local data = folder and folder:FindFirstChild(LocalPlayer.Name)
+		if not data then return out end
+		local function scan(root)
+			if not root then return end
+			for _, v in root:GetChildren() do
+				if not seen[v] and v:FindFirstChild("Attachments") then
+					if name == nil or v.Name == name then
+						seen[v] = true
+						out[#out + 1] = v
+					end
+				end
+				local inner = v:FindFirstChild("Inventory")
+				if inner then scan(inner) end
+			end
+		end
+		scan(data:FindFirstChild("Inventory"))
+		scan(data:FindFirstChild("Hotbar"))
+		return out
+	end
+	local function wep_current(gun, slot)
+		local atts = gun:FindFirstChild("Attachments")
+		if not atts then return nil end
+		for _, a in atts:GetChildren() do
+			if a:GetAttribute("Slot") == slot then return a.Name end
+		end
+		return nil
+	end
+	local function wep_default(weapon, slot)
+		local d = attach_defaults[weapon] and attach_defaults[weapon][slot]
+		if d then return d end
+		local guess = slot .. weapon
+		if items_list() and items_list():FindFirstChild(guess) then return guess end
+		return nil
+	end
+	local function wep_parse(str)
+		local map = {}
+		for chunk in tostring(str or ""):gmatch("[^;]+") do
+			local w, s, a = chunk:match("^%s*([^/]+)/([^/]+)/([^/]+)%s*$")
+			if w and s and a then
+				map[w] = map[w] or {}
+				map[w][s] = a
+			end
+		end
+		return map
+	end
+	local function wep_serialize(map)
+		local out = {}
+		for w, slots in map do
+			for s, a in slots do out[#out + 1] = w .. "/" .. s .. "/" .. a end
+		end
+		return table.concat(out, ";")
+	end
+	local function wep_stamp(gun, slot, att)
+		local atts = gun:FindFirstChild("Attachments")
+		if not atts then return end
+		local cur = nil
+		for _, a in atts:GetChildren() do
+			if a:GetAttribute("Slot") == slot then cur = a break end
+		end
+		if not cur then
+			cur = Instance.new("ObjectValue")
+			cur.Parent = atts
+		end
+		pcall(function()
+			cur.Name = att
+			local list = items_list()
+			cur.Value = list and list:FindFirstChild(att)
+			cur:SetAttribute("Slot", slot)
+			atts:SetAttribute(slot, att)
+		end)
+	end
+	local function wep_apply_all()
+		local map = wep_parse(wep_edits)
+		if not next(map) then return 0 end
+		local n = 0
+		for _, gun in wep_owned(nil) do
+			local slots = map[gun.Name]
+			if slots then
+				for slot, att in slots do
+					if att == "-" then
+						local atts = gun:FindFirstChild("Attachments")
+						local cur = atts and (function()
+							for _, a in atts:GetChildren() do
+								if a:GetAttribute("Slot") == slot then return a end
+							end
+						end)()
+						if cur then pcall(function() cur:Destroy() end) n += 1 end
+					else
+						wep_stamp(gun, slot, att)
+						n += 1
+					end
+				end
+			end
+		end
+		return n
+	end
+	local function wep_status()
+		if not wep_weapon or not wep_slot then return "pick a weapon and slot" end
+		local map = wep_parse(wep_edits)
+		local edited = map[wep_weapon] and map[wep_weapon][wep_slot]
+		if edited then return "edited: " .. edited end
+		local gun = wep_owned(wep_weapon)[1]
+		local fitted = gun and wep_current(gun, wep_slot)
+		if fitted then return "fitted: " .. fitted end
+		local def = wep_default(wep_weapon, wep_slot)
+		if def then return "default: " .. def end
+		return "empty"
+	end
+	local wep_refresh_slots, wep_refresh_atts
+	local gun_grid = make_grid(guns_sec.holder)
+	local att_grid = make_grid(mods_sec.holder)
+	local gun_buttons, att_buttons = {}, {}
+	wep_refresh_slots = function()
+		local slots = wep_weapon and wep_slots(wep_weapon) or {}
+		wep_slot = slots[1]
+		if wep_slot_dd then
+			wep_slot_dd.Refresh(slots)
+			if wep_slot then wep_slot_dd.Set(wep_slot, true) end
+		end
+		wep_refresh_atts()
+	end
+	wep_refresh_atts = function()
+		if not att_grid then return end
+		for _, c in att_grid:GetChildren() do
+			if c:IsA("ImageButton") then c:Destroy() end
+		end
+		table.clear(att_buttons)
+		wep_att = "Empty"
+		if not (wep_weapon and wep_slot) then return end
+		local opts = wep_options(wep_weapon, wep_slot)
+		local vals = {"Empty"}
+		for _, o in opts do vals[#vals + 1] = o end
+		for idx, name in vals do
+			local b, stroke = grid_cell(att_grid, name == "Empty" and "" or item_icon(name), name, idx)
+			att_buttons[name] = {b, stroke}
+			b.MouseButton1Click:Connect(function()
+				wep_att = name
+				for n2, pair in att_buttons do
+					pair[2].Color = (n2 == name) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+				end
+			end)
+		end
+		local first = att_buttons["Empty"]
+		if first then first[2].Color = Library.Theme.accent end
+	end
+	local function wep_select_gun(name)
+		wep_weapon = name
+		wep_compat_cache = nil
+		for n2, pair in gun_buttons do
+			pair[2].Color = (n2 == name) and Library.Theme.accent or Color3.fromRGB(70, 70, 70)
+		end
+		wep_refresh_slots()
+	end
+	do
+		local guns = wep_gun_names()
+		for idx, name in guns do
+			local b, stroke = grid_cell(gun_grid, item_icon(name), name, idx)
+			gun_buttons[name] = {b, stroke}
+			b.MouseButton1Click:Connect(function()
+				wep_select_gun(name)
+			end)
+		end
+	end
+	wep_slot_dd = mods_sec:Dropdown({Name = "Slot", Values = {}, Value = nil, Flag = "wep_slot", Multi = false, Callback = function(value)
+		wep_slot = value
+		wep_refresh_atts()
+	end})
+	mods_sec:Button({Name = "Apply attachment", Callback = function()
+		if not wep_weapon or not wep_slot then
+			Library.Notification("Pick a weapon and slot", 2.5)
+			return
+		end
+		local map = wep_parse(wep_edits)
+		map[wep_weapon] = map[wep_weapon] or {}
+		if not wep_att or wep_att == "Empty" then
+			map[wep_weapon][wep_slot] = "-"
+		else
+			map[wep_weapon][wep_slot] = wep_att
+		end
+		if not next(map[wep_weapon]) then map[wep_weapon] = nil end
+		wep_edits = wep_serialize(map)
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Edits: " .. wep_status() .. " (" .. n .. " stamped)", 3)
+	end})
+	mods_sec:Button({Name = "Clear slot", Callback = function()
+		if not wep_weapon or not wep_slot then
+			Library.Notification("Pick a weapon and slot", 2.5)
+			return
+		end
+		local map = wep_parse(wep_edits)
+		map[wep_weapon] = map[wep_weapon] or {}
+		map[wep_weapon][wep_slot] = "-"
+		if not next(map[wep_weapon]) then map[wep_weapon] = nil end
+		wep_edits = wep_serialize(map)
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Slot cleared (" .. n .. " removed)", 3)
+	end})
+	Library.Flags["weapon_edits"] = Library.Flags["weapon_edits"] or ""
+	Library.ConfigFlags["weapon_edits"] = function(v)
+		wep_edits = tostring(v or "")
+		Library.Flags["weapon_edits"] = wep_edits
+		local n = wep_apply_all()
+		Library.Notification("Weapon edits loaded (" .. n .. " stamped)", 3)
+	end
+	local wep_auto_tick = 0
+	cheat.utility.new_heartbeat(function()
+		if wep_auto and wep_edits ~= "" and os.clock() - wep_auto_tick > 1 then
+			wep_auto_tick = os.clock()
+			wep_apply_all()
+		end
+	end)
 end
 
 -- // noclip system
